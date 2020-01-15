@@ -1,14 +1,20 @@
 use std::collections::HashMap;
 use crate::eval::Object;
+use crate::fns::FunctionsRegister;
+use crate::namespaces::*;
 
-pub struct Environment {
+pub struct Environment<'a> {
+    pub namespaces: Namespaces<'a>,
     vars: HashMap<String, Object>,
+    pub functions: FunctionsRegister<'a>,
 }
 
-impl Environment {
+impl<'a> Environment<'a> {
     pub fn new() -> Self {
         Environment {
+            namespaces: Namespaces::new(),
             vars: HashMap::new(),
+            functions: FunctionsRegister::new()
         }
     }
 

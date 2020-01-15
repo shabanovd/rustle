@@ -9,6 +9,8 @@ use nom::{
 use nom::character::complete::one_of;
 use nom::Err::Error;
 
+use crate::namespaces::*;
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
     Expression (Expr),
@@ -24,7 +26,7 @@ pub enum Expr {
     Integer(i128),
     String(String),
 
-    QName { local_part: String, ns: String, prefix: String },
+    QName { local_part: String, url: String, prefix: String },
 
     Binary { left: Box<Expr>, operator: Operator, right: Box<Expr> },
     If { condition: Box<Expr>, consequence: Vec<Statement>, alternative: Vec<Statement> },
@@ -129,7 +131,7 @@ fn parse_binary_expr(input: &str) -> IResult<&str, Expr> {
             "div" => Operator::Divide,
             "idiv" => Operator::IDivide,
             "mod" => Operator::Mod,
-            _ => panic!("parse error") // TODO: raise error instead
+            _ => panic!("it must not happen") // TODO: raise error instead
         };
 
         Ok((
@@ -336,14 +338,21 @@ fn parse_eqname(input: &str) -> IResult<&str, Expr> {
 
         let (input, name2) = parse_ncname(input)?;
 
+        // TODO: resolve url from environment
+        let url = if name1 == String::from(SCHEMA.prefix) {
+            SCHEMA.url
+        } else {
+            ""
+        };
+
         Ok((
             input,
-            Expr::QName { local_part: name2, ns: String::from(""), prefix: name1 } // TODO: resolve namespace
+            Expr::QName { local_part: name2, url: String::from(url), prefix: name1 }
         ))
     } else {
         Ok((
             input,
-            Expr::QName { local_part: name1, ns: String::from(""), prefix: String::from("") } // TODO: resolve namespace
+            Expr::QName { local_part: name1, url: String::from(""), prefix: String::from("") } // TODO: resolve namespace
         ))
     }
 }
