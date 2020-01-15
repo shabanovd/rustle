@@ -6,14 +6,22 @@ use crate::fns::FUNCTION;
 mod environment;
 pub use self::environment::Environment;
 use crate::eval::Object::Empty;
+use nom::lib::std::collections::HashMap;
+
+#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+pub enum Type {
+    Boolean(bool),
+    Integer(i128),
+    String(String),
+}
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Object {
     Empty,
 
-    Boolean(bool),
-    Integer(i128),
-    String(String),
+    Atomic(Type),
+
+    Map(HashMap<Type, Object>),
 
     Function{parameters: Vec<String>, body: Vec<Statement>},
 
@@ -55,9 +63,35 @@ fn eval_expr<'a>(expression: Expr, env: &'a mut Environment<'a>) -> (&'a mut Env
     let mut current_env = env;
 
     match expression {
-        Expr::Boolean(bool) => (current_env, Object::Boolean(bool)),
-        Expr::Integer(number) => (current_env, Object::Integer(number)),
-        Expr::String(string) => (current_env, Object::String(string)),
+        Expr::Boolean(bool) => (current_env, Object::Atomic(Type::Boolean(bool))),
+        Expr::Integer(number) => (current_env, Object::Atomic(Type::Integer(number))),
+        Expr::String(string) => (current_env, Object::Atomic(Type::String(string))),
+
+        Expr::Map { entries } => {
+            let mut map = HashMap::new();
+            for entry in entries {
+                match entry {
+                    Expr::MapEntry { key, value } => {
+                        let (new_env, evaluated_key) = eval_statement(*key, current_env);
+                        current_env = new_env;
+
+                        let (new_env, evaluated_value) = eval_statement(*value, current_env);
+                        current_env = new_env;
+
+                        match evaluated_key {
+                            Object::Atomic(key_object) => {
+                                map.insert(key_object, evaluated_value);
+                            }
+                            _ => panic!("wrong expression") //TODO: proper code
+                        }
+
+                    }
+                    _ => panic!("wrong expression") //TODO: proper code
+                }
+            }
+
+            (current_env, Object::Map(map))
+        }
 
         Expr::Binary { left, operator: Operator::Multiply, right } => {
             let (new_env, left_result) = eval_expr(*left, current_env);
@@ -70,7 +104,9 @@ fn eval_expr<'a>(expression: Expr, env: &'a mut Environment<'a>) -> (&'a mut Env
             println!("right_result {:?}", right_result);
 
             let result = match (left_result, right_result) {
-                (Object::Integer(left), Object::Integer(right)) => Object::Integer(left * right),
+                (Object::Atomic(Type::Integer(left)), Object::Atomic(Type::Integer(right))) =>
+                    Object::Atomic(Type::Integer(left * right)),
+
                 _ => panic!("multiply fail")
             };
 
@@ -134,12 +170,23 @@ mod tests {
 
     #[test]
     fn eval_simple() {
-        test_eval("xs:decimal(\"617375191608514839\") * xs:decimal(\"0\")", Object::Integer(0))
+        test_eval(
+            "xs:decimal(\"617375191608514839\") * xs:decimal(\"0\")",
+            Object::Atomic(Type::Integer(0)))
     }
 
+    #[test]
+    fn eval_map_get() {
+        test_eval(
+            "map:get(map{1:\"Sunday\",2:\"Monday\",3:\"Tuesday\",4:\"Wednesday\",5:\"Thursday\",6:\"Friday\",7:\"Saturday\"}, 4)",
+            Object::Atomic(Type::String( String::from("Wednesday")))
+        )
+    }
 
     fn test_eval(input: &str, expected: Object) {
         let result = parse(input);
+
+        println!("parsed: {:?}", result);
 
         if result.is_ok() {
             let (_, program) = result.unwrap();
@@ -148,8 +195,8 @@ mod tests {
             let (new_env, result) = eval_statements(program, &mut env);
 
             assert_eq!(
-                expected,
-                result
+                result,
+                expected
             );
         }
     }

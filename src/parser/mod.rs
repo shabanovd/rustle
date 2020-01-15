@@ -26,6 +26,9 @@ pub enum Expr {
     Integer(i128),
     String(String),
 
+    Map { entries: Vec<Expr> }, // Expr because can't use MapEntry here
+    MapEntry { key: Box<Statement>, value: Box<Statement> },
+
     QName { local_part: String, url: String, prefix: String },
 
     Binary { left: Box<Expr>, operator: Operator, right: Box<Expr> },
@@ -37,7 +40,7 @@ pub enum Expr {
 
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub enum Operator {
     Plus,
     Minus,
@@ -77,8 +80,7 @@ fn parse_expr(input: &str) -> IResult<&str, Vec<Statement>> {
 
         program.push(expr);
 
-        let (input, _) = multispace0(input)?;
-        let tmp = tag(",")(input);
+        let tmp = ws_tag(",", input);
         if tmp.is_err() {
             return
                 Ok((
@@ -86,9 +88,7 @@ fn parse_expr(input: &str) -> IResult<&str, Vec<Statement>> {
                     program
                 ))
         }
-        let (input, _) = tmp?;
-
-        current_input = input;
+        current_input = tmp?.0;
     }
 }
 
@@ -113,7 +113,7 @@ fn parse_binary_expr(input: &str) -> IResult<&str, Expr> {
 
     let (input, left) = parse_unary_expr(input)?;
 
-    let (input, _) = multispace0(input)?;
+    let input = ws(input)?.0;
 
     let check = alt(
         ( tag("+"), tag("-"), tag("*"), tag("div"), tag("idiv"), tag("mod")  )
@@ -154,13 +154,13 @@ fn parse_binary_expr(input: &str) -> IResult<&str, Expr> {
 // [98]    	ValueExpr 	   ::=    	ValidateExpr | ExtensionExpr | SimpleMapExpr
 fn parse_unary_expr(input: &str) -> IResult<&str, Expr> {
 
-    let (input, _) = multispace0(input)?;
-
     let mut is_positive = true;
     let mut current_input = input;
 
     //TODO: optimize by relaxing
     loop {
+        let input = ws(current_input)?.0;
+
         let check = one_of("-+")(input);
         if check.is_ok() {
             let (input, op) = check?;
@@ -213,7 +213,7 @@ fn parse_postfix_expr(input: &str) -> IResult<&str, Expr> {
 //  TODO: | UnorderedExpr
 //  TODO: | NodeConstructor
 //  TODO: | FunctionItemExpr
-//  TODO: | MapConstructor
+//  MapConstructor
 //  TODO: | ArrayConstructor
 //  TODO: | StringConstructor
 //  TODO: | UnaryLookup
@@ -227,12 +227,25 @@ fn parse_primary_expr(input: &str) -> IResult<&str, Expr> {
         ))
     }
 
-    let (input, call) = parse_function_call(input)?;
+    let result = parse_function_call(input);
+    if result.is_ok() {
+        let (input, literal) = result?;
+        return Ok((
+            input,
+            literal
+        ))
+    }
 
-    Ok((
-        input,
-        call
-    ))
+    let result = parse_map_constructor(input);
+    if result.is_ok() {
+        let (input, literal) = result?;
+        return Ok((
+            input,
+            literal
+        ))
+    }
+
+    result
 }
 
 // [137]    	FunctionCall 	   ::=    	EQName ArgumentList
@@ -260,14 +273,13 @@ fn parse_arguments(input: &str) -> IResult<&str, Vec<Statement>> {
 
     let mut current_input = input;
     loop {
-        println!("parse_arguments: {:?}", input);
+        println!("parse_arguments: {:?}", current_input);
 
         let (input, argument) = parse_expr_single(current_input)?;
 
         arguments.push(argument);
 
-        let (input, _) = multispace0(input)?;
-        let tmp = tag(",")(input);
+        let tmp = ws_tag(",", input);
         if tmp.is_err() {
             return
                 Ok((
@@ -275,14 +287,15 @@ fn parse_arguments(input: &str) -> IResult<&str, Vec<Statement>> {
                     arguments
                 ))
         }
-        let (input, _) = tmp?;
-
-        current_input = input;
+        current_input = tmp?.0;
     }
 }
 
 // [129]    	Literal 	   ::=    	TODO: NumericLiteral | StringLiteral
 fn parse_literal(input: &str) -> IResult<&str, Expr> {
+
+    let input = ws(input)?.0;
+
     let result = parse_numeric_literal(input);
     if result.is_ok() {
         let (input, literal) = result?;
@@ -305,13 +318,62 @@ fn parse_numeric_literal(input: &str) -> IResult<&str, Expr> {
     ))
 }
 
+// [170]    	MapConstructor 	   ::=    	"map" "{" (MapConstructorEntry ("," MapConstructorEntry)*)? "}"
+fn parse_map_constructor(input: &str) -> IResult<&str, Expr> {
+    let input = ws_tag("map", input)?.0;
+
+    let input = ws_tag("{", input)?.0;
+
+    let mut entries = vec![];
+
+    let mut current_input = input;
+    loop {
+        println!("parse_map_entries: {:?}", current_input);
+
+        let (input, entry) = parse_map_constructor_entry(current_input)?;
+
+        entries.push(entry);
+
+        let input = ws(input)?.0;
+
+        let tmp = tag(",")(input);
+        if tmp.is_err() {
+
+            let current_input = tag("}")(input)?.0;
+
+            return
+                Ok((
+                    current_input,
+                    Expr::Map { entries }
+                ))
+        }
+        current_input = tmp?.0;
+    }
+}
+
+// [171]    	MapConstructorEntry 	   ::=    	MapKeyExpr ":" MapValueExpr
+// [172]    	MapKeyExpr 	   ::=    	ExprSingle
+// [173]    	MapValueExpr 	   ::=    	ExprSingle
+fn parse_map_constructor_entry(input: &str) -> IResult<&str, Expr> {
+    let (input, key) = parse_expr_single(input)?;
+
+    let input = ws_tag(":", input)?.0;
+
+    let (input, value) = parse_expr_single(input)?;
+
+    Ok((
+        input,
+        Expr::MapEntry { key: Box::new( key ), value: Box::new( value ) }
+    ))
+}
+
 // [222]    	StringLiteral 	   ::=    	('"' (PredefinedEntityRef | CharRef | EscapeQuot | [^"&])* '"') | ("'" (PredefinedEntityRef | CharRef | EscapeApos | [^'&])* "'")
 fn parse_string_literal(input: &str) -> IResult<&str, Expr> {
-    let (input, _) = tag("\"")(input)?;
+    let input = ws_tag("\"", input)?.0;
 
     let (input, string) = take_until("\"")(input)?;
 
-    let (input, _) = tag("\"")(input)?;
+    let input = tag("\"")(input)?.0;
 
     Ok((
         input,
@@ -339,8 +401,24 @@ fn parse_eqname(input: &str) -> IResult<&str, Expr> {
         let (input, name2) = parse_ncname(input)?;
 
         // TODO: resolve url from environment
-        let url = if name1 == String::from(SCHEMA.prefix) {
+        let url = if name1 == String::from(XML.prefix) {
+            XML.url
+        } else if name1 == String::from(SCHEMA.prefix) {
             SCHEMA.url
+        } else if name1 == String::from(SCHEMA_INSTANCE.prefix) {
+            SCHEMA_INSTANCE.url
+        } else if name1 == String::from(XPATH_FUNCTIONS.prefix) {
+            XPATH_FUNCTIONS.url
+        } else if name1 == String::from(XPATH_MAP.prefix) {
+            XPATH_MAP.url
+        } else if name1 == String::from(XPATH_ARRAY.prefix) {
+            XPATH_ARRAY.url
+        } else if name1 == String::from(XPATH_MATH.prefix) {
+            XPATH_MATH.url
+        } else if name1 == String::from(XQUERY_LOCAL.prefix) {
+            XQUERY_LOCAL.url
+        } else if name1 == String::from(XQT_ERROR.prefix) {
+            XQT_ERROR.url
         } else {
             ""
         };
@@ -385,6 +463,15 @@ fn is_name_char(c: char) -> bool {
 //[238]    	Digits 	   ::=    	[0-9]+
 fn is_digits(c: char) -> bool {
     c >= '0' && c <= '9'
+}
+
+fn ws(input: &str) -> IResult<&str, &str> {
+    multispace0(input)
+}
+
+fn ws_tag<'a>(token: &str, input: &'a str) -> IResult<&'a str, &'a str> {
+    let (input, _) = multispace0(input)?;
+    tag(token)(input)
 }
 
 #[test]
