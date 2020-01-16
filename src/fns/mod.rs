@@ -37,14 +37,14 @@ impl<'a> FunctionsRegister<'a> {
     }
 
     pub fn get(&self, uri: &str, local_part: &str, arity: usize) -> Option<FUNCTION<'a>> {
-        println!("function get {:?} {:?} {:?}", uri, local_part, arity);
+        // println!("function get {:?} {:?} {:?}", uri, local_part, arity);
         if let Some(list) = self.functions.get(&self.key(uri, local_part)) {
-            println!("function list {:?}", list.len());
+            // println!("function list {:?}", list.len());
             //TODO: fix it!
             let rf = list.get(&arity).unwrap();
             Some(*rf)
         } else {
-            println!("function list NONE");
+            // println!("function list NONE");
             None
         }
     }
