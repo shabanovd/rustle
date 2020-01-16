@@ -3,13 +3,16 @@ use std::boxed::Box;
 use nom::{
     IResult,
     branch::alt,
-    bytes::complete::{tag, take_while, take_while1, take_while_m_n, take_until},
-    character::complete::multispace0
+    bytes::complete::{tag, take_while, take_while1, take_while_m_n, take_until, is_not},
+    character::complete::{multispace0, multispace1}
 };
 use nom::character::complete::one_of;
-use nom::Err::Error;
 
 use crate::namespaces::*;
+use nom::lib::std::fmt::Error;
+use nom::error::ParseError;
+
+const DEBUG: bool = false;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
@@ -25,6 +28,12 @@ pub enum Expr {
     Boolean(bool),
     Integer(i128),
     String(String),
+
+    Node { name: Box<Expr>, attributes: Vec<Expr>, children: Vec<Expr> },
+    Attribute { name: Box<Expr>, value: Box<Expr> },
+    NodeText(String),
+    NodeComment(String),
+    NodePI { target: Box<Expr>, content: String },
 
     Map { entries: Vec<Expr> }, // Expr because can't use MapEntry here
     MapEntry { key: Box<Statement>, value: Box<Statement> },
@@ -100,7 +109,10 @@ fn parse_expr(input: &str) -> IResult<&str, Vec<Statement>> {
 //  TODO: | TryCatchExpr
 //  TODO: | OrExpr
 fn parse_expr_single(input: &str) -> IResult<&str, Statement> {
-    println!("parse_expr_single: {:?}", input);
+    if DEBUG {
+        println!("parse_expr_single: {:?}", input);
+    }
+
     let (input, expr) = parse_binary_expr(input)?;
 
     Ok((
@@ -145,9 +157,6 @@ fn parse_binary_expr(input: &str) -> IResult<&str, Expr> {
             left
         ))
     }
-
-
-
 }
 
 // [97]    	UnaryExpr 	   ::=    	("-" | "+")* ValueExpr
@@ -202,8 +211,6 @@ fn parse_postfix_expr(input: &str) -> IResult<&str, Expr> {
     parse_primary_expr(input)
 }
 
-
-
 // [128]    	PrimaryExpr 	   ::=    	Literal
 //  TODO: | VarRef
 //  TODO: | ParenthesizedExpr
@@ -236,6 +243,15 @@ fn parse_primary_expr(input: &str) -> IResult<&str, Expr> {
         ))
     }
 
+    let result = parse_node_constructor(input);
+    if result.is_ok() {
+        let (input, literal) = result?;
+        return Ok((
+            input,
+            literal
+        ))
+    }
+
     let result = parse_map_constructor(input);
     if result.is_ok() {
         let (input, literal) = result?;
@@ -250,8 +266,9 @@ fn parse_primary_expr(input: &str) -> IResult<&str, Expr> {
 
 // [137]    	FunctionCall 	   ::=    	EQName ArgumentList
 fn parse_function_call(input: &str) -> IResult<&str, Expr> {
-
-    println!("parse_function_call: {:?}", input);
+    if DEBUG {
+        println!("parse_function_call: {:?}", input);
+    }
 
     let (input, function) = parse_eqname(input)?;
 
@@ -273,7 +290,9 @@ fn parse_arguments(input: &str) -> IResult<&str, Vec<Statement>> {
 
     let mut current_input = input;
     loop {
-        println!("parse_arguments: {:?}", current_input);
+        if DEBUG {
+            println!("parse_arguments: {:?}", current_input);
+        }
 
         let (input, argument) = parse_expr_single(current_input)?;
 
@@ -318,6 +337,286 @@ fn parse_numeric_literal(input: &str) -> IResult<&str, Expr> {
     ))
 }
 
+// [140]    	NodeConstructor 	   ::=    	DirectConstructor | ComputedConstructor
+fn parse_node_constructor(input: &str) -> IResult<&str, Expr> {
+    let result = parse_direct_constructor(input);
+    if result.is_ok() {
+        let (input, node) = result?;
+        return Ok((
+            input,
+            node
+        ))
+    }
+
+    parse_computed_constructor(input)
+}
+
+// TODO:
+// [141]    	DirectConstructor 	   ::=    	DirElemConstructor | DirCommentConstructor | DirPIConstructor
+// [142]    	DirElemConstructor 	   ::=    	"<" QName DirAttributeList ("/>" | (">" DirElemContent* "</" QName S? ">")) // ws: explicit
+// [149]    	DirCommentConstructor 	   ::=    	"<!--" DirCommentContents "-->" // ws: explicit
+// [150]    	DirCommentContents 	   ::=    	((Char - '-') | ('-' (Char - '-')))* // ws: explicit
+// [151]    	DirPIConstructor 	   ::=    	"<?" PITarget (S DirPIContents)? "?>" // ws: explicit
+// [152]    	DirPIContents 	   ::=    	(Char* - (Char* '?>' Char*)) // ws: explicit
+fn parse_direct_constructor(input: &str) -> IResult<&str, Expr> {
+    if DEBUG {
+        println!("parse_direct_constructor {:?}", input);
+    }
+
+    let input = tag("<")(input)?.0;
+
+    // DirCommentConstructor
+    let result = tag("!--")(input);
+    if result.is_ok() {
+        let (input, _) = result?;
+        let (input, content) = take_until("-->")(input)?;
+
+        let input = tag("-->")(input)?.0;
+
+        //TODO: raise error if content end by '-'
+
+        return Ok((
+            input,
+            Expr::NodeComment(String::from(content))
+        ))
+    }
+
+    // DirPIConstructor
+    let result = tag("?")(input);
+    if result.is_ok() {
+        let input = result?.0;
+
+        let (input, target) = parse_qname(input)?;
+
+        //TODO: target must not be 'xml'
+
+        let (input, content) = take_until("?>")(input)?;
+
+        let input = tag("?>")(input)?.0;
+
+        return Ok((
+            input,
+            Expr::NodePI { target: Box::new(target), content: String::from(content) }
+        ))
+    }
+
+    // DirElemConstructor
+
+    // "<" QName DirAttributeList ("/>" | (">" DirElemContent* "</" QName S? ">"))
+
+    let (input, tag_name) = parse_qname(input)?;
+
+    let (input, attributes) = parse_attribute_list(input)?;
+
+    let mut children = Vec::new();
+
+    let mut current_input = input;
+
+    let check = tag("/>")(current_input);
+    if check.is_ok() {
+        current_input = check?.0;
+
+    } else {
+        current_input = tag(">")(current_input)?.0;
+        loop {
+            if DEBUG {
+                println!("parse_direct_constructor check_for_close {:?} {:?}", tag_name, current_input);
+            }
+
+            let check_for_close = tag("</")(current_input);
+            if check_for_close.is_ok() {
+                let (_,_) = check_for_close?;
+                break;
+            }
+
+            let check = parse_dir_elem_content(current_input);
+            if check.is_ok() {
+                let (input, child) = check?;
+                current_input = input;
+
+                children.push(child);
+            } else {
+                break
+            }
+        }
+        if DEBUG {
+            println!("parse_direct_constructor close tag {:?} {:?}", tag_name, current_input);
+        }
+
+        current_input = tag("</")(current_input)?.0;
+
+        let (input, close_tag_name) = parse_qname(current_input)?;
+
+        current_input = ws(input)?.0;
+
+        current_input = tag(">")(current_input)?.0;
+
+        if tag_name != close_tag_name {
+            panic!("close tag '{:?}' do not match open one '{:?}'", close_tag_name, tag_name); // TODO: better error
+        }
+    };
+
+    if DEBUG {
+        println!("parse_direct_constructor return {:?}", current_input);
+    }
+
+    Ok((
+        current_input,
+        Expr::Node { name: Box::new( tag_name ), attributes, children }
+    ))
+}
+
+// [143]    	DirAttributeList 	   ::=    	(S (QName S? "=" S? DirAttributeValue)?)* // ws: explicit
+// [144]    	DirAttributeValue 	   ::=    	('"' (EscapeQuot | QuotAttrValueContent)* '"') | ("'" (EscapeApos | AposAttrValueContent)* "'") // ws: explicit
+// [145]    	QuotAttrValueContent 	   ::=    	QuotAttrContentChar | CommonContent
+// [146]    	AposAttrValueContent 	   ::=    	AposAttrContentChar | CommonContent
+fn parse_attribute_list(input: &str) -> IResult<&str, Vec<Expr>> {
+
+    let mut attributes = Vec::new();
+
+    let mut current_input = input;
+
+    loop {
+        let check = multispace1(current_input);
+        if check.is_err() {
+            break;
+        }
+        current_input = check?.0;
+
+        if DEBUG {
+            println!("parse_attribute_list ws {:?}", current_input);
+        }
+
+        let check = parse_qname(current_input);
+        if check.is_ok() {
+            let (input, name) = check?;
+            if DEBUG {
+                println!("parse_attribute_list qname {:?}", input);
+            }
+
+            let input = ws(input)?.0;
+            let input = tag("=")(input)?.0;
+            let input = ws(input)?.0;
+
+            let (input, close_char) = alt((tag("\""), tag("'")))(input)?;
+
+            if DEBUG {
+                println!("parse_attribute_list {:?} {:?}", close_char, input);
+            }
+
+            let mut value = String::new();
+
+            current_input = input;
+            loop {
+                let (input, content) = take_until(close_char)(current_input)?;
+
+                if DEBUG {
+                    println!("parse_attribute_list {:?}", content);
+                }
+
+                let (input, _) = tag(close_char)(input)?;
+                current_input = input;
+
+                value.push_str(content);
+
+                let check = tag(close_char)(current_input);
+                if check.is_ok() {
+                    current_input = check?.0;
+
+                    value.push_str(close_char);
+                } else {
+                    break;
+                }
+            }
+
+            if DEBUG {
+                println!("parse_attribute_list attribute {:?} = {:?}", name, value);
+            }
+
+            attributes.push(
+                Expr::Attribute { name: Box::new(name), value: Box::new(Expr::String( String::from(value) )) }
+            )
+        } else {
+            break;
+        }
+    }
+
+    if DEBUG {
+        println!("parse_attribute_list return {:?}", current_input);
+    }
+
+    Ok((
+        current_input,
+        attributes
+    ))
+}
+
+// [147]    	DirElemContent 	   ::=    	DirectConstructor TODO: | CDataSection | CommonContent | ElementContentChar
+// [148]    	CommonContent 	   ::=    	PredefinedEntityRef | CharRef | "{{" | "}}" | EnclosedExpr
+// [153]    	CDataSection 	   ::=    	"<![CDATA[" CDataSectionContents "]]>" // ws: explicit
+// [154]    	CDataSectionContents 	   ::=    	(Char* - (Char* ']]>' Char*)) // ws: explicit
+// [228]    	ElementContentChar 	   ::=    	(Char - [{}<&])
+fn parse_dir_elem_content(input: &str) -> IResult<&str, Expr> {
+    if DEBUG {
+        println!("parse_dir_elem_content: {:?}", input);
+    }
+
+    let check = parse_direct_constructor(input);
+    if check.is_ok() {
+        return check
+    }
+
+//    c == '{' || c == '}' || c == '<' || c == '&'
+    let (input, content) = is_not("{}<&")(input)?;
+
+    //TODO: code others
+
+    if DEBUG {
+        println!("NodeText: {:?} {:?}", content, input);
+    }
+
+    Ok((
+        input,
+        Expr::NodeText(String::from(content))
+    ))
+}
+
+// [225]    	PredefinedEntityRef 	   ::=    	"&" ("lt" | "gt" | "amp" | "quot" | "apos") ";"
+// [66]   	CharRef	   ::=   	'&#' [0-9]+ ';' | '&#x' [0-9a-fA-F]+ ';'
+// [36]    	EnclosedExpr 	   ::=    	"{" Expr? "}"
+
+// [155]    	ComputedConstructor 	   ::=    	CompDocConstructor
+// | CompElemConstructor
+// | CompAttrConstructor
+// | CompNamespaceConstructor
+// | CompTextConstructor
+// | CompCommentConstructor
+// | CompPIConstructor
+// [156]    	CompDocConstructor 	   ::=    	"document" EnclosedExpr
+// [157]    	CompElemConstructor 	   ::=    	"element" (EQName | ("{" Expr "}")) EnclosedContentExpr
+// [158]    	EnclosedContentExpr 	   ::=    	EnclosedExpr
+// [159]    	CompAttrConstructor 	   ::=    	"attribute" (EQName | ("{" Expr "}")) EnclosedExpr
+// [160]    	CompNamespaceConstructor 	   ::=    	"namespace" (Prefix | EnclosedPrefixExpr) EnclosedURIExpr
+// [161]    	Prefix 	   ::=    	NCName
+// [162]    	EnclosedPrefixExpr 	   ::=    	EnclosedExpr
+// [163]    	EnclosedURIExpr 	   ::=    	EnclosedExpr
+// [164]    	CompTextConstructor 	   ::=    	"text" EnclosedExpr
+// [165]    	CompCommentConstructor 	   ::=    	"comment" EnclosedExpr
+// [166]    	CompPIConstructor 	   ::=    	"processing-instruction" (NCName | ("{" Expr "}")) EnclosedExpr
+fn parse_computed_constructor(input: &str) -> IResult<&str, Expr> {
+    let input = ws(input)?.0;
+
+    let (input, name) = alt(
+        ( tag("document"), tag("element"), tag("attribute"), tag("namespace"), tag("text"), tag("comment"), tag("processing-instruction")  )
+    )(input)?;
+
+    // TODO: finish it
+    Ok((
+        "TODO",
+        Expr::String( String::from( "TODO" ))
+    ))
+}
+
 // [170]    	MapConstructor 	   ::=    	"map" "{" (MapConstructorEntry ("," MapConstructorEntry)*)? "}"
 fn parse_map_constructor(input: &str) -> IResult<&str, Expr> {
     let input = ws_tag("map", input)?.0;
@@ -328,9 +627,22 @@ fn parse_map_constructor(input: &str) -> IResult<&str, Expr> {
 
     let mut current_input = input;
     loop {
-        println!("parse_map_entries: {:?}", current_input);
+        if DEBUG {
+            println!("parse_map_entries: {:?}", current_input);
+        }
 
-        let (input, entry) = parse_map_constructor_entry(current_input)?;
+        let result = parse_map_constructor_entry(current_input);
+        if result.is_err() {
+
+            current_input = tag("}")(input)?.0;
+
+            return
+                Ok((
+                    current_input,
+                    Expr::Map { entries }
+                ))
+        }
+        let (input, entry) = result?;
 
         entries.push(entry);
 
@@ -339,7 +651,7 @@ fn parse_map_constructor(input: &str) -> IResult<&str, Expr> {
         let tmp = tag(",")(input);
         if tmp.is_err() {
 
-            let current_input = tag("}")(input)?.0;
+            current_input = tag("}")(input)?.0;
 
             return
                 Ok((
@@ -381,6 +693,15 @@ fn parse_string_literal(input: &str) -> IResult<&str, Expr> {
     ))
 }
 
+fn parse_name(input: &str) -> IResult<&str, String> {
+    parse_ncname(input)
+}
+
+fn parse_qname(input: &str) -> IResult<&str, Expr> {
+    // use as workaround
+    parse_eqname(input)
+}
+
 // [218]    	EQName 	   ::=    	QName TODO: | URIQualifiedName
 fn parse_eqname(input: &str) -> IResult<&str, Expr> {
     // [7]   	QName	   ::=   	PrefixedName | UnprefixedName
@@ -389,7 +710,9 @@ fn parse_eqname(input: &str) -> IResult<&str, Expr> {
     // [10]   	Prefix	   ::=   	NCName
     // [11]   	LocalPart	   ::=   	NCName
 
-    println!("parse_eqname: {:?}", input);
+    if DEBUG {
+        println!("parse_eqname: {:?}", input);
+    }
 
     let (input, name1) = parse_ncname(input)?;
 
@@ -472,10 +795,4 @@ fn ws(input: &str) -> IResult<&str, &str> {
 fn ws_tag<'a>(token: &str, input: &'a str) -> IResult<&'a str, &'a str> {
     let (input, _) = multispace0(input)?;
     tag(token)(input)
-}
-
-#[test]
-fn simple_parser() {
-    println!("{:?}", parse("xs:decimal(\"617375191608514839\") * xs:decimal(\"0\")"));
-//    println!("{:?}", parse("let $a := 10, $b:=5 return $a"));
 }
