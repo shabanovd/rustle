@@ -4,6 +4,7 @@ use crate::eval::Environment;
 use crate::namespaces::*;
 
 mod decimal;
+mod url;
 mod map;
 
 pub type FUNCTION<'a> = fn(&'a mut Environment<'a>, Vec<Object>) -> (&'a mut Environment<'a>, Object);
@@ -19,8 +20,20 @@ impl<'a> FunctionsRegister<'a> {
         };
 
         instance.register(SCHEMA.url, "decimal", 1, decimal::xs_decimal_eval);
+        instance.register(SCHEMA.url, "anyURI", 1, url::xs_anyuri_eval);
 
+//        instance.register("op", "same-key", 2, map::map_merge);
+        instance.register(XPATH_MAP.url, "merge", 1, map::map_merge);
+        instance.register(XPATH_MAP.url, "merge", 2, map::map_merge);
+        instance.register(XPATH_MAP.url, "size", 1, map::map_size);
+        instance.register(XPATH_MAP.url, "contains", 2, map::map_contains);
         instance.register(XPATH_MAP.url, "get", 2, map::map_get);
+        instance.register(XPATH_MAP.url, "find", 2, map::map_find);
+        instance.register(XPATH_MAP.url, "put", 3, map::map_put);
+        instance.register(XPATH_MAP.url, "find", 2, map::map_find);
+        instance.register(XPATH_MAP.url, "entry", 2, map::map_entry);
+        instance.register(XPATH_MAP.url, "remove", 2, map::map_remove);
+        instance.register(XPATH_MAP.url, "for-each", 2, map::map_for_each);
 
         instance
     }
