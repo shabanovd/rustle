@@ -15,7 +15,7 @@ mod tests {
         let mut script_flag = false;
         let mut result_flag = false;
 
-        let mut script = "";
+        let mut script = String::new();
         let mut evaluated: Object = Empty;
 
         for token in xmlparser::Tokenizer::from(data.as_str()) {
@@ -24,8 +24,15 @@ mod tests {
             match token.unwrap() {
                 Token::ElementStart { prefix, local, span } => {
                     match local.as_str() {
-                        "test" => script_flag = true,
-                        "result" => result_flag = true,
+                        "test" => {
+                            script_flag = true;
+
+                            script.clear();
+                            evaluated = Empty;
+                        },
+                        "result" => {
+                            result_flag = true;
+                        },
                         _ => {}
                     }
                 },
@@ -36,7 +43,7 @@ mod tests {
                             match local.as_str() {
                                 "test" => {
                                     script_flag = false;
-                                    evaluated = eval(script);
+                                    evaluated = eval(script.as_str());
                                 },
                                 "result" => result_flag = false,
                                 _ => {}
@@ -55,7 +62,7 @@ mod tests {
                 Token::Attribute { prefix: _, local: _, value: _, span: _ } => {}
                 Token::Text { text } => {
                     if script_flag {
-                        script = text.as_str();
+                        script.push_str(text.as_str());
                     }
                 }
                 Token::Cdata { text: _, span: _ } => {}
