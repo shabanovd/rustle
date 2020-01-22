@@ -4,15 +4,75 @@ use crate::parser::Operator;
 
 mod environment;
 pub use self::environment::Environment;
-use nom::lib::std::collections::HashMap;
 
-const DEBUG: bool = false;
+use std::collections::HashMap;
+use crate::eval::Object::Empty;
+
+const DEBUG: bool = true;
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub enum Type {
-    Boolean(bool),
+    dateTime(),
+    dateTimeStamp(),
+
+    date(),
+    time(),
+
+    duration(),
+    yearMonthDuration(),
+    dayTimeDuration(),
+
+    float(),
+    double(),
+
+    Decimal(i128),
     Integer(i128),
+    nonPositiveInteger(),
+    negativeInteger(),
+    long(),
+    int(),
+    short(),
+    byte(),
+
+    nonNegativeInteger(),
+    unsignedLong(),
+    unsignedInt(),
+    unsignedShort(),
+    unsignedByte(),
+
+    positiveInteger(),
+
+    gYearMonth(),
+    gYear(),
+    gMonthDay(),
+    gDay(),
+    gMonth(),
+
     String(String),
+    NormalizedString(String),
+    Token(String),
+    language(String),
+    NMTOKEN(String),
+    Name(String),
+    NCName(String),
+    ID(String),
+    IDREF(String),
+    ENTITY(String),
+
+    Boolean(bool),
+    base64Binary(),
+    hexBinary(),
+    AnyURI(String),
+    QName(),
+    NOTATION(),
+}
+
+fn type_to_int(t: Type) -> i128 {
+    match t {
+        Type::Integer(num) => num,
+        _ => panic!("can't convert to int {:?}", t)
+    }
+
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
@@ -44,6 +104,9 @@ pub enum Node {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Object {
     Empty,
+
+    Range { from: Type, till: Type },
+    Sequence(Vec<Object>),
 
     QName { prefix: String, url: String, local_part: String },
 
@@ -84,7 +147,7 @@ pub fn eval_statements<'a>(statements: Vec<Statement>, env: &'a mut Environment<
 fn eval_statement<'a>(statement: Statement, env: &'a mut Environment<'a>) -> (&'a mut Environment<'a>, Object) {
     match statement {
         Statement::Expression(expr) => eval_expr(expr, env),
-        _ => panic!("TODO")
+        _ => panic!("TODO: {:?}", statement)
     }
 }
 
@@ -288,8 +351,95 @@ fn eval_expr<'a>(expression: Expr, env: &'a mut Environment<'a>) -> (&'a mut Env
             let (_, result) = eval_statements(body, &mut function_environment);
 
             (current_env, result)
+        },
+
+        Expr::Range { from, till } => {
+            let (new_env, evaluated_from) = eval_expr(*from, current_env);
+            current_env = new_env;
+
+            let (new_env, evaluated_till) = eval_expr(*till, current_env);
+            current_env = new_env;
+
+            let from_type = match evaluated_from {
+                Object::Atomic(t) => t,
+                _ => panic!("from is not atomic")
+            };
+
+            let till_type = match evaluated_till {
+                Object::Atomic(t) => t,
+                _ => panic!("till is not atomic")
+            };
+
+            (current_env, Object::Range { from: from_type, till: till_type})
         }
-        _ => panic!("TODO")
+
+        Expr::Postfix { primary, suffix } => {
+            let (new_env, value) = eval_expr(*primary, current_env);
+            current_env = new_env;
+
+            let mut result = value;
+
+            for suf in  suffix {
+                match suf {
+                    Expr::Predicate(cond) => {
+                        match *cond {
+                            Statement::Expression(Expr::Integer(pos)) => {
+
+                                match result {
+                                    Object::Range { from: from_type , till: till_type } => {
+                                        let from = type_to_int(from_type);
+                                        let till = type_to_int(till_type);
+
+                                        let dist = till - from + 1;
+
+                                        if pos > dist {
+                                            result = Empty;
+                                        } else {
+                                            result = Object::Atomic(Type::Integer(from + pos - 1));
+                                        }
+                                    },
+                                    _ => panic!("predicate {:?} on {:?}", pos, result)
+                                }
+                            }
+                            _ => panic!("unknown suffix statement {:?} {:?}", cond, result)
+                        }
+                    }
+                    _ => panic!("unknown suffix {:?}", suf)
+                }
+            }
+
+            (current_env, result)
+        }
+
+        Expr::Sequence(exprs) => {
+            if exprs.len() == 0 {
+                (current_env, Object::Empty)
+            } else if exprs.len() == 1 {
+                let expr = exprs.get(0).unwrap().clone();
+
+                let (new_env, value) = eval_statement(expr, current_env);
+                current_env = new_env;
+
+                (current_env, value)
+            } else {
+                let mut evaluated = vec![];
+                for expr in exprs {
+                    let (new_env, value) = eval_statement(expr, current_env);
+                    current_env = new_env;
+
+                    evaluated.push(value);
+                }
+
+                if evaluated.len() == 0 {
+                    (current_env, Object::Empty)
+                } else if evaluated.len() == 1 {
+                    (current_env, evaluated[0].clone()) //TODO: try to avoid clone here
+                } else {
+                    (current_env, Object::Sequence(evaluated))
+                }
+            }
+        },
+        _ => panic!("TODO {:?}", expression)
     }
 }
 
@@ -299,7 +449,7 @@ mod tests {
     use crate::parser::parse;
 
     #[test]
-    fn eval_simple() {
+    fn eval_decimal() {
         test_eval(
             "xs:decimal(\"617375191608514839\") * xs:decimal(\"0\")",
             Object::Atomic(Type::Integer(0)))
@@ -311,6 +461,47 @@ mod tests {
             "map:get(map{1:\"Sunday\",2:\"Monday\",3:\"Tuesday\",4:\"Wednesday\",5:\"Thursday\",6:\"Friday\",7:\"Saturday\"}, 4)",
             Object::Atomic(Type::String( String::from("Wednesday")))
         )
+    }
+
+    #[test]
+    fn eval_sequence1() {
+        test_eval(
+            "(1 to 5)[10]",
+            Object::Empty
+        );
+
+        test_eval(
+            "(21 to 29)[5]",
+            Object::Atomic(Type::Integer(25))
+        );
+    }
+
+    #[test]
+    fn eval_sequence2() {
+        test_eval(
+            "(1 to 100)[. mod 5 eq 0]",
+            Object::Sequence([
+                Object::Atomic(Type::Integer(5)),
+                Object::Atomic(Type::Integer(10)),
+                Object::Atomic(Type::Integer(15)),
+                Object::Atomic(Type::Integer(20)),
+                Object::Atomic(Type::Integer(25)),
+                Object::Atomic(Type::Integer(30)),
+                Object::Atomic(Type::Integer(35)),
+                Object::Atomic(Type::Integer(40)),
+                Object::Atomic(Type::Integer(45)),
+                Object::Atomic(Type::Integer(50)),
+                Object::Atomic(Type::Integer(55)),
+                Object::Atomic(Type::Integer(60)),
+                Object::Atomic(Type::Integer(65)),
+                Object::Atomic(Type::Integer(70)),
+                Object::Atomic(Type::Integer(75)),
+                Object::Atomic(Type::Integer(80)),
+                Object::Atomic(Type::Integer(85)),
+                Object::Atomic(Type::Integer(90)),
+                Object::Atomic(Type::Integer(95)),
+            ].to_vec())
+        );
     }
 
     #[test]
@@ -378,6 +569,9 @@ mod tests {
                 result,
                 expected
             );
+        } else {
+            println!("parse error: {:?}", result);
+            panic!("parse return error");
         }
     }
 }

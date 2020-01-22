@@ -29,6 +29,14 @@ pub enum Expr {
     Integer(i128),
     String(String),
 
+    Sequence(Vec<Statement>),
+    SequenceEmpty(),
+    Range { from: Box<Expr>, till: Box<Expr> },
+    Predicate(Box<Statement>),
+//    Predicates(Vec<Statement>), // TODO: can it be covered by Sequence(Predicate)?
+
+    Postfix { primary: Box<Expr>, suffix: Vec<Expr> },
+
     Node { name: Box<Expr>, attributes: Vec<Expr>, children: Vec<Expr> },
     Attribute { name: Box<Expr>, value: Box<Expr> },
     NodeText(String),
@@ -113,13 +121,37 @@ fn parse_expr_single(input: &str) -> IResult<&str, Statement> {
         println!("parse_expr_single: {:?}", input);
     }
 
-    let (input, expr) = parse_binary_expr(input)?;
+    let (input, expr) = parse_range_expr(input)?;
 
     Ok((
         input,
         Statement::Expression( expr )
     ))
 }
+
+
+// [87]    	RangeExpr 	   ::=    	AdditiveExpr ( "to" AdditiveExpr )?
+fn parse_range_expr(input: &str) -> IResult<&str, Expr> {
+    let (input, from) = parse_binary_expr(input)?;
+
+    let check = ws_tag("to", input);
+    if check.is_ok() {
+        let input = check?.0;
+
+        let (input, till) = parse_binary_expr(input)?;
+
+        Ok((
+            input,
+            Expr::Range { from: Box::new(from), till: Box::new(till) }
+        ))
+    } else {
+        Ok((
+            input,
+            from
+        ))
+    }
+}
+
 
 fn parse_binary_expr(input: &str) -> IResult<&str, Expr> {
 
@@ -206,14 +238,61 @@ fn parse_step_expr(input: &str) -> IResult<&str, Expr> {
     parse_postfix_expr(input)
 }
 
+//// [111]    	AxisStep 	   ::=    	(ReverseStep | ForwardStep) PredicateList
+//// [123]    	PredicateList 	   ::=    	Predicate*
+//fn parse_axis_step(input: &str) -> IResult<&str, Expr> {
+//
+//}
+
 // [121]    	PostfixExpr 	   ::=    	TODO: PrimaryExpr (Predicate | ArgumentList | Lookup)*
 fn parse_postfix_expr(input: &str) -> IResult<&str, Expr> {
-    parse_primary_expr(input)
+    let (input, primary) = parse_primary_expr(input)?;
+
+    let mut suffix = Vec::new();
+
+    let mut current_input = input;
+
+    loop {
+        let check = parse_predicate(current_input);
+        if check.is_ok() {
+            let (input, predicate) = check?;
+            current_input = input;
+
+
+            suffix.push(predicate)
+        } else {
+            break;
+        }
+    }
+
+    if suffix.len() == 0 {
+        Ok((
+            current_input,
+            primary
+        ))
+    } else {
+        Ok((
+            current_input,
+            Expr::Postfix { primary: Box::new(primary), suffix }
+        ))
+    }
+}
+
+// [124]    	Predicate 	   ::=    	"[" Expr "]"
+fn parse_predicate(input: &str) -> IResult<&str, Expr> {
+    let input = ws_tag("[", input)?.0;
+
+    let (input, expr) = parse_expr_single(input)?;
+//    let (input, expr) = parse_expr(input)?;
+
+    let input = ws_tag("]", input)?.0;
+
+    Ok((input, Expr::Predicate(Box::new(expr))))
 }
 
 // [128]    	PrimaryExpr 	   ::=    	Literal
 //  TODO: | VarRef
-//  TODO: | ParenthesizedExpr
+//  | ParenthesizedExpr
 //  TODO: | ContextItemExpr
 //  | FunctionCall
 //  TODO: | OrderedExpr
@@ -226,6 +305,15 @@ fn parse_postfix_expr(input: &str) -> IResult<&str, Expr> {
 //  TODO: | UnaryLookup
 fn parse_primary_expr(input: &str) -> IResult<&str, Expr> {
     let result = parse_literal(input);
+    if result.is_ok() {
+        let (input, literal) = result?;
+        return Ok((
+            input,
+            literal
+        ))
+    }
+
+    let result = parse_parenthesized_expr(input);
     if result.is_ok() {
         let (input, literal) = result?;
         return Ok((
@@ -272,11 +360,11 @@ fn parse_function_call(input: &str) -> IResult<&str, Expr> {
 
     let (input, function) = parse_eqname(input)?;
 
-    let (input, _) = tag("(")(input)?;
+    let input = tag("(")(input)?.0;
 
     let (input, arguments) = parse_arguments(input)?;
 
-    let (input, _) = tag(")")(input)?;
+    let input = tag(")")(input)?.0;
 
     Ok((
         input,
@@ -335,6 +423,24 @@ fn parse_numeric_literal(input: &str) -> IResult<&str, Expr> {
         input,
         Expr::Integer(number.parse::<i128>().unwrap())
     ))
+}
+
+// [133]    	ParenthesizedExpr 	   ::=    	"(" Expr? ")"
+fn parse_parenthesized_expr(input: &str) -> IResult<&str, Expr> {
+
+    let input = ws_tag("(", input)?.0;
+
+    let check = parse_expr(input);
+    let (input, expr) = if check.is_ok() {
+        let (input, result) = check?;
+        (input, Expr::Sequence(result))
+    } else {
+        (input, Expr::SequenceEmpty())
+    };
+
+    let input = ws_tag(")", input)?.0;
+
+    Ok((input, expr))
 }
 
 // [140]    	NodeConstructor 	   ::=    	DirectConstructor | ComputedConstructor
