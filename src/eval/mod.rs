@@ -105,7 +105,7 @@ pub enum Node {
 pub enum Object {
     Empty,
 
-    Range { from: Type, till: Type },
+    Range { min: i128, max: i128 },
     Sequence(Vec<Object>),
 
     QName { prefix: String, url: String, local_part: String },
@@ -360,18 +360,24 @@ fn eval_expr<'a>(expression: Expr, env: &'a mut Environment<'a>) -> (&'a mut Env
             let (new_env, evaluated_till) = eval_expr(*till, current_env);
             current_env = new_env;
 
-            let from_type = match evaluated_from {
-                Object::Atomic(t) => t,
+            let min = match evaluated_from {
+                Object::Atomic(t) => type_to_int(t),
                 _ => panic!("from is not atomic")
             };
 
-            let till_type = match evaluated_till {
-                Object::Atomic(t) => t,
+            let max = match evaluated_till {
+                Object::Atomic(t) => type_to_int(t),
                 _ => panic!("till is not atomic")
             };
 
-            (current_env, Object::Range { from: from_type, till: till_type})
-        }
+            if min > max {
+                (current_env, Object::Empty)
+            } else if min == max {
+                (current_env, Object::Atomic(Type::Integer(min)))
+            } else {
+                (current_env, Object::Range { min, max })
+            }
+        },
 
         Expr::Postfix { primary, suffix } => {
             let (new_env, value) = eval_expr(*primary, current_env);
@@ -386,20 +392,20 @@ fn eval_expr<'a>(expression: Expr, env: &'a mut Environment<'a>) -> (&'a mut Env
                             Statement::Expression(Expr::Integer(pos)) => {
 
                                 match result {
-                                    Object::Range { from: from_type , till: till_type } => {
-                                        let from = type_to_int(from_type);
-                                        let till = type_to_int(till_type);
+                                    Object::Range { min , max } => {
+                                        let len = max - min + 1;
 
-                                        let dist = till - from + 1;
-
-                                        if pos > dist {
+                                        if pos > len {
                                             result = Empty;
                                         } else {
-                                            result = Object::Atomic(Type::Integer(from + pos - 1));
+                                            result = Object::Atomic(Type::Integer(min + pos - 1));
                                         }
                                     },
                                     _ => panic!("predicate {:?} on {:?}", pos, result)
                                 }
+                            },
+                            Statement::Expression(Expr::Comparison(..)) => {
+
                             }
                             _ => panic!("unknown suffix statement {:?} {:?}", cond, result)
                         }
@@ -409,7 +415,7 @@ fn eval_expr<'a>(expression: Expr, env: &'a mut Environment<'a>) -> (&'a mut Env
             }
 
             (current_env, result)
-        }
+        },
 
         Expr::Sequence(exprs) => {
             if exprs.len() == 0 {

@@ -12,7 +12,7 @@ use crate::namespaces::*;
 use nom::lib::std::fmt::Error;
 use nom::error::ParseError;
 
-const DEBUG: bool = false;
+const DEBUG: bool = true;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
@@ -28,6 +28,8 @@ pub enum Expr {
     Boolean(bool),
     Integer(i128),
     String(String),
+
+    ContextItem,
 
     Sequence(Vec<Statement>),
     SequenceEmpty(),
@@ -49,6 +51,8 @@ pub enum Expr {
     QName { local_part: String, url: String, prefix: String },
 
     Binary { left: Box<Expr>, operator: Operator, right: Box<Expr> },
+    Comparison { left: Box<Expr>, operator: Operator, right: Box<Expr> },
+
     If { condition: Box<Expr>, consequence: Vec<Statement>, alternative: Vec<Statement> },
 
     Function { arguments: Vec<String>, body: Vec<Statement> },
@@ -59,6 +63,8 @@ pub enum Expr {
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub enum Operator {
+    Unknown,
+
     Plus,
     Minus,
     Multiply,
@@ -70,7 +76,9 @@ pub enum Operator {
     Equals,
     NotEquals,
     LessThan,
+    LessOrEquals,
     GreaterThan,
+    GreaterOrEquals,
 }
 
 // [1]    	Module 	   ::=    	TODO: VersionDecl? (LibraryModule | MainModule)
@@ -152,42 +160,90 @@ fn parse_range_expr(input: &str) -> IResult<&str, Expr> {
     }
 }
 
-
+// [85]    	ComparisonExpr 	   ::=    	 TODO: StringConcatExpr ( (ValueComp
+// TODO: | GeneralComp
+// TODO: | NodeComp) StringConcatExpr )?
+// [88]    	AdditiveExpr 	   ::=    	MultiplicativeExpr ( ("+" | "-") MultiplicativeExpr )*
+// [89]    	MultiplicativeExpr 	   ::=    	UnionExpr ( ("*" | "div" | "idiv" | "mod") UnionExpr )*
+// [99] GeneralComp    ::=    	"=" | "!=" | "<" | "<=" | ">" | ">="
+// [100] ValueComp 	   ::=    	"eq" | "ne" | "lt" | "le" | "gt" | "ge"
+// [101] NodeComp 	   ::=    	"is" | "<<" | ">>"
 fn parse_binary_expr(input: &str) -> IResult<&str, Expr> {
 
-    let (input, left) = parse_unary_expr(input)?;
+    if DEBUG {
+        println!("parse_binary_expr 1: {:?}", input);
+    }
 
-    let input = ws(input)?.0;
+    let (input, expr) = parse_unary_expr(input)?;
 
-    let check = alt(
-        ( tag("+"), tag("-"), tag("*"), tag("div"), tag("idiv"), tag("mod")  )
-    )(input);
+    let mut left = expr;
+    let mut current_input = input;
 
-    if check.is_ok() {
-        let (input, op) = check?;
+    loop {
+        if DEBUG {
+            println!("parse_binary_expr 2: {:?}", current_input);
+        }
 
-        let (input, right) = parse_unary_expr(input)?;
+        current_input = ws(current_input)?.0;
 
-        let operator = match op {
-            "+" => Operator::Plus,
-            "-" => Operator::Minus,
-            "*" => Operator::Multiply,
-            "div" => Operator::Divide,
-            "idiv" => Operator::IDivide,
-            "mod" => Operator::Mod,
-            _ => panic!("it must not happen") // TODO: raise error instead
-        };
+        let check = alt(
+            (
+                tag("+"), tag("-"), tag("*"), tag("div"), tag("idiv"), tag("mod"),
+                tag("="), tag("!="), tag("<"), tag("<="), tag(">"), tag(">="),
+                tag("eq"), tag("ne"), tag("lt"), tag("le"), tag("gt"), tag("ge"),
+                // TODO: tag("is"), tag("<<"), tag(">>"),
+            )
+        )(current_input);
 
-        Ok((
-            input,
-            Expr::Binary { left: Box::new( left ), operator, right: Box::new( right ) }
-        ))
+        if check.is_ok() {
+            let (input, op) = check?;
 
-    } else {
-        Ok((
-            input,
-            left
-        ))
+            let (input, right) = parse_unary_expr(input)?;
+            current_input = input;
+
+            if DEBUG {
+                println!("parse_binary_expr: {:?} {:?} {:?}", left, op, right);
+            }
+
+            let operator = match op {
+                "=" => Operator::Equals,
+                "!=" => Operator::NotEquals,
+                "<" => Operator::LessThan,
+                "<=" => Operator::LessOrEquals,
+                ">" => Operator::GreaterThan,
+                ">=" => Operator::GreaterOrEquals,
+
+                "eq" => Operator::Equals,
+                "ne" => Operator::NotEquals,
+                "lt" => Operator::LessThan,
+                "le" => Operator::LessOrEquals,
+                "gt" => Operator::GreaterThan,
+                "ge" => Operator::GreaterOrEquals,
+
+                _ => Operator::Unknown,
+            };
+
+            if operator != Operator::Unknown {
+                left = Expr::Comparison { left: Box::new(left), operator, right: Box::new(right) };
+            } else {
+                let operator = match op {
+                    "+" => Operator::Plus,
+                    "-" => Operator::Minus,
+                    "*" => Operator::Multiply,
+                    "div" => Operator::Divide,
+                    "idiv" => Operator::IDivide,
+                    "mod" => Operator::Mod,
+                    _ => panic!("this must not happen") // TODO: raise error instead
+                };
+
+                left = Expr::Binary { left: Box::new(left), operator, right: Box::new(right) }
+            }
+        } else {
+            return Ok((
+                current_input,
+                left
+            ));
+        }
     }
 }
 
@@ -280,6 +336,10 @@ fn parse_postfix_expr(input: &str) -> IResult<&str, Expr> {
 
 // [124]    	Predicate 	   ::=    	"[" Expr "]"
 fn parse_predicate(input: &str) -> IResult<&str, Expr> {
+    if DEBUG {
+        println!("parse_predicate: {:?}", input);
+    }
+
     let input = ws_tag("[", input)?.0;
 
     let (input, expr) = parse_expr_single(input)?;
@@ -293,7 +353,7 @@ fn parse_predicate(input: &str) -> IResult<&str, Expr> {
 // [128]    	PrimaryExpr 	   ::=    	Literal
 //  TODO: | VarRef
 //  | ParenthesizedExpr
-//  TODO: | ContextItemExpr
+//  | ContextItemExpr
 //  | FunctionCall
 //  TODO: | OrderedExpr
 //  TODO: | UnorderedExpr
@@ -319,6 +379,15 @@ fn parse_primary_expr(input: &str) -> IResult<&str, Expr> {
         return Ok((
             input,
             literal
+        ))
+    }
+
+    let result = parse_context_item_expr(input);
+    if result.is_ok() {
+        let (input, expr) = result?;
+        return Ok((
+            input,
+            expr
         ))
     }
 
@@ -350,6 +419,16 @@ fn parse_primary_expr(input: &str) -> IResult<&str, Expr> {
     }
 
     result
+}
+
+// [134]    	ContextItemExpr 	   ::=    	"."
+fn parse_context_item_expr(input: &str) -> IResult<&str, Expr> {
+    let (input, _) = ws_tag(".", input)?;
+
+    Ok((
+        input,
+        Expr::ContextItem
+    ))
 }
 
 // [137]    	FunctionCall 	   ::=    	EQName ArgumentList
