@@ -18,6 +18,7 @@ pub const XQUERY_LOCAL: Namespace = Namespace { prefix: "local", url: "http://ww
 pub const XQT_ERROR: Namespace = Namespace { prefix: "err", url: "http://www.w3.org/2005/xqt-errors" };
 // http://www.w3.org/2012/xquery
 
+#[derive(Clone)]
 pub struct Namespaces<'a> {
     prefixes: HashMap<&'a str, Namespace<'a>>
 }

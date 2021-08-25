@@ -3,6 +3,7 @@ use crate::eval::Object;
 use crate::fns::FunctionsRegister;
 use crate::namespaces::*;
 
+#[derive(Clone)]
 pub struct Environment<'a> {
     pub namespaces: Namespaces<'a>,
     vars: HashMap<String, Object>,
@@ -14,7 +15,7 @@ impl<'a> Environment<'a> {
         Environment {
             namespaces: Namespaces::new(),
             vars: HashMap::new(),
-            functions: FunctionsRegister::new()
+            functions: FunctionsRegister::new(),
         }
     }
 

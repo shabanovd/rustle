@@ -8,7 +8,7 @@ pub use self::environment::Environment;
 use std::collections::HashMap;
 use crate::eval::Object::Empty;
 
-const DEBUG: bool = true;
+const DEBUG: bool = false;
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub enum Type {
@@ -120,14 +120,14 @@ pub enum Object {
     Return(Box<Object>),
 }
 
-pub fn eval_statements<'a>(statements: Vec<Statement>, env: &'a mut Environment<'a>) -> (&'a mut Environment<'a>, Object) {
+pub fn eval_statements<'a>(statements: Vec<Statement>, env: &'a Environment<'a>, context_item: &Object) -> (&'a Environment<'a>, Object) {
 
     let mut result = Object::Empty;
 
     let mut current_env = env;
 
     for statement in statements {
-        let (new_env, new_result) = eval_statement(statement, current_env);
+        let (new_env, new_result) = eval_statement(statement, current_env, context_item);
 
         current_env = new_env;
         result = new_result;
@@ -144,31 +144,37 @@ pub fn eval_statements<'a>(statements: Vec<Statement>, env: &'a mut Environment<
     (current_env, result)
 }
 
-fn eval_statement<'a>(statement: Statement, env: &'a mut Environment<'a>) -> (&'a mut Environment<'a>, Object) {
+fn eval_statement<'a>(statement: Statement, env: &'a Environment<'a>, context_item: &Object) -> (&'a Environment<'a>, Object) {
     match statement {
-        Statement::Expression(expr) => eval_expr(expr, env),
+        Statement::Expression(expr) => eval_expr(expr, env, context_item),
         _ => panic!("TODO: {:?}", statement)
     }
 }
 
-fn eval_expr<'a>(expression: Expr, env: &'a mut Environment<'a>) -> (&'a mut Environment<'a>, Object) {
+fn eval_expr<'a>(expression: Expr, env: &'a Environment<'a>, context_item: &Object) -> (&'a Environment<'a>, Object) {
     if DEBUG {
         println!("eval_expr: {:?}", expression);
     }
 
     let mut current_env = env;
+    let last_env = current_env.clone();
 
     match expression {
         Expr::Boolean(bool) => (current_env, Object::Atomic(Type::Boolean(bool))),
         Expr::Integer(number) => (current_env, Object::Atomic(Type::Integer(number))),
         Expr::String(string) => (current_env, Object::Atomic(Type::String(string))),
 
+        Expr::ContextItem => {
+            // TODO: optimize to avoid clone if possible
+            (current_env, context_item.clone())
+        },
+
         Expr::QName { local_part, url, prefix } => {
             (current_env, Object::QName { local_part, url, prefix })
         },
 
         Expr::Node { name, attributes , children } => {
-            let (new_env, evaluated_name) = eval_expr(*name, current_env);
+            let (new_env, evaluated_name) = eval_expr(*name, current_env, context_item);
             current_env = new_env;
 
             let evaluated_name = match evaluated_name {
@@ -180,7 +186,7 @@ fn eval_expr<'a>(expression: Expr, env: &'a mut Environment<'a>) -> (&'a mut Env
 
             let mut evaluated_attributes = vec![];
             for attribute in attributes {
-                let (new_env, evaluated_attribute) = eval_expr(attribute, current_env);
+                let (new_env, evaluated_attribute) = eval_expr(attribute, current_env, context_item);
                 current_env = new_env;
 
                 match evaluated_attribute {
@@ -194,7 +200,7 @@ fn eval_expr<'a>(expression: Expr, env: &'a mut Environment<'a>) -> (&'a mut Env
 
             let mut evaluated_children = vec![];
             for child in children {
-                let (new_env, evaluated_child) = eval_expr(child, current_env);
+                let (new_env, evaluated_child) = eval_expr(child, current_env, context_item);
                 current_env = new_env;
 
                 match evaluated_child {
@@ -218,7 +224,7 @@ fn eval_expr<'a>(expression: Expr, env: &'a mut Environment<'a>) -> (&'a mut Env
         },
 
         Expr::Attribute { name, value } => {
-            let (new_env, evaluated_name) = eval_expr(*name, current_env);
+            let (new_env, evaluated_name) = eval_expr(*name, current_env, context_item);
             current_env = new_env;
 
             let evaluated_name = match evaluated_name {
@@ -228,7 +234,7 @@ fn eval_expr<'a>(expression: Expr, env: &'a mut Environment<'a>) -> (&'a mut Env
                 _ => panic!("unexpected object") //TODO: better error
             };
 
-            let (new_env, evaluated_value) = eval_expr(*value, current_env);
+            let (new_env, evaluated_value) = eval_expr(*value, current_env, context_item);
             current_env = new_env;
 
             let evaluated_value = match evaluated_value {
@@ -244,7 +250,7 @@ fn eval_expr<'a>(expression: Expr, env: &'a mut Environment<'a>) -> (&'a mut Env
         Expr::NodeText(content) => (current_env, Object::Node(Node::NodeText(content))),
         Expr::NodeComment(content) => (current_env, Object::Node(Node::NodeComment(content))),
         Expr::NodePI { target, content } => {
-            let (new_env, evaluated_target) = eval_expr(*target, current_env);
+            let (new_env, evaluated_target) = eval_expr(*target, current_env, context_item);
             current_env = new_env;
 
             let evaluated_target = match evaluated_target {
@@ -262,10 +268,10 @@ fn eval_expr<'a>(expression: Expr, env: &'a mut Environment<'a>) -> (&'a mut Env
             for entry in entries {
                 match entry {
                     Expr::MapEntry { key, value } => {
-                        let (new_env, evaluated_key) = eval_statement(*key, current_env);
+                        let (new_env, evaluated_key) = eval_statement(*key, current_env, context_item);
                         current_env = new_env;
 
-                        let (new_env, evaluated_value) = eval_statement(*value, current_env);
+                        let (new_env, evaluated_value) = eval_statement(*value, current_env, context_item);
                         current_env = new_env;
 
                         match evaluated_key {
@@ -282,11 +288,11 @@ fn eval_expr<'a>(expression: Expr, env: &'a mut Environment<'a>) -> (&'a mut Env
             (current_env, Object::Map(map))
         },
 
-        Expr::Binary { left, operator: Operator::Multiply, right } => {
-            let (new_env, left_result) = eval_expr(*left, current_env);
+        Expr::Binary { left, operator, right } => {
+            let (new_env, left_result) = eval_expr(*left, current_env, context_item);
             current_env = new_env;
 
-            let (new_env, right_result) = eval_expr(*right, current_env);
+            let (new_env, right_result) = eval_expr(*right, current_env, context_item);
             current_env = new_env;
 
             if DEBUG {
@@ -294,12 +300,26 @@ fn eval_expr<'a>(expression: Expr, env: &'a mut Environment<'a>) -> (&'a mut Env
                 println!("right_result {:?}", right_result);
             }
 
-            let result = match (left_result, right_result) {
-                (Object::Atomic(Type::Integer(left)), Object::Atomic(Type::Integer(right))) =>
-                    Object::Atomic(Type::Integer(left * right)),
+            let result = match operator {
+                Operator::Multiply => {
+                    match (left_result, right_result) {
+                        (Object::Atomic(Type::Integer(left)), Object::Atomic(Type::Integer(right))) =>
+                            Object::Atomic(Type::Integer(left * right)),
 
-                _ => panic!("multiply fail")
+                        _ => panic!("multiply fail")
+                    }
+                },
+                Operator::Mod => {
+                    match (left_result, right_result) {
+                        (Object::Atomic(Type::Integer(left)), Object::Atomic(Type::Integer(right))) =>
+                            Object::Atomic(Type::Integer(left % right)),
+
+                        _ => panic!("multiply fail")
+                    }
+                },
+                _ => panic!("operator {:?} unimplemented", operator)
             };
+
 
             (current_env, result)
         },
@@ -312,7 +332,7 @@ fn eval_expr<'a>(expression: Expr, env: &'a mut Environment<'a>) -> (&'a mut Env
                         None => {
                             let mut evaluated_arguments = vec![];
                             for argument in arguments {
-                                let (new_env, value) = eval_statement(argument, current_env);
+                                let (new_env, value) = eval_statement(argument, current_env, context_item);
                                 current_env = new_env;
 
                                 evaluated_arguments.push(value);
@@ -341,23 +361,22 @@ fn eval_expr<'a>(expression: Expr, env: &'a mut Environment<'a>) -> (&'a mut Env
 
             let mut function_environment = Environment::new();
             for (parameter, argument) in parameters.into_iter().zip(arguments.into_iter()) {
-                let (new_env, new_result) = eval_statement(argument, current_env);
-
+                let (new_env, new_result) = eval_statement(argument, current_env, context_item);
                 current_env = new_env;
 
                 function_environment.set(parameter, new_result);
             }
 
-            let (_, result) = eval_statements(body, &mut function_environment);
+            let (_, result) = eval_statements(body, &mut function_environment, context_item);
 
             (current_env, result)
         },
 
         Expr::Range { from, till } => {
-            let (new_env, evaluated_from) = eval_expr(*from, current_env);
+            let (new_env, evaluated_from) = eval_expr(*from, current_env, context_item);
             current_env = new_env;
 
-            let (new_env, evaluated_till) = eval_expr(*till, current_env);
+            let (new_env, evaluated_till) = eval_expr(*till, current_env, context_item);
             current_env = new_env;
 
             let min = match evaluated_from {
@@ -380,17 +399,16 @@ fn eval_expr<'a>(expression: Expr, env: &'a mut Environment<'a>) -> (&'a mut Env
         },
 
         Expr::Postfix { primary, suffix } => {
-            let (new_env, value) = eval_expr(*primary, current_env);
+            let (new_env, value) = eval_expr(*primary, current_env, context_item);
             current_env = new_env;
 
             let mut result = value;
 
-            for suf in  suffix {
+            for suf in suffix {
                 match suf {
                     Expr::Predicate(cond) => {
                         match *cond {
                             Statement::Expression(Expr::Integer(pos)) => {
-
                                 match result {
                                     Object::Range { min , max } => {
                                         let len = max - min + 1;
@@ -404,8 +422,33 @@ fn eval_expr<'a>(expression: Expr, env: &'a mut Environment<'a>) -> (&'a mut Env
                                     _ => panic!("predicate {:?} on {:?}", pos, result)
                                 }
                             },
-                            Statement::Expression(Expr::Comparison(..)) => {
+                            Statement::Expression(Expr::Comparison { left, operator, right }) => {
+                                let it = object_to_iterator(&result);
 
+                                let mut evaluated = vec![];
+                                for item in it {
+                                    let context_item = Object::Atomic(Type::Integer(item));
+
+                                    let (_, l_value) = eval_expr(*left.clone(), current_env, &context_item);
+                                    let (_, r_value) = eval_expr(*right.clone(), current_env, &context_item);
+
+                                    match operator {
+                                        Operator::Equals => {
+                                            if l_value == r_value {
+                                                evaluated.push(context_item)
+                                            }
+                                        }
+                                        _ => panic!("operator {:?} is not implemented", operator)
+                                    }
+                                }
+
+                                if evaluated.len() == 0 {
+                                    result = Object::Empty;
+                                } else if evaluated.len() == 1 {
+                                    result = evaluated[0].clone() //TODO: try to avoid clone here
+                                } else {
+                                    result = Object::Sequence(evaluated)
+                                }
                             }
                             _ => panic!("unknown suffix statement {:?} {:?}", cond, result)
                         }
@@ -423,14 +466,14 @@ fn eval_expr<'a>(expression: Expr, env: &'a mut Environment<'a>) -> (&'a mut Env
             } else if exprs.len() == 1 {
                 let expr = exprs.get(0).unwrap().clone();
 
-                let (new_env, value) = eval_statement(expr, current_env);
+                let (new_env, value) = eval_statement(expr, current_env, context_item);
                 current_env = new_env;
 
                 (current_env, value)
             } else {
                 let mut evaluated = vec![];
                 for expr in exprs {
-                    let (new_env, value) = eval_statement(expr, current_env);
+                    let (new_env, value) = eval_statement(expr, current_env, context_item);
                     current_env = new_env;
 
                     evaluated.push(value);
@@ -446,6 +489,56 @@ fn eval_expr<'a>(expression: Expr, env: &'a mut Environment<'a>) -> (&'a mut Env
             }
         },
         _ => panic!("TODO {:?}", expression)
+    }
+}
+
+fn is_context_dependent(expression: &Expr) -> bool {
+    if DEBUG {
+        println!("is_context_dependent {:?}", expression);
+    }
+    match expression {
+        Expr::ContextItem => true,
+        _ => false
+    }
+}
+
+pub struct RangeIterator {
+    till: i128,
+    next: i128,
+    step: i128
+}
+
+impl RangeIterator {
+    fn new(next: i128, step: i128, till: i128) -> Self {
+        RangeIterator {
+            till, next, step
+        }
+    }
+}
+
+impl Iterator for RangeIterator {
+    type Item = i128;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let curr = self.next;
+        self.next = self.next + self.step;
+
+        if (self.step > 0 && self.next <= self.till) || (self.step < 0 && self.next >= self.till) {
+            Some(curr)
+        } else {
+            None
+        }
+    }
+
+}
+
+pub fn object_to_iterator<'a>(object: &Object) -> RangeIterator {
+    // println!("object_to_iterator for {:?}", object);
+    match object {
+        Object::Range { min , max } => {
+            RangeIterator::new(*min, 1, *max)
+        }
+        _ => panic!("TODO {:?}", object)
     }
 }
 
@@ -569,7 +662,7 @@ mod tests {
             let (_, program) = result.unwrap();
             let mut env = Environment::new();
 
-            let (new_env, result) = eval_statements(program, &mut env);
+            let (new_env, result) = eval_statements(program, &mut env, &Object::Empty);
 
             assert_eq!(
                 result,

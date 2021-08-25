@@ -9,10 +9,9 @@ use nom::{
 use nom::character::complete::one_of;
 
 use crate::namespaces::*;
-use nom::lib::std::fmt::Error;
 use nom::error::ParseError;
 
-const DEBUG: bool = true;
+const DEBUG: bool = false;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
@@ -196,7 +195,9 @@ fn parse_binary_expr(input: &str) -> IResult<&str, Expr> {
         )(current_input);
 
         if check.is_ok() {
-            let (input, op) = check?;
+            let (mut input, op) = check?;
+
+            input = ws(input)?.0;
 
             let (input, right) = parse_unary_expr(input)?;
             current_input = input;

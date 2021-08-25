@@ -2,13 +2,15 @@ use std::collections::HashMap;
 use crate::eval::Object;
 use crate::eval::Environment;
 use crate::namespaces::*;
+use crate::parser::Expr;
 
 mod decimal;
 mod url;
 mod map;
 
-pub type FUNCTION<'a> = fn(&'a mut Environment<'a>, Vec<Object>) -> (&'a mut Environment<'a>, Object);
+pub type FUNCTION<'a> = fn(&'a Environment<'a>, Vec<Object>) -> (&'a Environment<'a>, Object);
 
+#[derive(Clone)]
 pub struct FunctionsRegister<'a> {
     functions: HashMap<String, HashMap<usize, FUNCTION<'a>>>,
 }
@@ -62,7 +64,7 @@ impl<'a> FunctionsRegister<'a> {
         }
     }
 
-    pub fn eval(&self, env: &'a mut Environment<'a>, uri: &str, local_part: &str, arguments: Vec<Object>) -> (&'a mut Environment<'a>, Object) {
+    pub fn eval(&self, env: &'a Environment<'a>, uri: &str, local_part: &str, arguments: Vec<Object>) -> (&'a Environment<'a>, Object) {
         println!("eval_builtin: {:?} {:?}", local_part, arguments);
 
         let fun: Option<FUNCTION> = env.functions.get(uri, local_part, arguments.len());

@@ -4,11 +4,11 @@ use crate::eval::Environment;
 
 use std::collections::HashMap;
 
-pub fn map_get<'a>(env: &'a mut Environment<'a>, arguments: Vec<Object>) -> (&'a mut Environment<'a>, Object) {
+pub fn map_get<'a>(env: &'a Environment<'a>, arguments: Vec<Object>) -> (&'a Environment<'a>, Object) {
     match arguments.as_slice() {
         [Object::Map(map), Object::Atomic(k)] => {
 
-            println!("map_get {:?} {:?}", k, map);
+            // println!("map_get {:?} {:?}", k, map);
 
             if let Some(value) = map.get(k) {
                 (env, value.clone()) //TODO: understand, is it possible to avoid clone? for example by using reference all around
@@ -21,31 +21,31 @@ pub fn map_get<'a>(env: &'a mut Environment<'a>, arguments: Vec<Object>) -> (&'a
     }
 }
 
-pub fn map_merge<'a>(env: &'a mut Environment<'a>, arguments: Vec<Object>) -> (&'a mut Environment<'a>, Object) {
+pub fn map_merge<'a>(env: &'a Environment<'a>, arguments: Vec<Object>) -> (&'a Environment<'a>, Object) {
     (env, Object::Empty) // TODO: raise error?
 }
 
-pub fn map_size<'a>(env: &'a mut Environment<'a>, arguments: Vec<Object>) -> (&'a mut Environment<'a>, Object) {
+pub fn map_size<'a>(env: &'a Environment<'a>, arguments: Vec<Object>) -> (&'a Environment<'a>, Object) {
     (env, Object::Empty) // TODO: raise error?
 }
 
-pub fn map_keys<'a>(env: &'a mut Environment<'a>, arguments: Vec<Object>) -> (&'a mut Environment<'a>, Object) {
+pub fn map_keys<'a>(env: &'a Environment<'a>, arguments: Vec<Object>) -> (&'a Environment<'a>, Object) {
     (env, Object::Empty) // TODO: raise error?
 }
 
-pub fn map_contains<'a>(env: &'a mut Environment<'a>, arguments: Vec<Object>) -> (&'a mut Environment<'a>, Object) {
+pub fn map_contains<'a>(env: &'a Environment<'a>, arguments: Vec<Object>) -> (&'a Environment<'a>, Object) {
     (env, Object::Empty) // TODO: raise error?
 }
 
-pub fn map_find<'a>(env: &'a mut Environment<'a>, arguments: Vec<Object>) -> (&'a mut Environment<'a>, Object) {
+pub fn map_find<'a>(env: &'a Environment<'a>, arguments: Vec<Object>) -> (&'a Environment<'a>, Object) {
     (env, Object::Empty) // TODO: raise error?
 }
 
-pub fn map_put<'a>(env: &'a mut Environment<'a>, arguments: Vec<Object>) -> (&'a mut Environment<'a>, Object) {
+pub fn map_put<'a>(env: &'a Environment<'a>, arguments: Vec<Object>) -> (&'a Environment<'a>, Object) {
     (env, Object::Empty) // TODO: raise error?
 }
 
-pub fn map_entry<'a>(env: &'a mut Environment<'a>, arguments: Vec<Object>) -> (&'a mut Environment<'a>, Object) {
+pub fn map_entry<'a>(env: &'a Environment<'a>, arguments: Vec<Object>) -> (&'a Environment<'a>, Object) {
     match arguments.as_slice() {
         [Object::Atomic(k), Object::Atomic(v)] => {
 
@@ -62,10 +62,10 @@ pub fn map_entry<'a>(env: &'a mut Environment<'a>, arguments: Vec<Object>) -> (&
     }
 }
 
-pub fn map_remove<'a>(env: &'a mut Environment<'a>, arguments: Vec<Object>) -> (&'a mut Environment<'a>, Object) {
+pub fn map_remove<'a>(env: &'a Environment<'a>, arguments: Vec<Object>) -> (&'a Environment<'a>, Object) {
     (env, Object::Empty) // TODO: raise error?
 }
 
-pub fn map_for_each<'a>(env: &'a mut Environment<'a>, arguments: Vec<Object>) -> (&'a mut Environment<'a>, Object) {
+pub fn map_for_each<'a>(env: &'a Environment<'a>, arguments: Vec<Object>) -> (&'a Environment<'a>, Object) {
     (env, Object::Empty) // TODO: raise error?
 }
