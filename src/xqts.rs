@@ -10,7 +10,7 @@ mod tests {
 
     #[test]
     fn eval_simple() {
-        let data = fs::read_to_string("./qt3tests/map/get.xml").unwrap();
+        let data = fs::read_to_string("./qt3tests/fn/apply.xml").unwrap();
 
         let mut script_flag = false;
         let mut result_flag = false;
@@ -82,7 +82,7 @@ mod tests {
 
             let mut env = Environment::new();
 
-            let (new_env, result) = eval_statements(program, &mut env, &Object::Empty);
+            let (new_env, result) = eval_statements(program, Box::new(env), &Object::Empty);
 
             println!("result: {:?}", result);
 

@@ -4,7 +4,7 @@ use crate::eval::Environment;
 
 use std::collections::HashMap;
 
-pub fn map_get<'a>(env: &'a Environment<'a>, arguments: Vec<Object>) -> (&'a Environment<'a>, Object) {
+pub fn map_get<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
     match arguments.as_slice() {
         [Object::Map(map), Object::Atomic(k)] => {
 
@@ -17,55 +17,53 @@ pub fn map_get<'a>(env: &'a Environment<'a>, arguments: Vec<Object>) -> (&'a Env
             }
         }
 
-        _ => (env, Object::Empty), // TODO: raise error?
+        _ => panic!("error")
     }
 }
 
-pub fn map_merge<'a>(env: &'a Environment<'a>, arguments: Vec<Object>) -> (&'a Environment<'a>, Object) {
-    (env, Object::Empty) // TODO: raise error?
+pub fn map_merge<'a>(env: Box<Environment>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+    todo!()
 }
 
-pub fn map_size<'a>(env: &'a Environment<'a>, arguments: Vec<Object>) -> (&'a Environment<'a>, Object) {
-    (env, Object::Empty) // TODO: raise error?
+pub fn map_size<'a>(env: Box<Environment>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+    todo!()
 }
 
-pub fn map_keys<'a>(env: &'a Environment<'a>, arguments: Vec<Object>) -> (&'a Environment<'a>, Object) {
-    (env, Object::Empty) // TODO: raise error?
+pub fn map_keys<'a>(env: Box<Environment>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+    todo!()
 }
 
-pub fn map_contains<'a>(env: &'a Environment<'a>, arguments: Vec<Object>) -> (&'a Environment<'a>, Object) {
-    (env, Object::Empty) // TODO: raise error?
+pub fn map_contains<'a>(env: Box<Environment>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+    todo!()
 }
 
-pub fn map_find<'a>(env: &'a Environment<'a>, arguments: Vec<Object>) -> (&'a Environment<'a>, Object) {
-    (env, Object::Empty) // TODO: raise error?
+pub fn map_find<'a>(env: Box<Environment>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+    todo!()
 }
 
-pub fn map_put<'a>(env: &'a Environment<'a>, arguments: Vec<Object>) -> (&'a Environment<'a>, Object) {
-    (env, Object::Empty) // TODO: raise error?
+pub fn map_put<'a>(env: Box<Environment>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+    todo!()
 }
 
-pub fn map_entry<'a>(env: &'a Environment<'a>, arguments: Vec<Object>) -> (&'a Environment<'a>, Object) {
+pub fn map_entry<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
     match arguments.as_slice() {
         [Object::Atomic(k), Object::Atomic(v)] => {
 
             let mut map = HashMap::new();
-
-            println!("map_entry {:?} {:?}", k, v);
 
             map.insert(k.clone(), Object::Atomic(v.clone())); //TODO: understand, is it possible to avoid clone?
 
             (env, Object::Map(map))
         }
 
-        _ => (env, Object::Empty), // TODO: raise error?
+        _ => panic!("error")
     }
 }
 
-pub fn map_remove<'a>(env: &'a Environment<'a>, arguments: Vec<Object>) -> (&'a Environment<'a>, Object) {
-    (env, Object::Empty) // TODO: raise error?
+pub fn map_remove<'a>(env: Box<Environment>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+    todo!()
 }
 
-pub fn map_for_each<'a>(env: &'a Environment<'a>, arguments: Vec<Object>) -> (&'a Environment<'a>, Object) {
-    (env, Object::Empty) // TODO: raise error?
+pub fn map_for_each<'a>(env: Box<Environment>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+    todo!()
 }

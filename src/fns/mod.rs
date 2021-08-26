@@ -1,18 +1,26 @@
 use std::collections::HashMap;
-use crate::eval::Object;
+use crate::eval::{Object, Type};
 use crate::eval::Environment;
 use crate::namespaces::*;
 use crate::parser::Expr;
+use crate::value::{QName, QNameResolved};
 
 mod decimal;
 mod url;
 mod map;
+mod fun;
 
-pub type FUNCTION<'a> = fn(&'a Environment<'a>, Vec<Object>) -> (&'a Environment<'a>, Object);
+pub type FUNCTION<'a> = fn(Box<Environment<'a>>, Vec<Object>, &Object) -> (Box<Environment<'a>>, Object);
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Param {
+    pub name: QName,
+    pub sequenceType: Option<Type> // TODO: new type?
+}
 
 #[derive(Clone)]
 pub struct FunctionsRegister<'a> {
-    functions: HashMap<String, HashMap<usize, FUNCTION<'a>>>,
+    functions: HashMap<QNameResolved, HashMap<usize, FUNCTION<'a>>>,
 }
 
 impl<'a> FunctionsRegister<'a> {
@@ -37,23 +45,20 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(XPATH_MAP.url, "remove", 2, map::map_remove);
         instance.register(XPATH_MAP.url, "for-each", 2, map::map_for_each);
 
+        instance.register(XPATH_FUNCTIONS.url, "apply", 2, fun::apply);
+
         instance
     }
 
-    fn key(&self, uri: &str, local_part: &str) -> String {
-        // possible optimization [uri, local_part].concat()
-        format!("{{{}}}{}", uri, local_part)
-    }
-
-    pub fn register(&mut self, uri: &str, local_part: &str, arity: usize, fun: FUNCTION<'a>) {
-        self.functions.entry(self.key(uri, local_part))
+    pub fn register(&mut self, url: &str, local_part: &str, arity: usize, fun: FUNCTION<'a>) {
+        self.functions.entry(QNameResolved { url: String::from(url), local_part: String::from(local_part) })
             .or_insert_with(HashMap::new)
             .insert(arity,fun);
     }
 
-    pub fn get(&self, uri: &str, local_part: &str, arity: usize) -> Option<FUNCTION<'a>> {
+    pub fn get(&self, qname: &QNameResolved, arity: usize) -> Option<FUNCTION<'a>> {
         // println!("function get {:?} {:?} {:?}", uri, local_part, arity);
-        if let Some(list) = self.functions.get(&self.key(uri, local_part)) {
+        if let Some(list) = self.functions.get(qname) {
             // println!("function list {:?}", list.len());
             //TODO: fix it!
             let rf = list.get(&arity).unwrap();
@@ -64,13 +69,15 @@ impl<'a> FunctionsRegister<'a> {
         }
     }
 
-    pub fn eval(&self, env: &'a Environment<'a>, uri: &str, local_part: &str, arguments: Vec<Object>) -> (&'a Environment<'a>, Object) {
-        println!("eval_builtin: {:?} {:?}", local_part, arguments);
+    pub fn eval(&self, env: Box<Environment<'a>>, url: &str, local_part: &str, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+        let qname = QNameResolved { url: String::from(url), local_part: String::from(local_part) };
 
-        let fun: Option<FUNCTION> = env.functions.get(uri, local_part, arguments.len());
+        println!("eval_builtin: {:?} {:?}", qname, arguments);
+
+        let fun: Option<FUNCTION> = env.functions.get(&qname, arguments.len());
 
         if fun.is_some() {
-            fun.unwrap()(env, arguments)
+            fun.unwrap()(env, arguments, context_item)
         } else {
             (env, Object::Empty)
         }
