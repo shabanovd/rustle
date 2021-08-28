@@ -5,10 +5,16 @@ use crate::namespaces::*;
 use crate::parser::Expr;
 use crate::value::{QName, QNameResolved};
 
+mod fun;
+mod sequences;
+mod boolean;
+mod strings;
 mod decimal;
+mod math;
 mod url;
 mod map;
-mod fun;
+
+pub use strings::object_to_string;
 
 pub type FUNCTION<'a> = fn(Box<Environment<'a>>, Vec<Object>, &Object) -> (Box<Environment<'a>>, Object);
 
@@ -46,6 +52,20 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(XPATH_MAP.url, "for-each", 2, map::map_for_each);
 
         instance.register(XPATH_FUNCTIONS.url, "apply", 2, fun::apply);
+
+        instance.register(XPATH_FUNCTIONS.url, "abs", 1, math::fn_abs);
+
+
+        instance.register(XPATH_FUNCTIONS.url, "true", 0, boolean::fn_true);
+        instance.register(XPATH_FUNCTIONS.url, "false", 0, boolean::fn_false);
+
+        instance.register(XPATH_FUNCTIONS.url, "string", 0, strings::fn_string);
+        instance.register(XPATH_FUNCTIONS.url, "string", 1, strings::fn_string);
+        instance.register(XPATH_FUNCTIONS.url, "string-join", 1, strings::fn_string_join);
+        instance.register(XPATH_FUNCTIONS.url, "string-join", 2, strings::fn_string_join);
+
+
+        instance.register(XPATH_FUNCTIONS.url, "reverse", 1, sequences::fn_reverse);
 
         instance
     }

@@ -33,7 +33,7 @@ macro_rules! parse_sequence {
             } else {
                 Ok((
                     current_input,
-                    Expr::$expr_name { exprs }
+                    Expr::$expr_name(exprs)
                 ))
             }
         }
@@ -47,10 +47,10 @@ macro_rules! parse_one_of {
             $(
                 let result = $parser_fn(input);
                 if result.is_ok() {
-                    let (input, literal) = result?;
+                    let (input, expr) = result?;
                     return Ok((
                         input,
-                        literal
+                        expr
                     ))
                 }
             )*

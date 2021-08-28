@@ -20,6 +20,25 @@ use crate::fns::Param;
 
 const DEBUG: bool = false;
 
+fn found_statements(input: &str, program: Vec<Statement>) -> IResult<&str, Vec<Statement>> {
+    Ok((input, program))
+}
+
+fn found_statement(input: &str, statement: Statement) -> IResult<&str, Statement> {
+    Ok((input, statement))
+}
+
+fn found_exprs(input: &str, exprs: Vec<Expr>) -> IResult<&str, Vec<Expr>> {
+    Ok((input, exprs))
+}
+
+fn found_expr(input: &str, expr: Expr) -> IResult<&str, Expr> {
+    if DEBUG {
+        println!("\nfound: {:?}\ninput: {:?}", expr, input);
+    }
+    Ok((input, expr))
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
     Expression (Expr),
@@ -42,7 +61,7 @@ pub enum Expr {
     Sequence(Vec<Statement>),
     SequenceEmpty(),
     Range { from: Box<Expr>, till: Box<Expr> },
-    Predicate(Box<Statement>),
+    Predicate(Box<Expr>),
 //    Predicates(Vec<Statement>), // TODO: can it be covered by Sequence(Predicate)?
 
     Postfix { primary: Box<Expr>, suffix: Vec<Expr> },
@@ -54,9 +73,9 @@ pub enum Expr {
     NodePI { target: QName, content: String },
 
     Map { entries: Vec<Expr> }, // Expr because can't use MapEntry here
-    MapEntry { key: Box<Statement>, value: Box<Statement> },
+    MapEntry { key: Box<Expr>, value: Box<Expr> },
 
-    SquareArrayConstructor { items: Vec<Statement> },
+    SquareArrayConstructor { items: Vec<Expr> },
     CurlyArrayConstructor { exprs: Vec<Statement> },
 
     QName { local_part: String, url: String, prefix: String },
@@ -68,22 +87,23 @@ pub enum Expr {
 
     ArgumentList { arguments: Vec<Expr> },
     Function { arguments: Vec<Param>, body: Vec<Statement> },
-    Call { function: QName, arguments: Vec<Statement> },
+    Call { function: QName, arguments: Vec<Expr> },
     NamedFunctionRef { name: QName, arity: Box<Expr> },
 
-    ParamList { exprs: Vec<Expr> },
+    ParamList(Vec<Expr>),
     Param { name: QName, typeDeclaration: Box<Option<Expr>> },
 
     VarRef { name: QName },
 
-    Or { exprs: Vec<Expr> },
-    And { exprs: Vec<Expr> },
-    StringConcat { exprs: Vec<Expr> },
+    Or(Vec<Expr>),
+    And(Vec<Expr>),
+    StringConcat(Vec<Expr>),
+    SimpleMap(Vec<Expr>),
 
-    FLWOR { initialClause: Box<Expr>, returnExpr: Box<Statement> },
+    FLWOR { initialClause: Box<Expr>, returnExpr: Box<Expr> },
 
     LetClause { bindings: Vec<Expr> },
-    LetBinding { name: QName, typeDeclaration: Box<Option<Expr>>,  value: Box<Statement>},
+    LetBinding { name: QName, typeDeclaration: Box<Option<Expr>>,  value: Box<Expr>},
 
 }
 
@@ -114,10 +134,7 @@ pub fn parse(input: &str) -> IResult<&str, Vec<Statement>> {
 
     let (input, program) = parse_expr(input)?;
 
-    Ok((
-        input,
-        program
-    ))
+    found_statements(input, program)
 }
 
 // [33]    	ParamList 	   ::=    	Param ("," Param)*
@@ -129,10 +146,10 @@ fn parse_param(input: &str) -> IResult<&str, Expr> {
     let (input, name) = parse_eqname(input)?;
     // TODO: TypeDeclaration?
 
-    Ok((
+    found_expr(
         input,
         Expr::Param { name, typeDeclaration: Box::new(None)}
-    ))
+    )
 }
 
 // [36]    	EnclosedExpr 	   ::=    	"{" Expr? "}"
@@ -148,10 +165,7 @@ fn parse_enclosed_expr(input: &str) -> IResult<&str, Vec<Statement>> {
 
     let (input, _) = ws_tag("}", input)?;
 
-    Ok((
-        input,
-        expr
-    ))
+    found_statements(input, expr)
 }
 
 // [38]    	QueryBody 	   ::=    	Expr
@@ -163,15 +177,12 @@ fn parse_expr(input: &str) -> IResult<&str, Vec<Statement>> {
     loop {
         let (input, expr) = parse_expr_single(current_input)?;
 
-        program.push(expr);
+        program.push(Statement::Expression( expr ));
 
         let tmp = ws_tag(",", input);
         if tmp.is_err() {
             return
-                Ok((
-                    input,
-                    program
-                ))
+                found_statements(input, program)
         }
         current_input = tmp?.0;
     }
@@ -184,7 +195,7 @@ fn parse_expr(input: &str) -> IResult<&str, Vec<Statement>> {
 //  TODO: | IfExpr
 //  TODO: | TryCatchExpr
 // | OrExpr
-fn parse_expr_single(input: &str) -> IResult<&str, Statement> {
+fn parse_expr_single(input: &str) -> IResult<&str, Expr> {
     if DEBUG {
         println!("parse_expr_single: {:?}", input);
     }
@@ -192,17 +203,17 @@ fn parse_expr_single(input: &str) -> IResult<&str, Statement> {
     let check = parse_flwor_expr(input);
     if check.is_ok() {
         let (mut input, expr) = check?;
-        return Ok((
+        return found_expr(
             input,
-            Statement::Expression( expr )
-        ))
+            expr
+        )
     }
 
     let (input, expr) = parse_or_expr(input)?;
-    Ok((
+    found_expr(
         input,
-        Statement::Expression( expr )
-    ))
+        expr
+    )
 }
 
 // [41]    	FLWORExpr 	   ::=    	InitialClause IntermediateClause* ReturnClause
@@ -216,10 +227,10 @@ fn parse_flwor_expr(input: &str) -> IResult<&str, Expr> {
 
     let (input, returnExpr) = parse_expr_single(input)?;
 
-    Ok((
+    found_expr(
         input,
         Expr::FLWOR { initialClause: Box::new(initialClause), returnExpr: Box::new(returnExpr) }
-    ))
+    )
 }
 
 // [48]    	LetClause 	   ::=    	"let" LetBinding ("," LetBinding)*
@@ -241,10 +252,10 @@ fn parse_let_clause_expr(input: &str) -> IResult<&str, Expr> {
             let tmp = ws_tag(",", input);
             if tmp.is_err() {
                 return
-                    Ok((
+                    found_expr(
                         input,
                         Expr::LetClause { bindings }
-                    ))
+                    )
             }
             current_input = tmp?.0;
         }
@@ -274,10 +285,10 @@ fn parse_let_binding_expr(input: &str) -> IResult<&str, Expr> {
 
     let (input, value) = parse_expr_single(input)?;
 
-    Ok((
+    found_expr(
         input,
-        Expr::LetBinding { name: name, typeDeclaration: Box::new(typeDeclaration),  value: Box::new(value)}
-    ))
+        Expr::LetBinding { name, typeDeclaration: Box::new(typeDeclaration),  value: Box::new(value)}
+    )
 }
 
 // [83]    	OrExpr 	   ::=    	AndExpr ( "or" AndExpr )*
@@ -306,15 +317,12 @@ fn parse_range_expr(input: &str) -> IResult<&str, Expr> {
 
         let (input, till) = parse_binary_expr(input)?;
 
-        Ok((
+        found_expr(
             input,
             Expr::Range { from: Box::new(from), till: Box::new(till) }
-        ))
+        )
     } else {
-        Ok((
-            input,
-            from
-        ))
+        found_expr(input, from)
     }
 }
 
@@ -399,16 +407,16 @@ fn parse_binary_expr(input: &str) -> IResult<&str, Expr> {
                 left = Expr::Binary { left: Box::new(left), operator, right: Box::new(right) }
             }
         } else {
-            return Ok((
+            return found_expr(
                 current_input,
                 left
-            ));
+            );
         }
     }
 }
 
-// [97]    	UnaryExpr 	   ::=    	("-" | "+")* ValueExpr
-// [98]    	ValueExpr 	   ::=    	ValidateExpr | ExtensionExpr | SimpleMapExpr
+// [97]    	UnaryExpr 	   ::=    	("-" | "+")* TODO: ValueExpr
+// [98]    	ValueExpr 	   ::=    	TODO: ValidateExpr | TODO: ExtensionExpr | SimpleMapExpr
 fn parse_unary_expr(input: &str) -> IResult<&str, Expr> {
 
     let mut is_positive = true;
@@ -434,10 +442,8 @@ fn parse_unary_expr(input: &str) -> IResult<&str, Expr> {
     parse_simple_map_expr(current_input)
 }
 
-// [107]    	SimpleMapExpr 	   ::=    	PathExpr TODO: ("!" PathExpr)*
-fn parse_simple_map_expr(input: &str) -> IResult<&str, Expr> {
-    parse_path_expr(input)
-}
+// [107]    	SimpleMapExpr 	   ::=    	PathExpr ("!" PathExpr)*
+parse_sequence!(parse_simple_map_expr, "!", parse_path_expr, SimpleMap);
 
 // [108]    	PathExpr 	   ::=    	TODO: ("/" RelativePathExpr?) | ("//" RelativePathExpr) | RelativePathExpr
 fn parse_path_expr(input: &str) -> IResult<&str, Expr> {
@@ -460,7 +466,7 @@ fn parse_step_expr(input: &str) -> IResult<&str, Expr> {
 //
 //}
 
-// [121]    	PostfixExpr 	   ::=    	TODO: PrimaryExpr (Predicate | ArgumentList | Lookup)*
+// [121]    	PostfixExpr 	   ::=    	PrimaryExpr (Predicate | TODO: ArgumentList | Lookup)*
 fn parse_postfix_expr(input: &str) -> IResult<&str, Expr> {
     let (input, primary) = parse_primary_expr(input)?;
 
@@ -482,30 +488,30 @@ fn parse_postfix_expr(input: &str) -> IResult<&str, Expr> {
     }
 
     if suffix.len() == 0 {
-        Ok((
+        found_expr(
             current_input,
             primary
-        ))
+        )
     } else {
-        Ok((
+        found_expr(
             current_input,
             Expr::Postfix { primary: Box::new(primary), suffix }
-        ))
+        )
     }
 }
 
 // [122]    	ArgumentList 	   ::=    	"(" (Argument ("," Argument)*)? ")"
-fn parse_argument_list(input: &str) -> IResult<&str, Vec<Statement>> {
+fn parse_argument_list(input: &str) -> IResult<&str, Vec<Expr>> {
     let (input, _) = ws_tag("(", input)?;
 
     let (input, arguments) = parse_arguments(input)?;
 
     let (input, _) = ws_tag(")", input)?;
 
-    Ok((
+    found_exprs(
         input,
         arguments
-    ))
+    )
 }
 
 // [124]    	Predicate 	   ::=    	"[" Expr "]"
@@ -575,10 +581,6 @@ fn parse_context_item_expr(input: &str) -> IResult<&str, Expr> {
 
 // [137]    	FunctionCall 	   ::=    	EQName ArgumentList
 fn parse_function_call(input: &str) -> IResult<&str, Expr> {
-    if DEBUG {
-        println!("parse_function_call: {:?}", input);
-    }
-
     let (input, _) = ws(input)?;
     let (input, function) = parse_eqname(input)?;
     let (input, arguments) = parse_argument_list(input)?;
@@ -597,29 +599,40 @@ fn parse_function_call(input: &str) -> IResult<&str, Expr> {
 }
 
 // [138]    	Argument 	   ::=    	ExprSingle TODO: | ArgumentPlaceholder
-fn parse_arguments(input: &str) -> IResult<&str, Vec<Statement>> {
+// TODO: (Argument ("," Argument)*)?
+fn parse_arguments(input: &str) -> IResult<&str, Vec<Expr>> {
     let mut arguments = vec![];
 
     let mut current_input = input;
-    loop {
-        if DEBUG {
-            println!("parse_arguments: {:?}", current_input);
-        }
 
-        let (input, argument) = parse_expr_single(current_input)?;
+    let check = parse_expr_single(current_input);
+    if check.is_ok() {
+        let (input, argument) = check?;
+        current_input = input;
 
         arguments.push(argument);
 
-        let tmp = ws_tag(",", input);
-        if tmp.is_err() {
-            return
-                Ok((
-                    input,
-                    arguments
-                ))
+        loop {
+            let tmp = ws_tag(",", current_input);
+            if tmp.is_err() {
+                return
+                    found_exprs(
+                        current_input,
+                        arguments
+                    )
+            }
+            current_input = tmp?.0;
+
+            let (input, argument) = parse_expr_single(current_input)?;
+            current_input = input;
+
+            arguments.push(argument);
         }
-        current_input = tmp?.0;
     }
+    found_exprs(
+        current_input,
+        arguments
+    )
 }
 
 // [129]    	Literal 	   ::=    	TODO: NumericLiteral | StringLiteral
@@ -954,10 +967,9 @@ parse_one_of!(parse_function_item_expr,
 
 // [168]    	NamedFunctionRef 	   ::=    	EQName "#" IntegerLiteral
 fn parse_named_function_ref(input: &str) -> IResult<&str, Expr> {
+
     let (input, name) = parse_eqname(input)?;
-
     let (input, _) = tag("#")(input)?;
-
     let (input, number) = parse_integer_literal(input)?;
 
     Ok((
@@ -980,7 +992,7 @@ fn parse_inline_function_expr(input: &str) -> IResult<&str, Expr> {
         let (input, expr) = check?;
 
         let params = match expr {
-            Expr::ParamList { exprs } => {
+            Expr::ParamList(exprs) => {
                 let mut params = Vec::with_capacity(exprs.len());
                 for expr in exprs {
                     let param = match expr {
@@ -1263,7 +1275,7 @@ fn parse_eqname(input: &str) -> IResult<&str, QName> {
 
 // [4]   	NCName	   ::=   	Name - (Char* ':' Char*)	/* An XML Name, minus the ":" */
 fn parse_ncname(input: &str) -> IResult<&str, String> {
-    let (input, name_start) = take_while_m_n(0, 1, is_name_start_char)(input)?;
+    let (input, name_start) = take_while_m_n(1, 1, is_name_start_char)(input)?;
     let (input, name_end) = take_while(is_name_char)(input)?;
 
     let mut name = String::new();

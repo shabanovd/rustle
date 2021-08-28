@@ -25,7 +25,16 @@ pub fn apply<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item
             let (_, result) = eval_statements(body.clone(), Box::new(function_environment), context_item);
 
             (current_env, result)
-        }
+        },
+        [Object::FunctionRef { name, arity }, Object::Array( arguments )] => {
+            let fun = current_env.functions.get(&name, *arity);
+
+            return if fun.is_some() {
+                fun.unwrap()(current_env, arguments.clone(), context_item)
+            } else {
+                panic!("no function {:?}#{:?}", name, arity)
+            }
+        },
         _ => panic!("error")
     }
 }

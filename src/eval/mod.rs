@@ -10,6 +10,7 @@ pub use self::environment::Environment;
 use std::collections::HashMap;
 use crate::eval::Object::Empty;
 use crate::fns::Param;
+use crate::fns::object_to_string;
 
 const DEBUG: bool = false;
 
@@ -116,6 +117,7 @@ pub enum Object {
     Map(HashMap<Type, Object>),
 
     Function { parameters: Vec<Param>, body: Vec<Statement> },
+    FunctionRef { name: QNameResolved, arity: usize },
 
     Return(Box<Object>),
 }
@@ -268,10 +270,10 @@ fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: &Obj
             for entry in entries {
                 match entry {
                     Expr::MapEntry { key, value } => {
-                        let (new_env, evaluated_key) = eval_statement(*key, current_env, context_item);
+                        let (new_env, evaluated_key) = eval_expr(*key, current_env, context_item);
                         current_env = new_env;
 
-                        let (new_env, evaluated_value) = eval_statement(*value, current_env, context_item);
+                        let (new_env, evaluated_value) = eval_expr(*value, current_env, context_item);
                         current_env = new_env;
 
                         match evaluated_key {
@@ -286,6 +288,31 @@ fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: &Obj
             }
 
             (current_env, Object::Map(map))
+        },
+
+        Expr::SimpleMap(exprs)  => {
+            let mut result = Object::Empty;
+            for (i, expr) in exprs.iter().enumerate() {
+                if i == 0 {
+                    let (new_env, evaluated) = eval_expr(expr.clone(), current_env, context_item);
+                    current_env = new_env;
+
+                    result = evaluated;
+                } else {
+                    let mut sequence = vec![];
+
+                    let it = object_to_iterator(&result);
+                    for item in it {
+                        let (new_env, evaluated) = eval_expr(expr.clone(), current_env, &item);
+                        current_env = new_env;
+
+                        sequence.push(evaluated);
+                    }
+
+                    result = Object::Sequence(sequence);
+                }
+            }
+            (current_env, result)
         },
 
         Expr::Binary { left, operator, right } => {
@@ -340,7 +367,7 @@ fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: &Obj
                 None => {
                     let mut evaluated_arguments = vec![];
                     for argument in arguments {
-                        let (new_env, value) = eval_statement(argument, current_env, context_item);
+                        let (new_env, value) = eval_expr(argument, current_env, context_item);
                         current_env = new_env;
 
                         evaluated_arguments.push(value);
@@ -361,7 +388,7 @@ fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: &Obj
 
             let mut function_environment = Environment::new();
             for (parameter, argument) in parameters.into_iter().zip(arguments.into_iter()) {
-                let (new_env, new_result) = eval_statement(argument, current_env, context_item);
+                let (new_env, new_result) = eval_expr(argument, current_env, context_item);
                 current_env = new_env;
 
                 let name = resolve_function_qname(parameter.name, &current_env);
@@ -403,11 +430,23 @@ fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: &Obj
         Expr::SquareArrayConstructor { items } => {
             let mut values = Vec::with_capacity(items.len());
             for item in items {
-                let (new_env, evaluated) = eval_statement(item, current_env, context_item);
+                let (new_env, evaluated) = eval_expr(item, current_env, context_item);
                 current_env = new_env;
 
                 values.push(evaluated);
             }
+
+            (current_env, Object::Array(values))
+        },
+
+        Expr::CurlyArrayConstructor { exprs } => {
+            let (new_env, evaluated) = eval_statements(exprs, current_env, context_item);
+            current_env = new_env;
+
+            let values = match evaluated {
+                Object::Empty => vec![],
+                _ => panic!("can't convert to array {:?}", evaluated)
+            };
 
             (current_env, Object::Array(values))
         },
@@ -422,7 +461,7 @@ fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: &Obj
                 match suf {
                     Expr::Predicate(cond) => {
                         match *cond {
-                            Statement::Expression(Expr::Integer(pos)) => {
+                            Expr::Integer(pos) => {
                                 match result {
                                     Object::Range { min , max } => {
                                         let len = max - min + 1;
@@ -436,12 +475,12 @@ fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: &Obj
                                     _ => panic!("predicate {:?} on {:?}", pos, result)
                                 }
                             },
-                            Statement::Expression(Expr::Comparison { left, operator, right }) => {
+                            Expr::Comparison { left, operator, right } => {
                                 let it = object_to_iterator(&result);
 
                                 let mut evaluated = vec![];
                                 for item in it {
-                                    let context_item = Object::Atomic(Type::Integer(item));
+                                    let context_item = item;
 
                                     let (_, l_value) = eval_expr(*left.clone(), current_env.clone(), &context_item);
                                     let (_, r_value) = eval_expr(*right.clone(), current_env.clone(), &context_item);
@@ -506,7 +545,7 @@ fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: &Obj
             }
         },
 
-        Expr::Or { exprs } => {
+        Expr::Or(exprs) => {
             if exprs.len() == 0 {
                 (current_env, Object::Empty)
             } else {
@@ -532,7 +571,7 @@ fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: &Obj
                 }
             }
         },
-        Expr::And { exprs } => {
+        Expr::And(exprs) => {
             if exprs.len() == 0 {
                 (current_env, Object::Empty)
             } else {
@@ -558,7 +597,7 @@ fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: &Obj
                 }
             }
         },
-        Expr::StringConcat { exprs } => {
+        Expr::StringConcat(exprs) => {
             if exprs.len() == 0 {
                 (current_env, Object::Empty)
             } else {
@@ -577,12 +616,25 @@ fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: &Obj
                     (current_env, object)
                 } else {
                     let result = sequence.into_iter()
-                        .map(|item| object_to_string(item))
+                        .map(|item| object_to_string(&item))
                         .collect();
 
                     (current_env, Object::Atomic(Type::String(result)))
                 }
             }
+        },
+
+        Expr::NamedFunctionRef { name, arity } => {
+            let (new_env, arity) = eval_expr(*arity, current_env, context_item);
+            current_env = new_env;
+
+            let arity = object_to_integer(arity);
+            // TODO: check arity value
+            let arity = arity as usize;
+
+            let name = resolve_function_qname(name, &current_env);
+
+            (current_env, Object::FunctionRef { name, arity })
         },
 
         Expr::Function { arguments, body } => {
@@ -595,7 +647,7 @@ fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: &Obj
 
             // println!("returnExpr {:#?}", returnExpr);
 
-            let (new_env, evaluated) = eval_statement(*returnExpr, current_env, context_item);
+            let (new_env, evaluated) = eval_expr(*returnExpr, current_env, context_item);
             current_env = new_env;
 
             (current_env, evaluated)
@@ -609,7 +661,7 @@ fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: &Obj
             (current_env, Object::Empty)
         },
         Expr::LetBinding { name, typeDeclaration,  value } => {
-            let (_, evaluatedValue) = eval_statement(*value, current_env.clone(), context_item);
+            let (_, evaluatedValue) = eval_expr(*value, current_env.clone(), context_item);
 
             // TODO: handle typeDeclaration
 
@@ -659,14 +711,14 @@ impl RangeIterator {
 }
 
 impl Iterator for RangeIterator {
-    type Item = i128;
+    type Item = Object;
 
     fn next(&mut self) -> Option<Self::Item> {
         let curr = self.next;
         self.next = self.next + self.step;
 
-        if (self.step > 0 && self.next <= self.till) || (self.step < 0 && self.next >= self.till) {
-            Some(curr)
+        if (self.step > 0 && curr <= self.till) || (self.step < 0 && curr >= self.till) {
+            Some(Object::Atomic(Type::Integer(curr)))
         } else {
             None
         }
@@ -681,10 +733,10 @@ pub fn object_to_bool(object: &Object) -> bool {
     }
 }
 
-pub fn object_to_string(object: Object) -> String {
+pub fn object_to_integer(object: Object) -> i128 {
     match object {
-        Object::Atomic(Type::String(str)) => str,
-        _ => panic!("TODO object_to_string {:?}", object)
+        Object::Atomic(Type::Integer(n)) => n,
+        _ => panic!("TODO object_to_integer {:?}", object)
     }
 }
 
@@ -692,7 +744,11 @@ pub fn object_to_iterator<'a>(object: &Object) -> RangeIterator {
     // println!("object_to_iterator for {:?}", object);
     match object {
         Object::Range { min , max } => {
-            RangeIterator::new(*min, 1, *max)
+            if min > max {
+                RangeIterator::new(*min, -1, *max)
+            } else {
+                RangeIterator::new(*min, 1, *max)
+            }
         }
         _ => panic!("TODO object_to_iterator {:?}", object)
     }
@@ -721,10 +777,8 @@ mod tests {
     #[test]
     fn eval_apply1() {
         test_eval(
-            "let $func := function($a,$b,$c) { $a + $b + $c }
-, $args := [ 1, 2, 3 ]
-return apply($func, $args)",
-            Object::Atomic(Type::Integer(6))
+            "apply(string-join#1, [reverse(1 to 5) ! string()])",
+            Object::Atomic(Type::String(String::from("54321")))
         )
     }
 
