@@ -47,7 +47,7 @@ fn found_qname(input: &str, qname: QName) -> IResult<&str, QName> {
     Ok((input, qname))
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Statement {
     Prolog(Vec<Expr>),
     Program(Expr),
@@ -57,7 +57,7 @@ pub enum Statement {
     Return { value: Expr },
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Steps {
     One,
     More,
@@ -73,7 +73,7 @@ impl Steps {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Expr {
     //internal
     Literals(Vec<Expr>),

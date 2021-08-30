@@ -33,3 +33,8 @@ pub fn fn_reverse<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context
         _ => panic!("error")
     }
 }
+
+pub fn sort_and_dedup(seq: &mut Vec<Object>) {
+    seq.sort();
+    seq.dedup();
+}

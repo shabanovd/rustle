@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use crate::parser::Statement;
 use crate::parser::Expr;
 use crate::parser::Operator;
@@ -9,12 +11,12 @@ pub use self::environment::Environment;
 
 use std::collections::HashMap;
 use crate::eval::Object::Empty;
-use crate::fns::{Param, call};
+use crate::fns::{Param, call, sort_and_dedup};
 use crate::fns::object_to_string;
 
 const DEBUG: bool = false;
 
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone, Hash)]
 pub enum Type {
     dateTime(),
     dateTimeStamp(),
@@ -87,11 +89,33 @@ fn object_to_qname(t: Object) -> QName {
 
 #[derive(Eq, PartialEq, Clone, Hash)]
 pub enum Node {
-    Node { name: QName, attributes: Vec<Node>, children: Vec<Node> },
-    Attribute { name: QName, value: String },
-    NodeText(String),
-    NodeComment(String),
-    NodePI { target: QName, content: String },
+    Node { sequence: usize, name: QName, attributes: Vec<Node>, children: Vec<Node> },
+    Attribute { sequence: usize, name: QName, value: String },
+    NodeText { sequence: usize, content: String },
+    NodeComment { sequence: usize, content: String },
+    NodePI { sequence: usize, target: QName, content: String },
+}
+
+fn node_to_number(node: &Node) -> &usize {
+    match node {
+        Node::Node { sequence, .. } => sequence,
+        Node::Attribute { sequence, .. } => sequence,
+        Node::NodeText { sequence, .. } => sequence,
+        Node::NodeComment { sequence, .. } => sequence,
+        Node::NodePI { sequence, .. } => sequence,
+    }
+}
+
+impl Ord for Node {
+    fn cmp(&self, other: &Self) -> Ordering {
+        node_to_number(self).cmp(node_to_number(other))
+    }
+}
+
+impl PartialOrd<Self> for Node {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        node_to_number(self).partial_cmp(node_to_number(other))
+    }
 }
 
 use std::fmt;
@@ -105,23 +129,23 @@ impl fmt::Debug for Node {
         };
 
         match self {
-            Node:: NodePI { target, content } => {
+            Node:: NodePI { sequence, target, content } => {
                 write!(f, "<?");
                 write(f, target);
                 write!(f, "{:?}?>", content);
             },
-            Node:: NodeText(content) => {
-                write!(f, "<!--{:?}-->", content);
+            Node:: NodeComment {sequence, content} => {
+                write!(f, "<!--{}-->", content);
             },
-            Node:: NodeText(content) => {
-                write!(f, "{:?}", content);
+            Node:: NodeText { sequence, content} => {
+                write!(f, "{}", content);
             },
-            Node:: Attribute { name, value } => {
+            Node:: Attribute { sequence, name, value } => {
                 write!(f, "@");
                 write(f, name);
                 write!(f, "={:?}", value);
             },
-            Node::Node { name, attributes, children } => {
+            Node::Node { sequence, name, attributes, children } => {
                 write!(f, "<");
 
                 write(f, name);
@@ -129,7 +153,7 @@ impl fmt::Debug for Node {
                 if attributes.len() > 0 {
                     for attribute in attributes {
                         match attribute {
-                            Node::Attribute { name, value } => {
+                            Node::Attribute { sequence, name, value } => {
                                 write!(f, " ");
                                 write(f, name);
                                 write!(f, "={}", value);
@@ -156,7 +180,7 @@ impl fmt::Debug for Node {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Object {
     Empty,
 
@@ -175,6 +199,54 @@ pub enum Object {
     FunctionRef { name: QNameResolved, arity: usize },
 
     Return(Box<Object>),
+}
+
+impl Ord for Object {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self {
+            Object::Atomic(t1) => {
+                match other {
+                    Object::Atomic(t2) => {
+                        t1.cmp(t2)
+                    },
+                    _ => Ordering::Greater,
+                }
+            },
+            Object::Node(n1) => {
+                match other {
+                    Object::Node(n2) => {
+                        n1.cmp(n2)
+                    },
+                    _ => Ordering::Less,
+                }
+            },
+            _ => Ordering::Less
+        }
+    }
+}
+
+impl PartialOrd for Object {
+    fn partial_cmp(&self, other: &Object) -> Option<Ordering> {
+        match self {
+            Object::Atomic(t1) => {
+                match other {
+                    Object::Atomic(t2) => {
+                        t1.partial_cmp(t2)
+                    },
+                    _ => Some(Ordering::Greater),
+                }
+            },
+            Object::Node(n1) => {
+                match other {
+                    Object::Node(n2) => {
+                        n1.partial_cmp(n2)
+                    },
+                    _ => Some(Ordering::Less),
+                }
+            },
+            _ => Some(Ordering::Less)
+        }
+    }
 }
 
 pub fn eval_statements<'a>(statements: Vec<Statement>, env: Box<Environment<'a>>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
@@ -324,6 +396,7 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
                 } else if evaluated.len() == 1 {
                     (current_env, evaluated[0].clone()) //TODO: try to avoid clone here
                 } else {
+                    sort_and_dedup(&mut evaluated);
                     (current_env, Object::Sequence(evaluated))
                 }
             }
@@ -378,8 +451,8 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
                 current_env = new_env;
 
                 match evaluated_attribute {
-                    Object::Node(Node::Attribute { name, value}) => { // TODO: avoid copy!
-                        let evaluated_attribute = Node::Attribute { name, value };
+                    Object::Node(Node::Attribute { sequence, name, value}) => { // TODO: avoid copy!
+                        let evaluated_attribute = Node::Attribute { sequence, name, value };
                         evaluated_attributes.push(evaluated_attribute);
                     }
                     _ => panic!("unexpected object") //TODO: better error
@@ -394,9 +467,10 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
                 match evaluated_child {
                     Object::Sequence(items) => {
                         for item in items {
+                            let id = current_env.next_id();
                             match item {
-                                Object::Node(Node::Attribute { name, value}) => { // TODO: avoid copy!
-                                    let evaluated_attribute = Node::Attribute { name, value };
+                                Object::Node(Node::Attribute { sequence, name, value}) => { // TODO: avoid copy!
+                                    let evaluated_attribute = Node::Attribute { sequence, name, value };
 
                                     evaluated_attributes.push(evaluated_attribute);
                                 },
@@ -407,8 +481,8 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
                             }
                         }
                     },
-                    Object::Node(Node::Attribute { name, value}) => { // TODO: avoid copy!
-                        let evaluated_attribute = Node::Attribute { name, value };
+                    Object::Node(Node::Attribute { sequence, name, value}) => { // TODO: avoid copy!
+                        let evaluated_attribute = Node::Attribute { sequence, name, value };
 
                         evaluated_attributes.push(evaluated_attribute);
                     },
@@ -421,8 +495,9 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
 
             }
 
+            let id = current_env.next_id();
             (current_env, Object::Node(
-                Node::Node { name, attributes: evaluated_attributes, children: evaluated_children }
+                Node::Node { sequence: id, name, attributes: evaluated_attributes, children: evaluated_children }
             ))
         },
 
@@ -447,11 +522,19 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
                 _ => panic!("unexpected object") //TODO: better error
             };
 
-            (current_env, Object::Node(Node::Attribute { name, value: evaluated_value }))
+            let id = current_env.next_id();
+
+            (current_env, Object::Node(Node::Attribute { sequence: id, name, value: evaluated_value }))
         },
 
-        Expr::NodeText(content) => (current_env, Object::Node(Node::NodeText(content))),
-        Expr::NodeComment(content) => (current_env, Object::Node(Node::NodeComment(content))),
+        Expr::NodeText(content) => {
+            let id = current_env.next_id();
+            (current_env, Object::Node(Node::NodeText { sequence: id, content }))
+        },
+        Expr::NodeComment(content) => {
+            let id = current_env.next_id();
+            (current_env, Object::Node(Node::NodeComment { sequence: id, content }))
+        },
         Expr::NodePI { target, content } => {
             // let (new_env, evaluated_target) = eval_expr(*target, current_env, context_item);
             // current_env = new_env;
@@ -463,7 +546,8 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
             //     _ => panic!("unexpected object") //TODO: better error
             // };
 
-            (current_env, Object::Node(Node::NodePI { target, content }))
+            let id = current_env.next_id();
+            (current_env, Object::Node(Node::NodePI { sequence: id, target, content }))
         },
 
         Expr::Map { entries } => {
@@ -826,7 +910,7 @@ fn step_and_test<'a>(step: Axis, test: Expr, env: Box<Environment<'a>>, context_
     match context_item {
         Object::Node(node) => {
             match node {
-                Node::Node { name, attributes, children } => {
+                Node::Node { sequence, name, attributes, children } => {
                     match step {
                         Axis::ForwardChild => {
                             let mut result = vec![];
@@ -858,10 +942,10 @@ fn test_node(test: &Expr, node: &Node) -> bool {
     match test {
         Expr::NameTest(qname) => {
             match node {
-                Node::Node { name, attributes, children } => {
+                Node::Node { sequence, name, attributes, children } => {
                     qname.local_part == name.local_part && qname.url == name.url
                 },
-                Node::NodeText(content) => false,
+                Node::NodeText { sequence, content } => false,
                 _ => panic!("error {:?}", node)
             }
         },
@@ -1015,7 +1099,20 @@ mod tests {
     fn eval2() {
         test_eval(
             "<r> { let $i := <e> <a/> <b/> </e>, $b := ($i/b, $i/a, $i/b, $i/a) return <e/>/$b } </r>",
-            Object::Atomic(Type::Boolean(true))
+            Object::Node(
+                Node::Node {
+                    sequence: 1, name: QName::local_part("r"), attributes: vec![],
+                    children: [
+                        Node::Node {
+                            sequence: 1, name: QName::local_part("a"), attributes: vec![], children: vec![],
+                        },
+                        Node::Node {
+                            sequence: 1, name: QName::local_part("b"), attributes: vec![], children: vec![],
+                        },
+                        Node::NodeText { sequence: 1, content: String::from(" ") }
+                    ].to_vec()
+                }
+            )
         )
         // <r><a/><b/></r>
     }

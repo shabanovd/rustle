@@ -15,6 +15,7 @@ mod url;
 mod map;
 
 pub use strings::object_to_string;
+pub use sequences::sort_and_dedup;
 
 pub type FUNCTION<'a> = fn(Box<Environment<'a>>, Vec<Object>, &Object) -> (Box<Environment<'a>>, Object);
 
@@ -25,7 +26,7 @@ pub struct Function {
     body: Expr,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Param {
     pub name: QName,
     pub sequence_type: Option<Type> // TODO: new type?

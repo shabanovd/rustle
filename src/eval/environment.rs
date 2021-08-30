@@ -9,6 +9,8 @@ pub struct Environment<'a> {
     pub namespaces: Namespaces<'a>,
     vars: HashMap<QNameResolved, Object>,
     pub functions: FunctionsRegister<'a>,
+
+    pub sequence: usize,
 }
 
 impl<'a> Environment<'a> {
@@ -17,7 +19,13 @@ impl<'a> Environment<'a> {
             namespaces: Namespaces::new(),
             vars: HashMap::new(),
             functions: FunctionsRegister::new(),
+            sequence: 0,
         }
+    }
+
+    pub fn next_id(&mut self) -> usize {
+        self.sequence += 1;
+        self.sequence
     }
 
     pub fn set(&mut self, key: QNameResolved, value: Object) {

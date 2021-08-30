@@ -65,13 +65,13 @@ impl QName {
         }
     }
 
-    // pub fn local_part(local_part: &str) -> Self {
-    //     QName {
-    //         prefix: String::from("" ),
-    //         url: String::from("" ),
-    //         local_part: String::from( local_part ),
-    //     }
-    // }
+    pub fn local_part(local_part: &str) -> Self {
+        QName {
+            prefix: String::from("" ),
+            url: String::from("" ),
+            local_part: String::from( local_part ),
+        }
+    }
 
     // pub fn from_string(str: String) -> Self {
     //     // TODO fix it by paring string
