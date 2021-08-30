@@ -7,16 +7,19 @@ mod tests {
     use crate::eval::*;
     use xmlparser::{Token, ElementEnd};
     use crate::eval::Object::Empty;
+    use crate::fns::object_to_string;
 
     #[test]
     fn eval_simple() {
-        let data = fs::read_to_string("./qt3tests/fn/apply.xml").unwrap();
+        let data = fs::read_to_string("./qt3tests/prod/StepExpr.xml").unwrap();
 
         let mut script_flag = false;
         let mut result_flag = false;
 
         let mut script = String::new();
         let mut evaluated: Object = Empty;
+
+        let mut expect_result: String = String::new();
 
         for token in xmlparser::Tokenizer::from(data.as_str()) {
 //            println!("{:?}", token);
@@ -45,7 +48,11 @@ mod tests {
                                     script_flag = false;
                                     evaluated = eval(script.as_str());
                                 },
-                                "result" => result_flag = false,
+                                "result" => {
+                                    result_flag = false;
+                                    let result = object_to_string(&evaluated);
+                                    assert_eq!(expect_result, result)
+                                },
                                 _ => {}
                             }
                         },
@@ -73,12 +80,9 @@ mod tests {
     fn eval(input: &str) -> Object {
         println!("script: {:?}", input);
 
-        let result = parse(input);
-
-        println!("parsed: {:?}", result);
-
-        if result.is_ok() {
-            let (_, program) = result.unwrap();
+        let parsed = parse(input);
+        if parsed.is_ok() {
+            let (_, program) = parsed.unwrap();
 
             let mut env = Environment::new();
 
@@ -88,7 +92,7 @@ mod tests {
 
             result
         } else {
-            Object::Empty // TODO: raise error!
+            panic!("error {:?}", parsed)
         }
     }
 }

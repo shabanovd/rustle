@@ -57,22 +57,34 @@ pub struct QName {
 }
 
 impl QName {
-    pub fn local_part(local_part: &str) -> Self {
+    pub fn new(prefix: String, local_part: String) -> Self {
         QName {
-            prefix: String::from("" ),
+            prefix,
             url: String::from("" ),
-            local_part: String::from( local_part ),
+            local_part,
         }
     }
 
-    pub fn from_string(str: String) -> Self {
-        // TODO fix it by paring string
-        QName::local_part(str.as_str())
-    }
+    // pub fn local_part(local_part: &str) -> Self {
+    //     QName {
+    //         prefix: String::from("" ),
+    //         url: String::from("" ),
+    //         local_part: String::from( local_part ),
+    //     }
+    // }
+
+    // pub fn from_string(str: String) -> Self {
+    //     // TODO fix it by paring string
+    //     QName::local_part(str.as_str())
+    // }
 }
 
 impl fmt::Debug for QName {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "QName {{ {} }}", self.local_part)
+        if self.prefix.is_empty() {
+            write!(f, "QName {{ {} }}", self.local_part)
+        } else {
+            write!(f, "QName {{ {}:{} }}", self.prefix, self.local_part)
+        }
     }
 }

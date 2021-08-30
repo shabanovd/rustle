@@ -1,5 +1,5 @@
 //use crate::eval::Type;
-use crate::eval::{Object, eval_statements};
+use crate::eval::{Object, eval_statements, eval_expr};
 use crate::eval::Environment;
 
 use std::collections::HashMap;
@@ -22,7 +22,7 @@ pub fn apply<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item
                 function_environment.set(name, argument.clone());
             }
 
-            let (_, result) = eval_statements(body.clone(), Box::new(function_environment), context_item);
+            let (_, result) = eval_expr(*body.clone(), Box::new(function_environment), context_item);
 
             (current_env, result)
         },

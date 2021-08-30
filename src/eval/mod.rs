@@ -9,7 +9,7 @@ pub use self::environment::Environment;
 
 use std::collections::HashMap;
 use crate::eval::Object::Empty;
-use crate::fns::Param;
+use crate::fns::{Param, call};
 use crate::fns::object_to_string;
 
 const DEBUG: bool = false;
@@ -78,13 +78,6 @@ fn type_to_int(t: Type) -> i128 {
     }
 }
 
-fn type_to_string(t: Type) -> String {
-    match t {
-        Type::String(str) => str,
-        _ => panic!("can't convert to string {:?}", t)
-    }
-}
-
 fn object_to_qname(t: Object) -> QName {
     match t {
         Object::QName { prefix, url, local_part } => QName { prefix, url, local_part },
@@ -92,13 +85,75 @@ fn object_to_qname(t: Object) -> QName {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+#[derive(Eq, PartialEq, Clone, Hash)]
 pub enum Node {
     Node { name: QName, attributes: Vec<Node>, children: Vec<Node> },
     Attribute { name: QName, value: String },
     NodeText(String),
     NodeComment(String),
     NodePI { target: QName, content: String },
+}
+
+use std::fmt;
+impl fmt::Debug for Node {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let write = |f: &mut fmt::Formatter, qname: &QName| {
+            if !qname.prefix.is_empty() {
+                write!(f, "{}:", qname.prefix);
+            }
+            write!(f, "{}", qname.local_part);
+        };
+
+        match self {
+            Node:: NodePI { target, content } => {
+                write!(f, "<?");
+                write(f, target);
+                write!(f, "{:?}?>", content);
+            },
+            Node:: NodeText(content) => {
+                write!(f, "<!--{:?}-->", content);
+            },
+            Node:: NodeText(content) => {
+                write!(f, "{:?}", content);
+            },
+            Node:: Attribute { name, value } => {
+                write!(f, "@");
+                write(f, name);
+                write!(f, "={:?}", value);
+            },
+            Node::Node { name, attributes, children } => {
+                write!(f, "<");
+
+                write(f, name);
+
+                if attributes.len() > 0 {
+                    for attribute in attributes {
+                        match attribute {
+                            Node::Attribute { name, value } => {
+                                write!(f, " ");
+                                write(f, name);
+                                write!(f, "={}", value);
+                            },
+                            _ => panic!("unexpected")
+                        }
+                    }
+                }
+
+                if children.len() == 0 {
+                    write!(f, "/>");
+                } else {
+                    write!(f, ">");
+                    for child in children {
+                        write!(f, "{:?}", child);
+                    }
+                    write!(f, "</");
+                    write(f, name);
+                }
+            },
+            _ => panic!("unexpected")
+        }
+        write!(f, "")
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -116,7 +171,7 @@ pub enum Object {
     Array(Vec<Object>),
     Map(HashMap<Type, Object>),
 
-    Function { parameters: Vec<Param>, body: Vec<Statement> },
+    Function { parameters: Vec<Param>, body: Box<Expr> },
     FunctionRef { name: QNameResolved, arity: usize },
 
     Return(Box<Object>),
@@ -130,8 +185,8 @@ pub fn eval_statements<'a>(statements: Vec<Statement>, env: Box<Environment<'a>>
 
     for statement in statements {
         let (new_env, new_result) = eval_statement(statement, current_env, context_item);
-
         current_env = new_env;
+
         result = new_result;
 
         if let &Object::Return(_) = &result {
@@ -148,18 +203,85 @@ pub fn eval_statements<'a>(statements: Vec<Statement>, env: Box<Environment<'a>>
 
 fn eval_statement<'a>(statement: Statement, env: Box<Environment<'a>>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
     match statement {
+        Statement::Prolog(exprs) => (eval_prolog(exprs, env), Object::Empty),
+        Statement::Program(expr) => eval_expr(expr, env, context_item),
         Statement::Expression(expr) => eval_expr(expr, env, context_item),
         _ => panic!("TODO: {:?}", statement)
     }
 }
 
-fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+pub fn eval_prolog(exprs: Vec<Expr>, env: Box<Environment>) -> Box<Environment> {
+    let mut current_env = env;
+
+    for expr in exprs {
+        current_env = eval_prolog_expr(expr, current_env);
+    }
+
+    current_env
+}
+
+fn eval_prolog_expr(expression: Expr, env: Box<Environment>) -> Box<Environment> {
     if DEBUG {
         println!("eval_expr: {:?}", expression);
     }
 
     let mut current_env = env;
-    let last_env = current_env.clone();
+
+    match expression {
+        Expr::AnnotatedDecl { annotations, decl } => {
+            // TODO handle annotations
+
+            eval_prolog_expr(*decl, current_env)
+        },
+        Expr::FunctionDecl { name, params, type_declaration, external, body } => {
+            let name = resolve_function_qname(name, &current_env);
+
+            // TODO: handle typeDeclaration
+
+            if let Some(body) = body {
+                current_env.functions.put(name, params, body);
+
+            } else {
+                panic!("error")
+            }
+
+            current_env
+        },
+        Expr::VarDecl { name, type_declaration, external, value } => {
+
+            current_env
+        },
+        _ => panic!("unexcpected at prolog {:?}", expression)
+    }
+}
+
+pub fn eval_exprs<'a>(exprs: Vec<Expr>, env: Box<Environment<'a>>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+
+    let mut result = Object::Empty;
+
+    let mut current_env = env;
+
+    for expr in exprs {
+        let (new_env, new_result) = eval_expr(expr, current_env, context_item);
+        current_env = new_env;
+
+        // TODO: review it
+        result = new_result;
+
+        if let &Object::Return(_) = &result {
+            return (current_env, result);
+        }
+    }
+
+    (current_env, result)
+}
+
+pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+    if DEBUG {
+        println!("eval_expr: {:?}", expression);
+    }
+
+    let mut current_env = env;
 
     match expression {
         Expr::Boolean(bool) => (current_env, Object::Atomic(Type::Boolean(bool))),
@@ -173,6 +295,70 @@ fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: &Obj
 
         Expr::QName { local_part, url, prefix } => {
             (current_env, Object::QName { local_part, url, prefix })
+        },
+
+        Expr::Body(exprs) => {
+            if exprs.len() == 0 {
+                (current_env, Object::Empty)
+            } else if exprs.len() == 1 {
+                let expr = exprs.get(0).unwrap().clone();
+
+                let (new_env, value) = eval_expr(expr, current_env, context_item);
+                current_env = new_env;
+
+                (current_env, value)
+            } else {
+                let mut evaluated = vec![];
+                for expr in exprs {
+                    let (new_env, value) = eval_expr(expr, current_env, context_item);
+                    current_env = new_env;
+
+                    match value {
+                        Object::Empty => {},
+                        _ => evaluated.push(value)
+                    }
+                }
+
+                if evaluated.len() == 0 {
+                    (current_env, Object::Empty)
+                } else if evaluated.len() == 1 {
+                    (current_env, evaluated[0].clone()) //TODO: try to avoid clone here
+                } else {
+                    (current_env, Object::Sequence(evaluated))
+                }
+            }
+        },
+
+        Expr::Steps(steps) => {
+            let mut current_context_item = context_item.clone();
+            for step in steps {
+                println!("step {:?}", step);
+
+                let (new_env, value) = eval_expr(step, current_env, &current_context_item);
+                current_env = new_env;
+
+                current_context_item = value;
+                println!("result {:?}", current_context_item);
+            }
+
+            (current_env, current_context_item)
+        },
+        Expr::Path { steps,  expr } => {
+            eval_expr(*expr, current_env, context_item)
+        }
+
+        Expr::AxisStep { step, predicates } => {
+            let (new_env, value) = eval_expr(*step, current_env, context_item);
+            current_env = new_env;
+
+            eval_predicates(predicates, current_env, value, context_item)
+        },
+        Expr::ForwardStep { attribute, test} => {
+            if attribute {
+                step_and_test(Axis::ForwardAttribute, *test, current_env, context_item)
+            } else {
+                step_and_test(Axis::ForwardChild, *test, current_env, context_item)
+            }
         },
 
         Expr::Node { name, attributes , children } => {
@@ -206,6 +392,21 @@ fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: &Obj
                 current_env = new_env;
 
                 match evaluated_child {
+                    Object::Sequence(items) => {
+                        for item in items {
+                            match item {
+                                Object::Node(Node::Attribute { name, value}) => { // TODO: avoid copy!
+                                    let evaluated_attribute = Node::Attribute { name, value };
+
+                                    evaluated_attributes.push(evaluated_attribute);
+                                },
+                                Object::Node(node) => {
+                                    evaluated_children.push(node);
+                                }
+                                _ => panic!("unexpected object {:?}", item) //TODO: better error
+                            }
+                        }
+                    },
                     Object::Node(Node::Attribute { name, value}) => { // TODO: avoid copy!
                         let evaluated_attribute = Node::Attribute { name, value };
 
@@ -214,7 +415,7 @@ fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: &Obj
                     Object::Node(node) => {
                         evaluated_children.push(node);
                     }
-                    _ => panic!("unexpected object") //TODO: better error
+                    _ => panic!("unexpected object {:?}", evaluated_child) //TODO: better error
                 };
 
 
@@ -373,13 +574,7 @@ fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: &Obj
                         evaluated_arguments.push(value);
                     }
 
-                    let fun = current_env.functions.get(&name, evaluated_arguments.len());
-
-                    return if fun.is_some() {
-                        fun.unwrap()(current_env, evaluated_arguments, context_item)
-                    } else {
-                        panic!("no function {:?}#{:?}", name, evaluated_arguments.len())
-                    }
+                    return call(current_env, name, evaluated_arguments, context_item)
                 }
                 _ => panic!("error")
             };
@@ -396,7 +591,7 @@ fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: &Obj
                 function_environment.set(name, new_result);
             }
 
-            let (_, result) = eval_statements(body, Box::new(function_environment), context_item);
+            let (_, result) = eval_expr(*body, Box::new(function_environment), context_item);
 
             (current_env, result)
         },
@@ -439,8 +634,8 @@ fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: &Obj
             (current_env, Object::Array(values))
         },
 
-        Expr::CurlyArrayConstructor { exprs } => {
-            let (new_env, evaluated) = eval_statements(exprs, current_env, context_item);
+        Expr::CurlyArrayConstructor(expr) => {
+            let (new_env, evaluated) = eval_expr(*expr, current_env, context_item);
             current_env = new_env;
 
             let values = match evaluated {
@@ -455,94 +650,17 @@ fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: &Obj
             let (new_env, value) = eval_expr(*primary, current_env, context_item);
             current_env = new_env;
 
-            let mut result = value;
-
-            for suf in suffix {
-                match suf {
-                    Expr::Predicate(cond) => {
-                        match *cond {
-                            Expr::Integer(pos) => {
-                                match result {
-                                    Object::Range { min , max } => {
-                                        let len = max - min + 1;
-
-                                        if pos > len {
-                                            result = Empty;
-                                        } else {
-                                            result = Object::Atomic(Type::Integer(min + pos - 1));
-                                        }
-                                    },
-                                    _ => panic!("predicate {:?} on {:?}", pos, result)
-                                }
-                            },
-                            Expr::Comparison { left, operator, right } => {
-                                let it = object_to_iterator(&result);
-
-                                let mut evaluated = vec![];
-                                for item in it {
-                                    let context_item = item;
-
-                                    let (_, l_value) = eval_expr(*left.clone(), current_env.clone(), &context_item);
-                                    let (_, r_value) = eval_expr(*right.clone(), current_env.clone(), &context_item);
-
-                                    match operator {
-                                        Operator::Equals => {
-                                            if l_value == r_value {
-                                                evaluated.push(context_item)
-                                            }
-                                        }
-                                        _ => panic!("operator {:?} is not implemented", operator)
-                                    }
-                                }
-
-                                if evaluated.len() == 0 {
-                                    result = Object::Empty;
-                                } else if evaluated.len() == 1 {
-                                    result = evaluated[0].clone() //TODO: try to avoid clone here
-                                } else {
-                                    result = Object::Sequence(evaluated)
-                                }
-                            }
-                            _ => panic!("unknown suffix statement {:?} {:?}", cond, result)
-                        }
-                    }
-                    _ => panic!("unknown suffix {:?}", suf)
-                }
-            }
-
-            (current_env, result)
+            eval_predicates(suffix, current_env, value, context_item)
         },
 
         Expr::SequenceEmpty() => {
             (current_env, Object::Empty)
         },
-        Expr::Sequence(exprs) => {
-            if exprs.len() == 0 {
-                (current_env, Object::Empty)
-            } else if exprs.len() == 1 {
-                let expr = exprs.get(0).unwrap().clone();
+        Expr::Sequence(expr) => {
+            let (new_env, value) = eval_expr(*expr, current_env, context_item);
+            current_env = new_env;
 
-                let (new_env, value) = eval_statement(expr, current_env, context_item);
-                current_env = new_env;
-
-                (current_env, value)
-            } else {
-                let mut evaluated = vec![];
-                for expr in exprs {
-                    let (new_env, value) = eval_statement(expr, current_env, context_item);
-                    current_env = new_env;
-
-                    evaluated.push(value);
-                }
-
-                if evaluated.len() == 0 {
-                    (current_env, Object::Empty)
-                } else if evaluated.len() == 1 {
-                    (current_env, evaluated[0].clone()) //TODO: try to avoid clone here
-                } else {
-                    (current_env, Object::Sequence(evaluated))
-                }
-            }
+            (current_env, value)
         },
 
         Expr::Or(exprs) => {
@@ -641,13 +759,15 @@ fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: &Obj
             (current_env, Object::Function { parameters: arguments, body })
         },
 
-        Expr::FLWOR { initialClause, returnExpr } => {
-            let (new_env, _) = eval_expr(*initialClause, current_env, context_item);
+        Expr::FLWOR { clauses, return_expr } => {
+            // TODO: new env?
+            // TODO: handle  WhereClause | GroupByClause | OrderByClause | CountClause
+            let (new_env, _) = eval_exprs(clauses, current_env, context_item);
             current_env = new_env;
 
             // println!("returnExpr {:#?}", returnExpr);
 
-            let (new_env, evaluated) = eval_expr(*returnExpr, current_env, context_item);
+            let (new_env, evaluated) = eval_expr(*return_expr, current_env, context_item);
             current_env = new_env;
 
             (current_env, evaluated)
@@ -660,15 +780,15 @@ fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: &Obj
 
             (current_env, Object::Empty)
         },
-        Expr::LetBinding { name, typeDeclaration,  value } => {
-            let (_, evaluatedValue) = eval_expr(*value, current_env.clone(), context_item);
+        Expr::LetBinding { name, type_declaration,  value } => {
+            let (_, evaluated_value) = eval_expr(*value, current_env.clone(), context_item);
 
             // TODO: handle typeDeclaration
 
             let name = resolve_element_qname(name, &current_env);
 
             let mut new_env = *current_env.clone();
-            new_env.set(name, evaluatedValue);
+            new_env.set(name, evaluated_value);
 
             (Box::new(new_env), Object::Empty)
         },
@@ -684,6 +804,130 @@ fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: &Obj
         }
         _ => panic!("TODO {:?}", expression)
     }
+}
+
+enum Axis {
+    ForwardChild,
+    ForwardDescendant,
+    ForwardAttribute,
+    ForwardSelf,
+    ForwardDescendantOrSelf,
+    ForwardFollowingSibling,
+    ForwardFollowing,
+
+    ReverseParent,
+    ReverseAncestor,
+    ReversePrecedingSibling,
+    ReversePreceding,
+    ReverseAncestorOrSelf,
+}
+
+fn step_and_test<'a>(step: Axis, test: Expr, env: Box<Environment<'a>>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+    match context_item {
+        Object::Node(node) => {
+            match node {
+                Node::Node { name, attributes, children } => {
+                    match step {
+                        Axis::ForwardChild => {
+                            let mut result = vec![];
+                            for child in children {
+                                if test_node(&test, child) {
+                                    result.push(Object::Node(child.clone()))
+                                }
+                            }
+
+                            if result.len() == 0 {
+                                (env, Object::Empty)
+                            } else if result.len() == 1 {
+                                (env, result.remove(0))
+                            } else {
+                                (env, Object::Sequence(result))
+                            }
+                        },
+                        _ => todo!()
+                    }
+                },
+                _ => (env, Object::Empty)
+            }
+        },
+        _ => (env, Object::Empty)
+    }
+}
+
+fn test_node(test: &Expr, node: &Node) -> bool {
+    match test {
+        Expr::NameTest(qname) => {
+            match node {
+                Node::Node { name, attributes, children } => {
+                    qname.local_part == name.local_part && qname.url == name.url
+                },
+                Node::NodeText(content) => false,
+                _ => panic!("error {:?}", node)
+            }
+        },
+        _ => panic!("error {:?}", test)
+    }
+}
+
+
+fn eval_predicates<'a>(exprs: Vec<Expr>, env: Box<Environment<'a>>, value: Object, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+    let mut current_env = env;
+    let mut result = value;
+
+    for expr in exprs {
+        match expr {
+            Expr::Predicate(cond) => {
+                match *cond {
+                    Expr::Integer(pos) => {
+                        match result {
+                            Object::Range { min , max } => {
+                                let len = max - min + 1;
+
+                                if pos > len {
+                                    result = Empty;
+                                } else {
+                                    result = Object::Atomic(Type::Integer(min + pos - 1));
+                                }
+                            },
+                            _ => panic!("predicate {:?} on {:?}", pos, result)
+                        }
+                    },
+                    Expr::Comparison { left, operator, right } => {
+                        let it = object_to_iterator(&result);
+
+                        let mut evaluated = vec![];
+                        for item in it {
+                            let context_item = item;
+
+                            let (_, l_value) = eval_expr(*left.clone(), current_env.clone(), &context_item);
+                            let (_, r_value) = eval_expr(*right.clone(), current_env.clone(), &context_item);
+
+                            match operator {
+                                Operator::Equals => {
+                                    if l_value == r_value {
+                                        evaluated.push(context_item)
+                                    }
+                                }
+                                _ => panic!("operator {:?} is not implemented", operator)
+                            }
+                        }
+
+                        if evaluated.len() == 0 {
+                            result = Object::Empty;
+                        } else if evaluated.len() == 1 {
+                            result = evaluated[0].clone() //TODO: try to avoid clone here
+                        } else {
+                            result = Object::Sequence(evaluated)
+                        }
+                    }
+                    _ => panic!("unknown {:?} {:?}", cond, result)
+                }
+            }
+            _ => panic!("unknown {:?}", expr)
+        }
+    }
+
+    (current_env, result)
 }
 
 fn is_context_dependent(expression: &Expr) -> bool {
@@ -717,7 +961,7 @@ impl Iterator for RangeIterator {
         let curr = self.next;
         self.next = self.next + self.step;
 
-        if (self.step > 0 && curr <= self.till) || (self.step < 0 && curr >= self.till) {
+        if (self.step > 0 && curr < self.till) || (self.step < 0 && curr >= self.till) {
             Some(Object::Atomic(Type::Integer(curr)))
         } else {
             None
@@ -760,116 +1004,20 @@ mod tests {
     use crate::parser::parse;
 
     #[test]
-    fn eval_decimal() {
+    fn eval1() {
         test_eval(
-            "xs:decimal(\"617375191608514839\") * xs:decimal(\"0\")",
-            Object::Atomic(Type::Integer(0)))
-    }
-
-    #[test]
-    fn eval_map_get() {
-        test_eval(
-            "map:get(map{1:\"Sunday\",2:\"Monday\",3:\"Tuesday\",4:(),5:\"Thursday\",6:\"Friday\",7:\"Saturday\"}, 4)",
-            Object::Empty
+            "empty(<a/>/a)",
+            Object::Atomic(Type::Boolean(true))
         )
     }
 
     #[test]
-    fn eval_apply1() {
+    fn eval2() {
         test_eval(
-            "apply(string-join#1, [reverse(1 to 5) ! string()])",
-            Object::Atomic(Type::String(String::from("54321")))
+            "<r> { let $i := <e> <a/> <b/> </e>, $b := ($i/b, $i/a, $i/b, $i/a) return <e/>/$b } </r>",
+            Object::Atomic(Type::Boolean(true))
         )
-    }
-
-
-    #[test]
-    fn eval_sequence1() {
-        test_eval(
-            "(1 to 5)[10]",
-            Object::Empty
-        );
-
-        test_eval(
-            "(21 to 29)[5]",
-            Object::Atomic(Type::Integer(25))
-        );
-    }
-
-    #[test]
-    fn eval_sequence2() {
-        test_eval(
-            "(1 to 100)[. mod 5 eq 0]",
-            Object::Sequence([
-                Object::Atomic(Type::Integer(5)),
-                Object::Atomic(Type::Integer(10)),
-                Object::Atomic(Type::Integer(15)),
-                Object::Atomic(Type::Integer(20)),
-                Object::Atomic(Type::Integer(25)),
-                Object::Atomic(Type::Integer(30)),
-                Object::Atomic(Type::Integer(35)),
-                Object::Atomic(Type::Integer(40)),
-                Object::Atomic(Type::Integer(45)),
-                Object::Atomic(Type::Integer(50)),
-                Object::Atomic(Type::Integer(55)),
-                Object::Atomic(Type::Integer(60)),
-                Object::Atomic(Type::Integer(65)),
-                Object::Atomic(Type::Integer(70)),
-                Object::Atomic(Type::Integer(75)),
-                Object::Atomic(Type::Integer(80)),
-                Object::Atomic(Type::Integer(85)),
-                Object::Atomic(Type::Integer(90)),
-                Object::Atomic(Type::Integer(95)),
-            ].to_vec())
-        );
-    }
-
-    #[test]
-    fn eval_direct_node_creation() {
-        test_eval(
-            "<book isbn=\"isbn-0060229357\">\
-    <title>Harold and the Purple Crayon</title>\
-    <author>\
-        <first>Crockett</first>\
-        <last>Johnson</last>\
-    </author>\
-</book>",
-            Object::Node(Node::Node {
-                name: QName::local_part("book"),
-                attributes: [
-                    Node::Attribute { name: QName::local_part("isbn"), value: "isbn-0060229357".to_string() }
-                ].to_vec(),
-                children: [
-                    Node::Node {
-                        name: QName::local_part("title"),
-                        attributes: Vec::new(),
-                        children: [
-                            Node::NodeText("Harold and the Purple Crayon".to_string())
-                        ].to_vec()
-                    },
-                    Node::Node {
-                        name: QName::local_part("author"),
-                        attributes: Vec::new(),
-                        children: [
-                            Node::Node {
-                                name: QName::local_part("first"),
-                                attributes: Vec::new(),
-                                children: [
-                                    Node::NodeText("Crockett".to_string())
-                                ].to_vec()
-                            },
-                            Node::Node {
-                                name: QName::local_part("last"),
-                                attributes: Vec::new(),
-                                children: [
-                                    Node::NodeText("Johnson".to_string())
-                                ].to_vec()
-                            }
-                        ].to_vec()
-                    }
-                ].to_vec()
-            }
-        ))
+        // <r><a/><b/></r>
     }
 
     fn test_eval(input: &str, expected: Object) {

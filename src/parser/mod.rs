@@ -10,15 +10,16 @@ use nom::character::complete::one_of;
 
 mod macros;
 use crate::parse_sequence;
+use crate::parse_surroundings;
 use crate::parse_one_of;
 
 use crate::namespaces::*;
 use nom::error::ParseError;
 use std::fmt::Error;
 use crate::value::QName;
-use crate::fns::Param;
+use crate::fns::{Param, expr_to_params};
 
-const DEBUG: bool = false;
+const DEBUG: bool = true;
 
 fn found_statements(input: &str, program: Vec<Statement>) -> IResult<&str, Vec<Statement>> {
     Ok((input, program))
@@ -39,15 +40,61 @@ fn found_expr(input: &str, expr: Expr) -> IResult<&str, Expr> {
     Ok((input, expr))
 }
 
+fn found_qname(input: &str, qname: QName) -> IResult<&str, QName> {
+    if DEBUG {
+        println!("\nfound: {:?}\ninput: {:?}", qname, input);
+    }
+    Ok((input, qname))
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
+    Prolog(Vec<Expr>),
+    Program(Expr),
+
     Expression (Expr),
     Let { name: String, value: Expr},
     Return { value: Expr },
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub enum Steps {
+    One,
+    More,
+}
+
+impl Steps {
+    fn from(str: &str) -> Self {
+        match str {
+            "/" => Steps::One,
+            "//" => Steps::More,
+            _ => panic!("error")
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum Expr {
+    //internal
+    Literals(Vec<Expr>),
+
+    //prolog
+    AnnotatedDecl { annotations: Vec<Expr>, decl: Box<Expr> },
+    VarDecl { name: QName, type_declaration: Box<Option<Expr>>, external: bool, value: Box<Option<Expr>> },
+    FunctionDecl { name: QName, params: Vec<Param>, type_declaration: Box<Option<Expr>>, external: bool, body: Option<Box<Expr>> },
+
+    Body(Vec<Expr>),
+
+    //navigation
+    Root,
+    Steps(Vec<Expr>),
+    InitialPath { steps: Steps, expr: Box<Expr> },
+    Path { steps: Steps, expr: Box<Expr> },
+    AxisStep { step: Box<Expr>, predicates: Vec<Expr> },
+    ForwardStep { attribute: bool, test: Box<Expr> },
+    NameTest(QName),
+
+    //spec
     Ident(String),
 
     Boolean(bool),
@@ -58,7 +105,7 @@ pub enum Expr {
 
     ContextItem,
 
-    Sequence(Vec<Statement>),
+    Sequence(Box<Expr>),
     SequenceEmpty(),
     Range { from: Box<Expr>, till: Box<Expr> },
     Predicate(Box<Expr>),
@@ -76,7 +123,7 @@ pub enum Expr {
     MapEntry { key: Box<Expr>, value: Box<Expr> },
 
     SquareArrayConstructor { items: Vec<Expr> },
-    CurlyArrayConstructor { exprs: Vec<Statement> },
+    CurlyArrayConstructor(Box<Expr>),
 
     QName { local_part: String, url: String, prefix: String },
 
@@ -86,12 +133,13 @@ pub enum Expr {
     If { condition: Box<Expr>, consequence: Vec<Statement>, alternative: Vec<Statement> },
 
     ArgumentList { arguments: Vec<Expr> },
-    Function { arguments: Vec<Param>, body: Vec<Statement> },
+    Function { arguments: Vec<Param>, body: Box<Expr> },
     Call { function: QName, arguments: Vec<Expr> },
     NamedFunctionRef { name: QName, arity: Box<Expr> },
+    Annotation { name: QName, value: Option<String> },
 
     ParamList(Vec<Expr>),
-    Param { name: QName, typeDeclaration: Box<Option<Expr>> },
+    Param { name: QName, type_declaration: Box<Option<Expr>> },
 
     VarRef { name: QName },
 
@@ -100,10 +148,10 @@ pub enum Expr {
     StringConcat(Vec<Expr>),
     SimpleMap(Vec<Expr>),
 
-    FLWOR { initialClause: Box<Expr>, returnExpr: Box<Expr> },
+    FLWOR { clauses: Vec<Expr>, return_expr: Box<Expr> },
 
     LetClause { bindings: Vec<Expr> },
-    LetBinding { name: QName, typeDeclaration: Box<Option<Expr>>,  value: Box<Expr>},
+    LetBinding { name: QName, type_declaration: Box<Option<Expr>>,  value: Box<Expr>},
 
 }
 
@@ -130,11 +178,152 @@ pub enum Operator {
 // [1]    	Module 	   ::=    	TODO: VersionDecl? (LibraryModule | MainModule)
 pub fn parse(input: &str) -> IResult<&str, Vec<Statement>> {
 
-    //TODO: [6]    	Prolog 	   ::=    	((DefaultNamespaceDecl | Setter | NamespaceDecl | Import) Separator)* ((ContextItemDecl | AnnotatedDecl | OptionDecl) Separator)*
+    parse_main_module(input)
+}
+
+// TODO [2]    	VersionDecl 	   ::=    	"xquery" (("encoding" StringLiteral) | ("version" StringLiteral ("encoding" StringLiteral)?)) Separator
+
+// [3]    	MainModule 	   ::=    	Prolog QueryBody
+pub fn parse_main_module(input: &str) -> IResult<&str, Vec<Statement>> {
+    let (input, prolog) = parse_prolog(input)?;
 
     let (input, program) = parse_expr(input)?;
 
-    found_statements(input, program)
+    found_statements(input, vec![Statement::Prolog(prolog), Statement::Program(program)])
+}
+
+// [6]    	Prolog 	   ::=
+// TODO: ((DefaultNamespaceDecl | Setter | NamespaceDecl | Import) Separator)*
+// TODO: ((ContextItemDecl | AnnotatedDecl | OptionDecl) Separator)*
+// [7]    	Separator 	   ::=    	";"
+pub fn parse_prolog(input: &str) -> IResult<&str, Vec<Expr>> {
+
+    let mut prolog = vec![];
+
+    let mut current_input = input;
+
+    loop {
+        let check = parse_annotated_decl(current_input);
+        if check.is_ok() {
+            let (input, expr) = check?;
+            current_input = input;
+
+            let (input, _) = tag(";")(input)?;
+            current_input = input;
+
+            prolog.push(expr);
+        } else {
+            break
+        }
+    }
+
+    found_exprs(current_input, prolog)
+}
+
+// [26]    	AnnotatedDecl 	   ::=    	"declare" Annotation* (VarDecl | FunctionDecl)
+pub fn parse_annotated_decl(input: &str) -> IResult<&str, Expr> {
+
+    let (input, _) = ws_tag("declare", input)?;
+    let mut current_input = input;
+
+    let mut annotations = vec![];
+    loop {
+        let check = parse_annotation(current_input);
+        if check.is_ok() {
+            let (input, annotation) = check?;
+            current_input = input;
+
+            annotations.push(annotation);
+        } else {
+            break
+        }
+    }
+
+    let check = parse_var_decl(current_input);
+    let (input, decl) = if check.is_ok() {
+        let (input, decl) = check?;
+
+        (input, Box::new(decl))
+    } else {
+        let (input, decl) = parse_function_decl(current_input)?;
+
+        (input, Box::new(decl))
+    };
+
+    found_expr(input, Expr::AnnotatedDecl { annotations, decl } )
+}
+
+// [27]    	Annotation 	   ::=    	"%" EQName ("(" Literal ("," Literal)* ")")?
+pub fn parse_annotation(input: &str) -> IResult<&str, Expr> {
+
+    let (input, _) = ws_tag("%", input)?;
+
+    let (input, name) = parse_eqname(input)?;
+
+    let check = parse_annotation_value(input);
+    if check.is_ok() {
+        let (input, list) = check?;
+        todo!()
+    } else {
+        found_expr(input, Expr::Annotation { name, value: None })
+    }
+}
+
+parse_surroundings!(parse_annotation_value, "(", ",", ")", parse_literal, Literals);
+
+// [28]    	VarDecl 	   ::=    	"variable" "$" VarName TypeDeclaration? ((":=" VarValue) | ("external" (":=" VarDefaultValue)?))
+// [132]    	VarName 	   ::=    	EQName
+pub fn parse_var_decl(input: &str) -> IResult<&str, Expr> {
+    let (input, _) = ws_tag("variable", input)?;
+
+    let (input, _) = ws_tag("$", input)?;
+
+    let (input, name) = parse_eqname(input)?;
+
+    let mut current_input = input;
+
+    let check = parse_type_declaration(current_input);
+    let type_declaration = if check.is_ok() {
+        let (input, td) = check?;
+        current_input = input;
+        Some(td)
+    } else {
+        None
+    };
+
+    let mut external = false;
+
+    let check = ws_tag("external", current_input);
+    if check.is_ok() {
+        let (input, _) = check?;
+        current_input = input;
+        external = true;
+    }
+
+    let check = ws_tag(":=", current_input);
+    let (input, value) = if check.is_ok() {
+        let (input, _) = check?;
+        current_input = input;
+
+        let (input, expr) = parse_expr_single(current_input)?;
+        (input, Some(expr))
+    } else {
+        if external {
+            (current_input, None)
+        } else {
+            // TODO: is it correct?
+            return Err(nom::Err::Error(nom::error::ParseError::from_char(current_input, ' ')));
+        }
+    };
+
+    found_expr(
+        input,
+        Expr::VarDecl {
+            external, name,
+            type_declaration: Box::new(type_declaration),
+            value: Box::new(value)
+        }
+    )
 }
 
 // [33]    	ParamList 	   ::=    	Param ("," Param)*
@@ -148,41 +337,100 @@ fn parse_param(input: &str) -> IResult<&str, Expr> {
 
     found_expr(
         input,
-        Expr::Param { name, typeDeclaration: Box::new(None)}
+        Expr::Param { name, type_declaration: Box::new(None)}
     )
 }
 
+// [32]    	FunctionDecl 	   ::=    	"function" EQName "(" ParamList? ")" ("as" SequenceType)? (FunctionBody | "external")
+// [35]    	FunctionBody 	   ::=    	EnclosedExpr
+fn parse_function_decl(input: &str) -> IResult<&str, Expr> {
+    let (input, _) = ws_tag_ws("function", input)?;
+
+    let (input, name) = parse_eqname(input)?;
+
+    println!("parse_function_decl 1 {:?}", input);
+
+    let (input, _) = ws_tag_ws("(", input)?;
+
+    println!("parse_function_decl 2 {:?}", input);
+
+    let mut current_input = input;
+
+    let check = parse_param_list(current_input);
+    let params = if check.is_ok() {
+        let (input, params) = check?;
+        current_input = input;
+
+        expr_to_params(params)
+    } else {
+        vec![]
+    };
+
+    let (input, _) = ws_tag_ws(")", current_input)?;
+    current_input = input;
+
+    println!("parse_function_decl 3 {:?}", current_input);
+
+    let check = parse_type_declaration(current_input);
+    let type_declaration = if check.is_ok() {
+        let (input, td) = check?;
+        current_input = input;
+
+        Box::new(Some(td))
+    } else {
+        Box::new(None)
+    };
+
+    println!("parse_function_decl 4 {:?}", current_input);
+
+    let check = ws_tag_ws("external", current_input);
+    let (input, external, body) = if check.is_ok() {
+        let (input, _) = check?;
+
+        (input, true, None)
+    } else {
+        println!("parse_function_decl 5 {:?}", current_input);
+
+        let (input, body) = parse_enclosed_expr(current_input)?;
+        (input, false, Some(Box::new(body)))
+    };
+
+    println!("parse_function_decl 6 {:?}", input);
+
+    found_expr(input, Expr::FunctionDecl { name, params, external, type_declaration, body })
+}
+
 // [36]    	EnclosedExpr 	   ::=    	"{" Expr? "}"
-fn parse_enclosed_expr(input: &str) -> IResult<&str, Vec<Statement>> {
-    let (input, _) = ws_tag("{", input)?;
+fn parse_enclosed_expr(input: &str) -> IResult<&str, Expr> {
+    let (input, _) = ws_tag_ws("{", input)?;
 
     let check = parse_expr(input);
     let (input, expr) = if check.is_ok() {
         check?
     } else {
-        (input, vec![])
+        (input, Expr::Body(vec![]))
     };
 
     let (input, _) = ws_tag("}", input)?;
 
-    found_statements(input, expr)
+    found_expr(input, expr)
 }
 
 // [38]    	QueryBody 	   ::=    	Expr
 // [39]    	Expr 	   ::=    	ExprSingle ("," ExprSingle)*
-fn parse_expr(input: &str) -> IResult<&str, Vec<Statement>> {
+fn parse_expr(input: &str) -> IResult<&str, Expr> {
     let mut program = vec![];
 
     let mut current_input = input;
     loop {
         let (input, expr) = parse_expr_single(current_input)?;
 
-        program.push(Statement::Expression( expr ));
+        program.push(expr);
 
         let tmp = ws_tag(",", input);
         if tmp.is_err() {
             return
-                found_statements(input, program)
+                found_expr(input, Expr::Body(program))
         }
         current_input = tmp?.0;
     }
@@ -217,24 +465,52 @@ fn parse_expr_single(input: &str) -> IResult<&str, Expr> {
 }
 
 // [41]    	FLWORExpr 	   ::=    	InitialClause IntermediateClause* ReturnClause
-// [42]    	InitialClause 	   ::=    	ForClause | LetClause | WindowClause
-
 // [69]    	ReturnClause 	   ::=    	"return" ExprSingle
 fn parse_flwor_expr(input: &str) -> IResult<&str, Expr> {
-    let (input, initialClause) = parse_let_clause_expr(input)?;
+    let mut clauses = vec![];
 
-    let (input, _) = ws_tag("return", input)?;
+    let (input, initial_clause) = parse_initial_clause(input)?;
+    let mut current_input = input;
 
-    let (input, returnExpr) = parse_expr_single(input)?;
+    clauses.push(initial_clause);
+
+    loop {
+        let check = parse_intermediate_clause(current_input);
+        if check.is_ok() {
+            let (input, intermediate_claus) = check?;
+            current_input = input;
+
+            clauses.push(intermediate_claus);
+        } else {
+            break
+        }
+    }
+
+    let (input, _) = ws_tag_ws("return", current_input)?;
+    current_input = input;
+
+    let (input, return_expr) = parse_expr_single(current_input)?;
+    current_input = input;
 
     found_expr(
-        input,
-        Expr::FLWOR { initialClause: Box::new(initialClause), returnExpr: Box::new(returnExpr) }
+        current_input,
+        Expr::FLWOR { clauses, return_expr: Box::new(return_expr) }
     )
+}
+
+// [42]    	InitialClause 	   ::=    	ForClause | LetClause | WindowClause
+fn parse_initial_clause(input: &str) -> IResult<&str, Expr> {
+    parse_let_clause_expr(input)
+}
+
+// [43]    	IntermediateClause 	   ::=    	InitialClause | WhereClause | GroupByClause | OrderByClause | CountClause
+fn parse_intermediate_clause(input: &str) -> IResult<&str, Expr> {
+    parse_let_clause_expr(input)
 }
 
 // [48]    	LetClause 	   ::=    	"let" LetBinding ("," LetBinding)*
 fn parse_let_clause_expr(input: &str) -> IResult<&str, Expr> {
+    println!("parse_let_clause_expr 1 {:?}", input);
 
     let check = ws_tag("let", input);
     if check.is_ok() {
@@ -244,6 +520,8 @@ fn parse_let_clause_expr(input: &str) -> IResult<&str, Expr> {
 
         let mut current_input = input;
         loop {
+
+            println!("parse_let_clause_expr 2 {:?}", input);
 
             let (input, expr) = parse_let_binding_expr(current_input)?;
 
@@ -258,6 +536,8 @@ fn parse_let_clause_expr(input: &str) -> IResult<&str, Expr> {
                     )
             }
             current_input = tmp?.0;
+
+            println!("parse_let_clause_expr 3 {:?}", input);
         }
     } else {
         // TODO: is it correct?
@@ -273,10 +553,10 @@ fn parse_let_binding_expr(input: &str) -> IResult<&str, Expr> {
 
     let (input, name) = parse_eqname(input)?;
 
-    let check = parse_type_declaration_expr(input);
-    let (input, typeDeclaration) = if check.is_ok() {
-        let (input, typeDeclaration) = check?;
-        (input, Some(typeDeclaration))
+    let check = parse_type_declaration(input);
+    let (input, td) = if check.is_ok() {
+        let (input, td) = check?;
+        (input, Some(td))
     } else {
         (input, None)
     };
@@ -287,7 +567,7 @@ fn parse_let_binding_expr(input: &str) -> IResult<&str, Expr> {
 
     found_expr(
         input,
-        Expr::LetBinding { name, typeDeclaration: Box::new(typeDeclaration),  value: Box::new(value)}
+        Expr::LetBinding { name, type_declaration: Box::new(td),  value: Box::new(value)}
     )
 }
 
@@ -447,24 +727,131 @@ parse_sequence!(parse_simple_map_expr, "!", parse_path_expr, SimpleMap);
 
 // [108]    	PathExpr 	   ::=    	TODO: ("/" RelativePathExpr?) | ("//" RelativePathExpr) | RelativePathExpr
 fn parse_path_expr(input: &str) -> IResult<&str, Expr> {
+    let check = alt((tag("//"), tag("/")))(input);
+    if check.is_ok() {
+        let (input, steps) = check?;
+        let check = parse_relative_path_expr(input);
+        if check.is_ok() {
+            let (input, expr) = check?;
+            return found_expr(input, Expr::InitialPath { steps: Steps::from(steps), expr: Box::new(expr) })
+        } else {
+            if steps == "/" {
+                return found_expr(input, Expr::Root)
+            }
+        }
+    }
+
     parse_relative_path_expr(input)
 }
 
-// [109]    	RelativePathExpr 	   ::=    	TODO: StepExpr (("/" | "//") StepExpr)*
+// [109]    	RelativePathExpr 	   ::=    	StepExpr (("/" | "//") StepExpr)*
 fn parse_relative_path_expr(input: &str) -> IResult<&str, Expr> {
-    parse_step_expr(input)
+    let mut exprs = vec![];
+
+    let (input, expr) = parse_step_expr(input)?;
+    let mut current_input = input;
+
+    exprs.push(expr);
+
+    loop {
+        let check = alt((tag("//"), tag("/")) )(current_input);
+        if check.is_ok() {
+            let (input, steps) = check?;
+            current_input = input;
+
+            let (input, expr) = parse_step_expr(current_input)?;
+            current_input = input;
+
+            exprs.push(Expr::Path { steps: Steps::from(steps), expr: Box::new(expr) })
+        } else {
+            break
+        }
+    }
+
+    if exprs.len() == 1 {
+        let expr = exprs.remove(0);
+        found_expr(current_input, expr)
+    } else {
+        found_expr(current_input, Expr::Steps(exprs))
+    }
 }
 
 // [110]    	StepExpr 	   ::=    	TODO: PostfixExpr | AxisStep
-fn parse_step_expr(input: &str) -> IResult<&str, Expr> {
-    parse_postfix_expr(input)
+parse_one_of!(parse_step_expr, parse_postfix_expr, parse_axis_step, );
+
+// [111]    	AxisStep 	   ::=    	(ReverseStep | ForwardStep) PredicateList
+// [123]    	PredicateList 	   ::=    	Predicate*
+fn parse_axis_step(input: &str) -> IResult<&str, Expr> {
+    // TODO let check = parse_reverse_step(input);
+
+    let (input, step) = parse_forward_step(input)?;
+
+    let (input, predicates) = parse_predicate_list(input)?;
+
+    found_expr(input, Expr::AxisStep { step: Box::new(step), predicates } )
+
 }
 
-//// [111]    	AxisStep 	   ::=    	(ReverseStep | ForwardStep) PredicateList
-//// [123]    	PredicateList 	   ::=    	Predicate*
-//fn parse_axis_step(input: &str) -> IResult<&str, Expr> {
-//
-//}
+// [112]    	ForwardStep 	   ::=    	TODO (ForwardAxis NodeTest) | AbbrevForwardStep
+fn parse_forward_step(input: &str) -> IResult<&str, Expr> {
+    parse_abbrev_forward_step(input)
+}
+
+// [114]    	AbbrevForwardStep 	   ::=    	"@"? NodeTest
+fn parse_abbrev_forward_step(input: &str) -> IResult<&str, Expr> {
+    let check = tag("@")(input);
+    let (input, attribute) = if check.is_ok() {
+        let (input, _) = check?;
+        (input, true)
+    } else {
+        (input, false)
+    };
+
+    let (input, test) = parse_node_test(input)?;
+
+    found_expr(input, Expr::ForwardStep { attribute, test: Box::new(test) } )
+}
+
+// [115]    	ReverseStep 	   ::=    	(ReverseAxis NodeTest) | AbbrevReverseStep
+
+// [118]    	NodeTest 	   ::=    	KindTest | NameTest
+// TODO: parse_one_of!(parse_node_test, parse_kind_test, parse_name_test);
+fn parse_node_test(input: &str) -> IResult<&str, Expr> {
+    parse_name_test(input)
+}
+
+// [119]    	NameTest 	   ::=    	EQName | Wildcard
+// [120]    	Wildcard 	   ::=    	"*"
+// | (NCName ":*")
+// | ("*:" NCName)
+// TODO: | (BracedURILiteral "*") 	/* ws: explicit */
+fn parse_name_test(input: &str) -> IResult<&str, Expr> {
+    let check = parse_eqname(input);
+    let (input, qname) = if check.is_ok() {
+        let (input, name) = check?;
+        (input, name)
+    } else {
+        let check = tag("*:")(input);
+        if check.is_ok() {
+            let (input, _) = check?;
+            let (input, name) = parse_ncname(input)?;
+            (input, QName::new("*".to_string(), name))
+        } else {
+            let check = tag("*")(input);
+            if check.is_ok() {
+                let (input, _) = check?;
+                (input, QName::new("*".to_string(), "*".to_string()))
+            } else {
+                let (input, prefix) = parse_ncname(input)?;
+                let (input, _) = tag(":*")(input)?;
+
+                (input, QName::new(prefix, "*".to_string()))
+            }
+        }
+    };
+
+    found_expr(input, Expr::NameTest(qname))
+}
 
 // [121]    	PostfixExpr 	   ::=    	PrimaryExpr (Predicate | TODO: ArgumentList | Lookup)*
 fn parse_postfix_expr(input: &str) -> IResult<&str, Expr> {
@@ -480,6 +867,7 @@ fn parse_postfix_expr(input: &str) -> IResult<&str, Expr> {
             let (input, predicate) = check?;
             current_input = input;
 
+            println!("parse_postfix_expr 3 {:?}", input);
 
             suffix.push(predicate)
         } else {
@@ -514,6 +902,26 @@ fn parse_argument_list(input: &str) -> IResult<&str, Vec<Expr>> {
     )
 }
 
+// [123]    	PredicateList 	   ::=    	Predicate*
+fn parse_predicate_list(input: &str) -> IResult<&str, Vec<Expr>> {
+    let mut current_input = input;
+
+    let mut predicates = vec![];
+
+    loop {
+        let check = parse_predicate(current_input);
+        if check.is_err() {
+            break
+        }
+        let (input, predicate) = check?;
+        current_input = input;
+
+        predicates.push(predicate);
+    }
+
+    found_exprs(current_input, predicates)
+}
+
 // [124]    	Predicate 	   ::=    	"[" Expr "]"
 fn parse_predicate(input: &str) -> IResult<&str, Expr> {
     if DEBUG {
@@ -537,7 +945,7 @@ fn parse_predicate(input: &str) -> IResult<&str, Expr> {
 //  | FunctionCall
 //  TODO: | OrderedExpr
 //  TODO: | UnorderedExpr
-//  TODO: | NodeConstructor
+//  | NodeConstructor
 //  | FunctionItemExpr
 //  | MapConstructor
 //  | ArrayConstructor
@@ -670,7 +1078,7 @@ fn parse_parenthesized_expr(input: &str) -> IResult<&str, Expr> {
     let check = parse_expr(input);
     let (input, expr) = if check.is_ok() {
         let (input, result) = check?;
-        (input, Expr::Sequence(result))
+        (input, Expr::Sequence(Box::new(result)))
     } else {
         (input, Expr::SequenceEmpty())
     };
@@ -682,6 +1090,8 @@ fn parse_parenthesized_expr(input: &str) -> IResult<&str, Expr> {
 
 // [140]    	NodeConstructor 	   ::=    	DirectConstructor | ComputedConstructor
 fn parse_node_constructor(input: &str) -> IResult<&str, Expr> {
+    let (input, _) = ws(input)?;
+
     let result = parse_direct_constructor(input);
     if result.is_ok() {
         let (input, node) = result?;
@@ -895,7 +1305,6 @@ fn parse_attribute_list(input: &str) -> IResult<&str, Vec<Expr>> {
 }
 
 // [147]    	DirElemContent 	   ::=    	DirectConstructor TODO: | CDataSection | CommonContent | ElementContentChar
-// [148]    	CommonContent 	   ::=    	PredefinedEntityRef | CharRef | "{{" | "}}" | EnclosedExpr
 // [153]    	CDataSection 	   ::=    	"<![CDATA[" CDataSectionContents "]]>" // ws: explicit
 // [154]    	CDataSectionContents 	   ::=    	(Char* - (Char* ']]>' Char*)) // ws: explicit
 // [228]    	ElementContentChar 	   ::=    	(Char - [{}<&])
@@ -909,19 +1318,27 @@ fn parse_dir_elem_content(input: &str) -> IResult<&str, Expr> {
         return check
     }
 
+    let check = parse_common_content(input);
+    if check.is_ok() {
+        return check
+    }
+
 //    c == '{' || c == '}' || c == '<' || c == '&'
     let (input, content) = is_not("{}<&")(input)?;
 
     //TODO: code others
-
-    if DEBUG {
-        println!("NodeText: {:?} {:?}", content, input);
-    }
+    println!("parse_dir_elem_content: {:?} {:?}", content, input);
 
     Ok((
         input,
         Expr::NodeText(String::from(content))
     ))
+}
+
+// [148]    	CommonContent 	   ::=    	TODO: PredefinedEntityRef | CharRef | "{{" | "}}" | EnclosedExpr
+fn parse_common_content(input: &str) -> IResult<&str, Expr> {
+    println!("parse_common_content {:?}", input);
+    parse_enclosed_expr(input)
 }
 
 // [225]    	PredefinedEntityRef 	   ::=    	"&" ("lt" | "gt" | "amp" | "quot" | "apos") ";"
@@ -991,22 +1408,7 @@ fn parse_inline_function_expr(input: &str) -> IResult<&str, Expr> {
     let (input, arguments) = if check.is_ok() {
         let (input, expr) = check?;
 
-        let params = match expr {
-            Expr::ParamList(exprs) => {
-                let mut params = Vec::with_capacity(exprs.len());
-                for expr in exprs {
-                    let param = match expr {
-                        Expr::Param { name, typeDeclaration } => {
-                            Param { name, sequenceType: None }
-                        }
-                        _ => panic!("expected Param but got {:?}", expr)
-                    };
-                    params.push(param);
-                }
-                params
-            },
-            _ => panic!("expected ParamList but got {:?}", expr)
-        };
+        let params = expr_to_params(expr);
 
         // TODO: Expr to vec![Param]
         (input, params)
@@ -1022,7 +1424,7 @@ fn parse_inline_function_expr(input: &str) -> IResult<&str, Expr> {
 
     Ok((
         input,
-        Expr::Function { arguments, body }
+        Expr::Function { arguments, body: Box::new(body) }
     ))
 }
 
@@ -1137,25 +1539,25 @@ fn parse_square_array_constructor(input: &str) -> IResult<&str, Expr> {
 fn parse_curly_array_constructor(input: &str) -> IResult<&str, Expr> {
     let (input, _) = ws_tag("array", input)?;
 
-    let (input, exprs) = parse_enclosed_expr(input)?;
+    let (input, expr) = parse_enclosed_expr(input)?;
 
     Ok((
         input,
-        Expr::CurlyArrayConstructor { exprs }
+        Expr::CurlyArrayConstructor(Box::new(expr))
     ))
 }
 
 // [183]    	TypeDeclaration 	   ::=    	"as" SequenceType
-fn parse_type_declaration_expr(input: &str) -> IResult<&str, Expr> {
+fn parse_type_declaration(input: &str) -> IResult<&str, Expr> {
     let (input, _) = ws_tag("as", input)?;
 
-    parse_sequence_type_expr(input)
+    parse_sequence_type(input)
 }
 
 // [184]    	SequenceType 	   ::=    	("empty-sequence" "(" ")")
-// | (ItemType OccurrenceIndicator?)
+// | (ItemType TODO: OccurrenceIndicator?)
 // TODO [185]    	OccurrenceIndicator 	   ::=    	"?" | "*" | "+"
-fn parse_sequence_type_expr(input: &str) -> IResult<&str, Expr> {
+fn parse_sequence_type(input: &str) -> IResult<&str, Expr> {
     let check = ws_tag("empty-sequence", input);
     if check.is_ok() {
         let input = check?.0;
@@ -1261,15 +1663,15 @@ fn parse_eqname(input: &str) -> IResult<&str, QName> {
             ""
         };
 
-        Ok((
+        found_qname(
             input,
             QName { local_part: name2, url: String::from(url), prefix: name1 }
-        ))
+        )
     } else {
-        Ok((
+        found_qname(
             input,
             QName { local_part: name1, url: String::from(""), prefix: String::from("") } // TODO: resolve namespace
-        ))
+        )
     }
 }
 
@@ -1310,6 +1712,12 @@ fn ws(input: &str) -> IResult<&str, &str> {
 fn ws_tag<'a>(token: &str, input: &'a str) -> IResult<&'a str, &'a str> {
     let (input, _) = multispace0(input)?;
     tag(token)(input)
+}
+
+fn ws_tag_ws<'a>(token: &str, input: &'a str) -> IResult<&'a str, &'a str> {
+    let (input, _) = multispace0(input)?;
+    let (input, _) = tag(token)(input)?;
+    multispace0(input)
 }
 
 fn expr_to_qname(expr: Expr) -> QName {
