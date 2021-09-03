@@ -1,5 +1,5 @@
 //use crate::eval::Type;
-use crate::eval::{Object, eval_statements, Type};
+use crate::eval::{Object, Type};
 use crate::eval::Environment;
 
 use std::collections::HashMap;

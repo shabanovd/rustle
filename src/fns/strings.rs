@@ -1,8 +1,5 @@
-use crate::eval::{Object, eval_statements, Type};
+use crate::eval::{Object, Type};
 use crate::eval::Environment;
-
-use std::collections::HashMap;
-use crate::value::{resolve_function_qname, resolve_element_qname};
 
 pub fn fn_string<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
 
@@ -33,11 +30,18 @@ pub fn fn_string_join<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, con
     (current_env, Object::Atomic(Type::String(str)))
 }
 
-
 pub fn object_to_string(object: &Object) -> String {
     match object {
         Object::Atomic(Type::String(str)) => str.clone(),
-        Object::Atomic(Type::Integer(num)) => num.to_string(),
+        Object::Atomic(Type::Integer(num)) => {
+            if num.is_zero() {
+                String::from("0")
+            } else {
+                num.to_string()
+            }
+        },
+        Object::Atomic(Type::Decimal(num)) |
+        Object::Atomic(Type::Double(num)) => num.to_string(),
         Object::Sequence(items) => {
             let mut result = String::new();
             for item in items {
@@ -47,5 +51,12 @@ pub fn object_to_string(object: &Object) -> String {
             result
         },
         _ => panic!("TODO object_to_string {:?}", object)
+    }
+}
+
+pub fn object_to_array(object: Object) -> Vec<Object> {
+    match object {
+        Object::Array(array) => array,
+        _ => panic!("TODO object_to_array {:?}", object)
     }
 }
