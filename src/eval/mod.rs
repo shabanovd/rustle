@@ -1,18 +1,22 @@
 use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::fmt;
 
-use crate::parser::Statement;
+use rust_decimal::Decimal;
+use rust_decimal::prelude::ToPrimitive;
+
+use crate::eval::Object::Empty;
+use crate::fns::{call, Param, sort_and_dedup};
+use crate::fns::object_to_string;
+use crate::parser::{Representation, Statement};
 use crate::parser::Expr;
 use crate::parser::Operator;
+use crate::value::{QName, QNameResolved, resolve_element_qname, resolve_function_qname};
 
-use crate::value::{QName, QNameResolved, resolve_function_qname, resolve_element_qname};
-
-mod environment;
 pub use self::environment::Environment;
 
-use std::collections::HashMap;
-use crate::eval::Object::Empty;
-use crate::fns::{Param, call, sort_and_dedup};
-use crate::fns::object_to_string;
+mod environment;
+pub(crate) mod comparison;
 
 const DEBUG: bool = false;
 
@@ -31,8 +35,9 @@ pub enum Type {
     float(),
     double(),
 
-    Decimal(i128),
-    Integer(i128),
+    Integer(Decimal),
+    Decimal(Decimal),
+    Double(Decimal),
     nonPositiveInteger(),
     negativeInteger(),
     long(),
@@ -75,7 +80,7 @@ pub enum Type {
 
 fn type_to_int(t: Type) -> i128 {
     match t {
-        Type::Integer(num) => num,
+        Type::Integer(num) => num.to_i128().unwrap(),
         _ => panic!("can't convert to int {:?}", t)
     }
 }
@@ -118,35 +123,34 @@ impl PartialOrd<Self> for Node {
     }
 }
 
-use std::fmt;
 impl fmt::Debug for Node {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let write = |f: &mut fmt::Formatter, qname: &QName| {
             if !qname.prefix.is_empty() {
-                write!(f, "{}:", qname.prefix);
+                write!(f, "{}:", qname.prefix).unwrap();
             }
-            write!(f, "{}", qname.local_part);
+            write!(f, "{}", qname.local_part).unwrap();
         };
 
         match self {
             Node:: NodePI { sequence, target, content } => {
-                write!(f, "<?");
+                write!(f, "<?")?;
                 write(f, target);
-                write!(f, "{:?}?>", content);
+                write!(f, "{:?}?>", content)?;
             },
             Node:: NodeComment {sequence, content} => {
-                write!(f, "<!--{}-->", content);
+                write!(f, "<!--{}-->", content)?;
             },
             Node:: NodeText { sequence, content} => {
-                write!(f, "{}", content);
+                write!(f, "{}", content)?;
             },
             Node:: Attribute { sequence, name, value } => {
-                write!(f, "@");
+                write!(f, "@")?;
                 write(f, name);
-                write!(f, "={:?}", value);
+                write!(f, "={:?}", value)?;
             },
             Node::Node { sequence, name, attributes, children } => {
-                write!(f, "<");
+                write!(f, "<")?;
 
                 write(f, name);
 
@@ -154,9 +158,9 @@ impl fmt::Debug for Node {
                     for attribute in attributes {
                         match attribute {
                             Node::Attribute { sequence, name, value } => {
-                                write!(f, " ");
+                                write!(f, " ")?;
                                 write(f, name);
-                                write!(f, "={}", value);
+                                write!(f, "={}", value)?;
                             },
                             _ => panic!("unexpected")
                         }
@@ -164,13 +168,13 @@ impl fmt::Debug for Node {
                 }
 
                 if children.len() == 0 {
-                    write!(f, "/>");
+                    write!(f, "/>")?;
                 } else {
-                    write!(f, ">");
+                    write!(f, ">").unwrap();
                     for child in children {
-                        write!(f, "{:?}", child);
+                        write!(f, "{:?}", child)?;
                     }
-                    write!(f, "</");
+                    write!(f, "</")?;
                     write(f, name);
                 }
             },
@@ -182,6 +186,11 @@ impl fmt::Debug for Node {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Object {
+    // workaround
+    Error { code: String },
+    
+    Nothing,
+
     Empty,
 
     Range { min: i128, max: i128 },
@@ -249,14 +258,14 @@ impl PartialOrd for Object {
     }
 }
 
-pub fn eval_statements<'a>(statements: Vec<Statement>, env: Box<Environment<'a>>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+pub fn eval_statements<'a>(statements: Vec<Statement>, env: Box<Environment<'a>>) -> (Box<Environment<'a>>, Object) {
 
     let mut result = Object::Empty;
 
     let mut current_env = env;
 
     for statement in statements {
-        let (new_env, new_result) = eval_statement(statement, current_env, context_item);
+        let (new_env, new_result) = eval_statement(statement, current_env);
         current_env = new_env;
 
         result = new_result;
@@ -273,11 +282,10 @@ pub fn eval_statements<'a>(statements: Vec<Statement>, env: Box<Environment<'a>>
     (current_env, result)
 }
 
-fn eval_statement<'a>(statement: Statement, env: Box<Environment<'a>>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+fn eval_statement<'a>(statement: Statement, env: Box<Environment<'a>>) -> (Box<Environment<'a>>, Object) {
     match statement {
-        Statement::Prolog(exprs) => (eval_prolog(exprs, env), Object::Empty),
-        Statement::Program(expr) => eval_expr(expr, env, context_item),
-        Statement::Expression(expr) => eval_expr(expr, env, context_item),
+        Statement::Prolog(exprs) => (eval_prolog(exprs, env), Object::Nothing),
+        Statement::Program(expr) => eval_expr(expr, env, &Object::Nothing),
         _ => panic!("TODO: {:?}", statement)
     }
 }
@@ -358,7 +366,40 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
     match expression {
         Expr::Boolean(bool) => (current_env, Object::Atomic(Type::Boolean(bool))),
         Expr::Integer(number) => (current_env, Object::Atomic(Type::Integer(number))),
+        Expr::Decimal(number) => (current_env, Object::Atomic(Type::Decimal(number))),
+        Expr::Double(number) => (current_env, Object::Atomic(Type::Double(number))),
         Expr::String(string) => (current_env, Object::Atomic(Type::String(string))),
+        Expr::StringComplex(exprs) => {
+            let mut strings = Vec::with_capacity(exprs.len());
+            for expr in exprs {
+                let (new_env, object) = eval_expr(expr, current_env, context_item);
+                current_env = new_env;
+
+                let str = object_to_string(&object);
+                strings.push(str);
+            }
+
+            (current_env, Object::Atomic(Type::String(strings.join(""))))
+        }
+        Expr::EscapeQuot => (current_env, Object::Atomic(Type::String(String::from("\"")))),
+        Expr::EscapeApos => (current_env, Object::Atomic(Type::String(String::from("'")))),
+        Expr::CharRef { representation, reference } => {
+            let str = match representation {
+                Representation::Hexadecimal => {
+                    let mut str = String::from("&#x");
+                    str.push_str(reference.as_str());
+                    str.push_str(";");
+                    str
+                }
+                Representation::Decimal => {
+                    let mut str = String::from("&#");
+                    str.push_str(reference.as_str());
+                    str.push_str(";");
+                    str
+                }
+            };
+            (current_env, Object::Atomic(Type::String(str)))
+        }
 
         Expr::ContextItem => {
             // TODO: optimize to avoid clone if possible
@@ -427,6 +468,7 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
             eval_predicates(predicates, current_env, value, context_item)
         },
         Expr::ForwardStep { attribute, test} => {
+            println!("context_item {:?}", context_item);
             if attribute {
                 step_and_test(Axis::ForwardAttribute, *test, current_env, context_item)
             } else {
@@ -600,6 +642,19 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
             (current_env, result)
         },
 
+        Expr::Negative(expr) => {
+            let (new_env, result) = eval_expr(*expr, current_env, context_item);
+            current_env = new_env;
+
+            let result = match result {
+                Object::Atomic(Type::Integer(num)) => Object::Atomic(Type::Integer(-num)),
+                Object::Atomic(Type::Decimal(num)) => Object::Atomic(Type::Decimal(-num)),
+                Object::Atomic(Type::Double(num)) => Object::Atomic(Type::Double(-num)),
+                _ => panic!("Negative is unimplemented for {:?}", result)
+            };
+
+            (current_env, result)
+        },
         Expr::Binary { left, operator, right } => {
             let (new_env, left_result) = eval_expr(*left, current_env, context_item);
             current_env = new_env;
@@ -640,6 +695,28 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
                 _ => panic!("operator {:?} unimplemented", operator)
             };
 
+
+            (current_env, result)
+        },
+        Expr::Comparison { left, operator, right } => {
+            let (new_env, left_result) = eval_expr(*left, current_env, context_item);
+            current_env = new_env;
+
+            let (new_env, right_result) = eval_expr(*right, current_env, context_item);
+            current_env = new_env;
+
+            // if DEBUG {
+            println!("left_result {:?}", left_result);
+            println!("right_result {:?}", right_result);
+            // }
+
+            let result = match operator {
+                Operator::Equals => {
+                    let flag = comparison::eq(left_result, right_result);
+                    Object::Atomic(Type::Boolean(flag))
+                },
+                _ => panic!("operator {:?} unimplemented", operator)
+            };
 
             (current_env, result)
         },
@@ -700,7 +777,7 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
             if min > max {
                 (current_env, Object::Empty)
             } else if min == max {
-                (current_env, Object::Atomic(Type::Integer(min)))
+                (current_env, Object::Atomic(Type::Integer(Decimal::from(min))))
             } else {
                 (current_env, Object::Range { min, max })
             }
@@ -908,6 +985,9 @@ enum Axis {
 
 fn step_and_test<'a>(step: Axis, test: Expr, env: Box<Environment<'a>>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
     match context_item {
+        Object::Nothing => {
+            panic!("XPDY0002")
+        },
         Object::Node(node) => {
             match node {
                 Node::Node { sequence, name, attributes, children } => {
@@ -963,6 +1043,7 @@ fn eval_predicates<'a>(exprs: Vec<Expr>, env: Box<Environment<'a>>, value: Objec
             Expr::Predicate(cond) => {
                 match *cond {
                     Expr::Integer(pos) => {
+                        let pos = pos.to_i128().unwrap();
                         match result {
                             Object::Range { min , max } => {
                                 let len = max - min + 1;
@@ -970,7 +1051,8 @@ fn eval_predicates<'a>(exprs: Vec<Expr>, env: Box<Environment<'a>>, value: Objec
                                 if pos > len {
                                     result = Empty;
                                 } else {
-                                    result = Object::Atomic(Type::Integer(min + pos - 1));
+                                    let num = min + pos - 1;
+                                    result = Object::Atomic(Type::Integer(Decimal::from(num)));
                                 }
                             },
                             _ => panic!("predicate {:?} on {:?}", pos, result)
@@ -1045,47 +1127,58 @@ impl Iterator for RangeIterator {
         let curr = self.next;
         self.next = self.next + self.step;
 
-        if (self.step > 0 && curr < self.till) || (self.step < 0 && curr >= self.till) {
-            Some(Object::Atomic(Type::Integer(curr)))
+        if (self.step > 0 && curr <= self.till) || (self.step < 0 && curr >= self.till) {
+            Some(Object::Atomic(Type::Integer(Decimal::from(curr))))
         } else {
             None
         }
     }
-
 }
 
 pub fn object_to_bool(object: &Object) -> bool {
     match object {
         Object::Empty => false,
+        Object::Atomic(Type::Boolean(v)) => *v,
         _ => panic!("TODO object_to_bool {:?}", object)
     }
 }
 
 pub fn object_to_integer(object: Object) -> i128 {
     match object {
-        Object::Atomic(Type::Integer(n)) => n,
+        Object::Atomic(Type::Integer(n)) => n.to_i128().unwrap(),
         _ => panic!("TODO object_to_integer {:?}", object)
     }
 }
 
-pub fn object_to_iterator<'a>(object: &Object) -> RangeIterator {
+pub fn object_to_iterator<'a>(object: &Object) -> Vec<Object> {
     // println!("object_to_iterator for {:?}", object);
     match object {
         Object::Range { min , max } => {
-            if min > max {
-                RangeIterator::new(*min, -1, *max)
+            // TODO: optimize!!!
+            let (it, count) = if min > max {
+                (RangeIterator::new(*min, -1, *max), *min - *max)
             } else {
-                RangeIterator::new(*min, 1, *max)
+                (RangeIterator::new(*min, 1, *max), *max - *min)
+            };
+
+            let mut result = Vec::with_capacity(count.min(0) as usize);
+            for item in it {
+                result.push(item);
             }
-        }
+            result
+        },
+        Object::Array(items) => {
+            items.clone() // optimize?
+        },
         _ => panic!("TODO object_to_iterator {:?}", object)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::parser::parse;
+
+    use super::*;
 
     #[test]
     fn eval1() {
@@ -1125,10 +1218,10 @@ mod tests {
         }
 
         if result.is_ok() {
-            let (_, program) = result.unwrap();
+            let program = result.unwrap();
             let mut env = Environment::new();
 
-            let (new_env, result) = eval_statements(program, Box::new(env), &Object::Empty);
+            let (new_env, result) = eval_statements(program, Box::new(env));
 
             assert_eq!(
                 result,

@@ -13,6 +13,7 @@ mod decimal;
 mod math;
 mod url;
 mod map;
+mod array;
 
 pub use strings::object_to_string;
 pub use sequences::sort_and_dedup;
@@ -30,6 +31,13 @@ pub struct Function {
 pub struct Param {
     pub name: QName,
     pub sequence_type: Option<Type> // TODO: new type?
+}
+
+pub enum Occurrence {
+    Arity(usize),
+    ZeroOrOne, // ?
+    ZeroOrMore, // *
+    OneOrMore, // +
 }
 
 #[derive(Clone)]
@@ -61,6 +69,35 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(XPATH_MAP.url, "remove", 2, map::map_remove);
         instance.register(XPATH_MAP.url, "for-each", 2, map::map_for_each);
 
+        instance.register(XPATH_ARRAY.url, "size", 1, array::size);
+        instance.register(XPATH_ARRAY.url, "get", 2, array::get);
+        instance.register(XPATH_ARRAY.url, "put", 3, array::put);
+        instance.register(XPATH_ARRAY.url, "append", 2, array::append);
+        instance.register(XPATH_ARRAY.url, "subarray", 2, array::subarray);
+        instance.register(XPATH_ARRAY.url, "subarray", 3, array::subarray);
+        instance.register(XPATH_ARRAY.url, "insert-before", 3, array::insert_before);
+        instance.register(XPATH_ARRAY.url, "head", 1, array::head);
+        instance.register(XPATH_ARRAY.url, "tail", 1, array::tail);
+        instance.register(XPATH_ARRAY.url, "reverse", 1, array::reverse);
+        instance.register(XPATH_ARRAY.url, "join", usize::MAX, array::join);
+        instance.register(XPATH_ARRAY.url, "for-each", 2, array::for_each);
+        instance.register(XPATH_ARRAY.url, "filter", 2, array::filter);
+        instance.register(XPATH_ARRAY.url, "fold-left", 3, array::fold_left);
+        instance.register(XPATH_ARRAY.url, "fold-right", 3, array::fold_right);
+        instance.register(XPATH_ARRAY.url, "for-each-pair", 3, array::for_each_pair);
+        instance.register(XPATH_ARRAY.url, "sort", 1, array::sort);
+        instance.register(XPATH_ARRAY.url, "sort", 2, array::sort);
+        instance.register(XPATH_ARRAY.url, "sort", 3, array::sort);
+        instance.register(XPATH_ARRAY.url, "flatten", 1, array::flatten);
+
+        instance.register(XPATH_FUNCTIONS.url, "for-each", 2, fun::for_each);
+        instance.register(XPATH_FUNCTIONS.url, "filter", 2, fun::filter);
+        instance.register(XPATH_FUNCTIONS.url, "fold-left", 3, fun::fold_left);
+        instance.register(XPATH_FUNCTIONS.url, "fold-right", 3, fun::fold_right);
+        instance.register(XPATH_FUNCTIONS.url, "for-each-pair", 3, fun::for_each_pair);
+        instance.register(XPATH_FUNCTIONS.url, "sort", 1, fun::sort);
+        instance.register(XPATH_FUNCTIONS.url, "sort", 2, fun::sort);
+        instance.register(XPATH_FUNCTIONS.url, "sort", 3, fun::sort);
         instance.register(XPATH_FUNCTIONS.url, "apply", 2, fun::apply);
 
         instance.register(XPATH_FUNCTIONS.url, "abs", 1, math::fn_abs);
@@ -140,7 +177,7 @@ pub fn expr_to_params(expr: Expr) -> Vec<Param> {
 }
 
 pub fn call<'a>(env: Box<Environment<'a>>, name: QNameResolved, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
-    println!("call: {:?} {:?}", name, arguments);
+    // println!("call: {:?} {:?}", name, arguments);
 
     let fun = env.functions.declared(&name, arguments.len());
     if fun.is_some() {

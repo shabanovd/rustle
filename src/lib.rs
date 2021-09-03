@@ -4,4 +4,5 @@ mod fns;
 mod eval;
 mod value;
 
+mod tests;
 mod xqts;

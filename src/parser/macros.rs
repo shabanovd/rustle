@@ -2,7 +2,7 @@
 #[macro_export]
 macro_rules! parse_sequence {
     ($fn_name:ident, $tag:expr, $parser_fn:ident, $expr_name:ident) => {
-        fn $fn_name(input: &str) -> IResult<&str, Expr> {
+        fn $fn_name(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
             let (input, expr) = $parser_fn(input)?;
 
             let mut exprs = Vec::new();
@@ -43,7 +43,7 @@ macro_rules! parse_sequence {
 #[macro_export]
 macro_rules! parse_surroundings {
     ($fn_name:ident, $begin:expr, $sep:expr, $end:expr, $parser_fn:ident, $expr_name:ident) => {
-        fn $fn_name(input: &str) -> IResult<&str, Expr> {
+        fn $fn_name(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
             let (input, _) = ws_tag($begin, input)?;
 
             let (input, expr) = $parser_fn(input)?;
@@ -95,15 +95,17 @@ macro_rules! parse_surroundings {
 #[macro_export]
 macro_rules! parse_one_of {
     ( $fn_name:ident, $($parser_fn:ident,)+ ) => {
-        fn $fn_name(input: &str) -> IResult<&str, Expr> {
+        fn $fn_name(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
             $(
                 let result = $parser_fn(input);
-                if result.is_ok() {
-                    let (input, expr) = result?;
-                    return Ok((
-                        input,
-                        expr
-                    ))
+                match result {
+                    Ok(..) => {
+                        return result
+                    }
+                    Err(nom::Err::Failure(..)) => {
+                        return result
+                    }
+                    _ => {}
                 }
             )*
             result // TODO better error
