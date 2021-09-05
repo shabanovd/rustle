@@ -1,13 +1,12 @@
 use crate::eval::{Object, Type};
 use crate::eval::Environment;
 use crate::eval::Object::Atomic;
-use rust_decimal::Decimal;
 
 pub fn size<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
     match arguments.as_slice() {
         [Object::Array(array)] => {
             let size = array.len();
-            (env, Object::Atomic(Type::Integer(Decimal::from(size))))
+            (env, Object::Atomic(Type::Integer(size as i128)))
         }
         _ => panic!("error")
     }

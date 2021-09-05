@@ -94,8 +94,8 @@ macro_rules! parse_surroundings {
 
 #[macro_export]
 macro_rules! parse_one_of {
-    ( $fn_name:ident, $($parser_fn:ident,)+ ) => {
-        fn $fn_name(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
+    ( $fn_name:ident, $result:ident, $($parser_fn:ident,)+ ) => {
+        pub(crate) fn $fn_name(input: &str) -> IResult<&str, $result, CustomError<&str>> {
             $(
                 let result = $parser_fn(input);
                 match result {

@@ -2,18 +2,15 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
 
-use rust_decimal::Decimal;
-use rust_decimal::prelude::ToPrimitive;
-
 use crate::eval::Object::Empty;
 use crate::fns::{call, Param, sort_and_dedup};
-use crate::fns::object_to_string;
-use crate::parser::{Representation, Statement};
-use crate::parser::Expr;
-use crate::parser::Operator;
+use crate::parser::op::{Representation, Statement, Expr, Operator, ItemType};
 use crate::value::{QName, QNameResolved, resolve_element_qname, resolve_function_qname};
 
 pub use self::environment::Environment;
+use crate::serialization::object_to_string;
+use crate::serialization::to_string::{ref_to_string, object_to_string_xml};
+use rust_decimal::Decimal;
 
 mod environment;
 pub(crate) mod comparison;
@@ -35,7 +32,7 @@ pub enum Type {
     float(),
     double(),
 
-    Integer(Decimal),
+    Integer(i128),
     Decimal(Decimal),
     Double(Decimal),
     nonPositiveInteger(),
@@ -59,6 +56,7 @@ pub enum Type {
     gDay(),
     gMonth(),
 
+    // TODO CharRef { representation: Representation, reference: u32 }, ?
     String(String),
     NormalizedString(String),
     Token(String),
@@ -80,7 +78,7 @@ pub enum Type {
 
 fn type_to_int(t: Type) -> i128 {
     match t {
-        Type::Integer(num) => num.to_i128().unwrap(),
+        Type::Integer(num) => num,
         _ => panic!("can't convert to int {:?}", t)
     }
 }
@@ -94,14 +92,14 @@ fn object_to_qname(t: Object) -> QName {
 
 #[derive(Eq, PartialEq, Clone, Hash)]
 pub enum Node {
-    Node { sequence: usize, name: QName, attributes: Vec<Node>, children: Vec<Node> },
-    Attribute { sequence: usize, name: QName, value: String },
-    NodeText { sequence: usize, content: String },
-    NodeComment { sequence: usize, content: String },
-    NodePI { sequence: usize, target: QName, content: String },
+    Node { sequence: isize, name: QName, attributes: Vec<Node>, children: Vec<Node> },
+    Attribute { sequence: isize, name: QName, value: String },
+    NodeText { sequence: isize, content: String },
+    NodeComment { sequence: isize, content: String },
+    NodePI { sequence: isize, target: QName, content: String },
 }
 
-fn node_to_number(node: &Node) -> &usize {
+fn node_to_number(node: &Node) -> &isize {
     match node {
         Node::Node { sequence, .. } => sequence,
         Node::Attribute { sequence, .. } => sequence,
@@ -156,6 +154,7 @@ impl fmt::Debug for Node {
 
                 if attributes.len() > 0 {
                     for attribute in attributes {
+                        println!("attribute {:?}", attribute);
                         match attribute {
                             Node::Attribute { sequence, name, value } => {
                                 write!(f, " ")?;
@@ -188,6 +187,8 @@ impl fmt::Debug for Node {
 pub enum Object {
     // workaround
     Error { code: String },
+    CharRef { representation: Representation, reference: u32 },
+    EntityRef(String),
     
     Nothing,
 
@@ -384,21 +385,10 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
         Expr::EscapeQuot => (current_env, Object::Atomic(Type::String(String::from("\"")))),
         Expr::EscapeApos => (current_env, Object::Atomic(Type::String(String::from("'")))),
         Expr::CharRef { representation, reference } => {
-            let str = match representation {
-                Representation::Hexadecimal => {
-                    let mut str = String::from("&#x");
-                    str.push_str(reference.as_str());
-                    str.push_str(";");
-                    str
-                }
-                Representation::Decimal => {
-                    let mut str = String::from("&#");
-                    str.push_str(reference.as_str());
-                    str.push_str(";");
-                    str
-                }
-            };
-            (current_env, Object::Atomic(Type::String(str)))
+            (current_env, Object::CharRef { representation, reference })
+        }
+        Expr::EntityRef(reference) => {
+            (current_env, Object::EntityRef(reference))
         }
 
         Expr::ContextItem => {
@@ -519,6 +509,10 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
                                 Object::Node(node) => {
                                     evaluated_children.push(node);
                                 }
+                                Object::Atomic(..) => {
+                                    let content = object_to_string_xml(&item);
+                                    evaluated_children.push(Node::NodeText { sequence: -1, content });
+                                }
                                 _ => panic!("unexpected object {:?}", item) //TODO: better error
                             }
                         }
@@ -530,6 +524,10 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
                     },
                     Object::Node(node) => {
                         evaluated_children.push(node);
+                    },
+                    Object::Atomic(..) => {
+                        let content = object_to_string(&evaluated_child);
+                        evaluated_children.push(Node::NodeText { sequence: -1, content });
                     }
                     _ => panic!("unexpected object {:?}", evaluated_child) //TODO: better error
                 };
@@ -777,7 +775,7 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
             if min > max {
                 (current_env, Object::Empty)
             } else if min == max {
-                (current_env, Object::Atomic(Type::Integer(Decimal::from(min))))
+                (current_env, Object::Atomic(Type::Integer(min)))
             } else {
                 (current_env, Object::Range { min, max })
             }
@@ -962,7 +960,48 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
             } else {
                 panic!("unknown variable {:?}", name)
             }
+        },
+
+        Expr::TreatExpr { expr, st } => {
+            let (new_env, object) = eval_expr(*expr, current_env, context_item);
+            current_env = new_env;
+
+            let (item_type, occurrence_indicator) = match *st {
+                Expr::SequenceType { item_type, occurrence_indicator } => {
+                    (item_type, occurrence_indicator)
+                },
+                _ => panic!("unexpected {:?}", st)
+            };
+
+            // TODO occurrence_indicator checks
+
+            let result = match item_type {
+                ItemType::AtomicOrUnionType(name) => {
+                    match object {
+                        Object::Atomic(Type::String(..)) => {
+                            name.local_part == "string" && name.prefix == "xs" // TODO name.url ==
+                        },
+                        Object::Atomic(Type::NormalizedString(..)) => {
+                            name.local_part == "string" && name.prefix == "xs" // TODO name.url ==
+                        },
+                        Object::Atomic(Type::Integer(..)) => {
+                            name.local_part == "integer" && name.prefix == "xs" // TODO name.url ==
+                        },
+                        Object::Atomic(Type::Decimal(..)) => {
+                            name.local_part == "decimal" && name.prefix == "xs" // TODO name.url ==
+                        },
+                        Object::Atomic(Type::Double(..)) => {
+                            name.local_part == "double" && name.prefix == "xs" // TODO name.url ==
+                        },
+                        _ => panic!("TODO: {:?}", object)
+                    }
+                },
+                _ => panic!("TODO: {:?}", item_type)
+            };
+
+            (current_env, Object::Atomic(Type::Boolean(result)))
         }
+
         _ => panic!("TODO {:?}", expression)
     }
 }
@@ -1043,7 +1082,7 @@ fn eval_predicates<'a>(exprs: Vec<Expr>, env: Box<Environment<'a>>, value: Objec
             Expr::Predicate(cond) => {
                 match *cond {
                     Expr::Integer(pos) => {
-                        let pos = pos.to_i128().unwrap();
+                        let pos = pos;
                         match result {
                             Object::Range { min , max } => {
                                 let len = max - min + 1;
@@ -1052,7 +1091,7 @@ fn eval_predicates<'a>(exprs: Vec<Expr>, env: Box<Environment<'a>>, value: Objec
                                     result = Empty;
                                 } else {
                                     let num = min + pos - 1;
-                                    result = Object::Atomic(Type::Integer(Decimal::from(num)));
+                                    result = Object::Atomic(Type::Integer(num));
                                 }
                             },
                             _ => panic!("predicate {:?} on {:?}", pos, result)
@@ -1128,7 +1167,7 @@ impl Iterator for RangeIterator {
         self.next = self.next + self.step;
 
         if (self.step > 0 && curr <= self.till) || (self.step < 0 && curr >= self.till) {
-            Some(Object::Atomic(Type::Integer(Decimal::from(curr))))
+            Some(Object::Atomic(Type::Integer(curr)))
         } else {
             None
         }
@@ -1145,7 +1184,7 @@ pub fn object_to_bool(object: &Object) -> bool {
 
 pub fn object_to_integer(object: Object) -> i128 {
     match object {
-        Object::Atomic(Type::Integer(n)) => n.to_i128().unwrap(),
+        Object::Atomic(Type::Integer(n)) => n,
         _ => panic!("TODO object_to_integer {:?}", object)
     }
 }
@@ -1191,23 +1230,10 @@ mod tests {
     #[test]
     fn eval2() {
         test_eval(
-            "<r> { let $i := <e> <a/> <b/> </e>, $b := ($i/b, $i/a, $i/b, $i/a) return <e/>/$b } </r>",
-            Object::Node(
-                Node::Node {
-                    sequence: 1, name: QName::local_part("r"), attributes: vec![],
-                    children: [
-                        Node::Node {
-                            sequence: 1, name: QName::local_part("a"), attributes: vec![], children: vec![],
-                        },
-                        Node::Node {
-                            sequence: 1, name: QName::local_part("b"), attributes: vec![], children: vec![],
-                        },
-                        Node::NodeText { sequence: 1, content: String::from(" ") }
-                    ].to_vec()
-                }
-            )
+            "deep-equal(string-to-codepoints($result),
+            (97, 10, 10, 10, 32, 10, 115, 116, 114, 105, 110, 103, 32, 108, 105, 116, 101, 114, 97, 108, 32, 10))",
+            Object::Empty
         )
-        // <r><a/><b/></r>
     }
 
     fn test_eval(input: &str, expected: Object) {

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use crate::eval::{Object, Type, eval_expr};
 use crate::eval::Environment;
 use crate::namespaces::*;
-use crate::parser::Expr;
+use crate::parser::op::Expr;
 use crate::value::{QName, QNameResolved, resolve_element_qname};
 
 mod fun;
@@ -15,7 +15,7 @@ mod url;
 mod map;
 mod array;
 
-pub use strings::object_to_string;
+use crate::serialization::object_to_string;
 pub use sequences::sort_and_dedup;
 
 pub type FUNCTION<'a> = fn(Box<Environment<'a>>, Vec<Object>, &Object) -> (Box<Environment<'a>>, Object);

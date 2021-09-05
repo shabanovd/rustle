@@ -6,6 +6,7 @@ use nom::{IResult, Err};
 pub enum CustomError<I> {
     XPST0003,
     XQST0090,
+    FOAR0002,
     Nom(I, ErrorKind),
 }
 
@@ -38,6 +39,13 @@ impl<I, O> IResultExt<I, O, CustomError<I>> for IResult<I, O, CustomError<I>> {
         if self.is_ok() {
             self
         } else {
+            match self {
+                Err(nom::Err::Error(CustomError::Nom(i,t))) |
+                Err(nom::Err::Failure(CustomError::Nom(i,t))) => {
+                    println!("ERROR: {:?}", t);
+                }
+                _ => {}
+            }
             Err(nom::Err::Failure(error))
         }
         // match self {

@@ -23,9 +23,9 @@ impl<'a> Environment<'a> {
         }
     }
 
-    pub fn next_id(&mut self) -> usize {
+    pub fn next_id(&mut self) -> isize {
         self.sequence += 1;
-        self.sequence
+        self.sequence as isize
     }
 
     pub fn set(&mut self, key: QNameResolved, value: Object) {
