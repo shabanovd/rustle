@@ -77,6 +77,24 @@ impl QName {
     //     // TODO fix it by paring string
     //     QName::local_part(str.as_str())
     // }
+
+    pub fn len(&self) -> usize {
+        if self.prefix.len() != 0 {
+            self.prefix.len() + 1 + self.local_part.len()
+        } else {
+            self.local_part.len()
+        }
+    }
+
+    pub fn string(&self) -> String {
+        let mut str = String::with_capacity(self.len());
+        if self.prefix.len() != 0 {
+            str.push_str(self.prefix.as_str());
+            str.push_str(":");
+        }
+        str.push_str(self.local_part.as_str());
+        str
+    }
 }
 
 impl fmt::Debug for QName {

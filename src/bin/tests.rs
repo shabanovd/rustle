@@ -1,6 +1,8 @@
 use std::fs;
 use xmlparser::{Token, ElementEnd};
 use std::collections::{HashSet, HashMap};
+use std::borrow::Cow;
+use nom::AsBytes;
 
 enum AssertType {
     AllOf,
@@ -17,6 +19,14 @@ fn fn_name(name: &str) -> String {
         .replace("__", "_")
 }
 
+fn string_cleanup(data: &[u8]) -> String {
+    let data = quick_xml::escape::unescape(data).unwrap();
+    let data = std::str::from_utf8(data.as_bytes()).unwrap();
+    let data = String::from(data);
+
+    data.replace("\r", "\n")
+}
+
 fn cleanup(data: String) -> String {
     data.replace("\\", "\\\\")
         .replace("\"", "\\\"")
@@ -24,6 +34,7 @@ fn cleanup(data: String) -> String {
 
 fn generate_tests(name: &str, file: &str) -> String {
     let data = fs::read_to_string(format!("./qt3tests/{}", file)).unwrap();
+    let dir = folder(String::from(file.clone()));
 
     let mut generated = String::from("#[cfg(test)]
 mod tests {
@@ -32,9 +43,26 @@ mod tests {
 
     let mut test_case_node = false;
     let mut test_name: Option<&str> = None;
+
+    let mut dependency_node = false;
+
+    let mut dependency_spec_flag = false;
+    let mut dependency_spec: Option<String> = None;
+
+    let mut dependency_feature_flag = false;
+    let mut dependency_feature: Option<String> = None;
+
+    let mut dependency_xml_version_flag = false;
+    let mut dependency_xsd_version_flag = false;
+    let mut dependency_language_flag = false;
+
+    let mut dependency_satisfied = true;
+
+
     let mut script_flag = false;
 
     let mut result_flag = false;
+    let mut any_of_flag = false;
     let mut assert_flag = false;
     let mut assert_empty_flag = false;
     let mut assert_true_flag = false;
@@ -48,20 +76,70 @@ mod tests {
     let mut script_file: Option<&str> = None;
     let mut assert = String::new();
 
+    let build_prefix = |any_of_flag| -> &str {
+        if any_of_flag {
+            "            || bool_"
+        } else {
+            "        "
+        }
+    };
+
+    let check_result = |fn_name, any_of_flag| -> String {
+        let mut generated = String::new();
+        generated.push_str(build_prefix(any_of_flag));
+        generated.push_str(fn_name);
+        generated.push_str("(&result)");
+        if !any_of_flag { generated.push_str(";"); }
+        generated.push_str("\n");
+        generated
+    };
+
+    let check_result_value = |fn_name, assert, any_of_flag| -> String {
+        let mut generated = String::new();
+        generated.push_str(build_prefix(any_of_flag));
+        generated.push_str(fn_name);
+        generated.push_str("(&result, \"");
+        generated.push_str(cleanup(assert).as_str());
+        generated.push_str("\")");
+        if !any_of_flag { generated.push_str(";"); }
+        generated.push_str("\n");
+        generated
+    };
+
     for token in xmlparser::Tokenizer::from(data.as_str()) {
         match token.unwrap() {
             Token::ElementStart { prefix, local, span } => {
+                test_case_node = false;
+                dependency_node = false;
+
                 match local.as_str() {
                     "test-case" => {
                         test_case_node = true;
                         test_name = None;
+
+                        dependency_spec = None;
+                        dependency_feature = None;
+                        dependency_satisfied = true;
+
+                        dependency_spec_flag = false;
+                        dependency_feature_flag = false;
+                        dependency_xml_version_flag = false;
+                        dependency_xsd_version_flag = false;
+                        dependency_language_flag = false;
                     },
+                    "dependency" => {
+                        dependency_node = true;
+                    }
                     "test" => {
                         script_flag = true;
                         script.clear();
                     },
                     "result" => {
                         result_flag = true;
+                    },
+                    "any-of" => {
+                        any_of_flag = true;
+                        generated.push_str("        assert!(true\n");
                     },
                     "error" => {
                         if result_flag {
@@ -93,11 +171,46 @@ mod tests {
             },
             Token::Attribute { prefix: _, local, value, span: _ } => {
                 // println!("Attribute {:?} {:?} {}", local.as_str(), value.as_str(), test_case_node);
-                if script_flag && local.as_str() == "file" {
-                    script_file = Some(value.as_str());
+                if dependency_node {
+                    if local.as_str() == "value" {
+                        if dependency_spec_flag {
+                            dependency_spec_flag = false;
+                            dependency_spec = Some(value.as_str().to_string());
+                        } else if dependency_feature_flag {
+                            dependency_feature_flag = false;
+                            dependency_feature = Some(value.as_str().to_string());
+                        } else if dependency_xml_version_flag {
+                        } else if dependency_xsd_version_flag {
+                        } else if dependency_language_flag {
+                        } else {
+                            println!("Attribute {:?} = {:?}", local.as_str(), value.as_str());
+                        }
+                    } else if local.as_str() == "type" {
+                        match value.as_str() {
+                            "spec" => dependency_spec_flag = true,
+                            "feature"  => dependency_feature_flag = true,
+                            "xml-version" => dependency_xml_version_flag = true,
+                            "xsd-version"  => dependency_xsd_version_flag = true,
+                            "language" => dependency_language_flag = true,
+                            _ => {
+                                println!("Attribute {:?} = {:?}", local.as_str(), value.as_str());
+                            }
+                        }
+                    } else if local.as_str() == "satisfied" {
+                        if value.as_str() == "false" {
+                            dependency_satisfied = false;
+                        } else {
+                            dependency_satisfied = true;
+                        }
+                    } else {
+                        println!("Attribute {:?} = {:?}", local.as_str(), value.as_str());
+                    }
                 }
                 if test_case_node && local.as_str() == "name" {
                     test_name = Some(value.as_str())
+                }
+                if script_flag && local.as_str() == "file" {
+                    script_file = Some(value.as_str());
                 }
                 if error_flag && local.as_str() == "code" {
                     error_code = Some(value.as_str())
@@ -107,6 +220,7 @@ mod tests {
                 match end {
                     ElementEnd::Open => {
                         test_case_node = false;
+                        dependency_node = false;
                     },
                     ElementEnd::Close(prefix, local) => {
                         match local.as_str() {
@@ -124,7 +238,13 @@ mod tests {
                                 generated.push_str("    #[test]\n    fn ");
                                 generated.push_str(fn_name(test_name.unwrap()).as_str());
                                 generated.push_str("() {\n");
-                                generated.push_str("        let result = eval(\"");
+                                if let Some(spec) = dependency_spec.as_ref() {
+                                    generated.push_str("        let result = eval_on_spec(\"");
+                                    generated.push_str(spec.as_str());
+                                    generated.push_str("\",\"");
+                                } else {
+                                    generated.push_str("        let result = eval(\"");
+                                }
                                 generated.push_str(script.as_str());
                                 generated.push_str("\");\n\n");
                                 // generated.push_str("        println!(\"{:?}\", result);\n");
@@ -135,75 +255,87 @@ mod tests {
                             "result" => {
                                 result_flag = false;
                             },
+                            "any-of" => {
+                                any_of_flag = false;
+                                generated.push_str("        );\n");
+                            },
                             "assert" => {
                                 assert_flag = false;
 
-                                generated.push_str("        check_assert(&result, \"");
-                                generated.push_str(cleanup(assert.clone()).as_str());
-                                generated.push_str("\");\n");
+                                generated.push_str(check_result_value(
+                                    "check_assert",
+                                    assert.clone(), any_of_flag
+                                ).as_str());
 
                                 assert.clear();
                             }
                             "assert-eq" => {
                                 assert_flag = false;
 
-                                generated.push_str("        check_assert_eq(&result, \"");
-                                generated.push_str(cleanup(assert.clone()).as_str());
-                                generated.push_str("\");\n");
+                                generated.push_str(check_result_value(
+                                    "check_assert_eq",
+                                    assert.clone(), any_of_flag
+                                ).as_str());
 
                                 assert.clear();
                             }
                             "assert-count" => {
                                 assert_flag = false;
 
-                                generated.push_str("        check_assert_count(&result, \"");
-                                generated.push_str(cleanup(assert.clone()).as_str());
-                                generated.push_str("\");\n");
+                                generated.push_str(check_result_value(
+                                    "check_assert_count",
+                                    assert.clone(), any_of_flag
+                                ).as_str());
 
                                 assert.clear();
                             }
                             "assert-deep-eq" => {
                                 assert_flag = false;
 
-                                generated.push_str("        check_assert_deep_eq(&result, \"");
-                                generated.push_str(cleanup(assert.clone()).as_str());
-                                generated.push_str("\");\n");
+                                generated.push_str(check_result_value(
+                                    "check_assert_deep_eq",
+                                    assert.clone(), any_of_flag
+                                ).as_str());
 
                                 assert.clear();
                             }
                             "assert-permutation" => {
                                 assert_flag = false;
 
-                                generated.push_str("        check_assert_permutation(&result, \"");
-                                generated.push_str(cleanup(assert.clone()).as_str());
-                                generated.push_str("\");\n");
+                                generated.push_str(check_result_value(
+                                    "check_assert_permutation",
+                                    assert.clone(), any_of_flag
+                                ).as_str());
 
                                 assert.clear();
                             }
                             "assert-xml" => {
                                 assert_flag = false;
 
-                                generated.push_str("        check_assert_xml(&result, \"");
-                                generated.push_str(cleanup(assert.clone()).as_str());
-                                generated.push_str("\");\n");
+                                generated.push_str(check_result_value(
+                                    "check_assert_xml",
+                                    assert.clone(), any_of_flag
+                                ).as_str());
 
                                 assert.clear();
                             }
                             "assert-type" => {
                                 assert_flag = false;
 
-                                generated.push_str("        check_assert_type(&result, \"");
-                                generated.push_str(cleanup(assert.clone()).as_str());
-                                generated.push_str("\");\n");
+                                generated.push_str(check_result_value(
+                                    "check_assert_type",
+                                    assert.clone(), any_of_flag
+                                ).as_str());
 
                                 assert.clear();
                             }
                             "assert-string-value" => {
                                 assert_flag = false;
 
-                                generated.push_str("        check_assert_string_value(&result, \"");
-                                generated.push_str(cleanup(assert.clone()).as_str());
-                                generated.push_str("\");\n");
+                                generated.push_str(check_result_value(
+                                    "check_assert_string_value",
+                                    assert.clone(), any_of_flag
+                                ).as_str());
 
                                 assert.clear();
                             },
@@ -214,8 +346,6 @@ mod tests {
                         if script_flag {
                             script_flag = false;
 
-                            println!("{:?}", test_name);
-
                             generated.push_str("    #[test]\n    fn ");
                             generated.push_str(fn_name(test_name.unwrap()).as_str());
 
@@ -224,7 +354,8 @@ mod tests {
                             if test_name.unwrap() == "K-Literals-29" {
                                 generated.push_str("        let script = String::new();\n");
                             } else {
-                                generated.push_str("        let script = fs::read_to_string(\"");
+                                generated.push_str("        let script = fs::read_to_string(\"./qt3tests/");
+                                generated.push_str(dir.as_str());
                                 generated.push_str(script_file.unwrap());
                                 generated.push_str("\").unwrap();\n");
                             }
@@ -237,23 +368,30 @@ mod tests {
                         } else if assert_empty_flag {
                             assert_empty_flag = false;
 
-                            generated.push_str("        check_assert_empty(&result);\n");
+                            let code = check_result("check_assert_empty", any_of_flag);
+                            generated.push_str(code.as_str());
 
                         } else if assert_true_flag {
                             assert_true_flag = false;
 
-                            generated.push_str("        check_assert_true(&result);\n");
+                            let code = check_result("check_assert_true", any_of_flag);
+                            generated.push_str(code.as_str());
 
                         } else if assert_false_flag {
                             assert_false_flag = false;
 
-                            generated.push_str("        check_assert_false(&result);\n");
+                            let code = check_result("check_assert_false", any_of_flag);
+                            generated.push_str(code.as_str());
+
                         } else if error_flag {
                             error_flag = false;
 
-                            generated.push_str("        check_error(&result, \"");
+                            generated.push_str(build_prefix(any_of_flag));
+                            generated.push_str("check_error(&result, \"");
                             generated.push_str(error_code.unwrap());
-                            generated.push_str("\");\n");
+                            generated.push_str("\")");
+                            if !any_of_flag { generated.push_str(";"); }
+                            generated.push_str("\n");
 
                             error_code = None;
                         }
@@ -269,9 +407,11 @@ mod tests {
             Token::DtdEnd { span: _ } => {}
             Token::Text { text } => {
                 if script_flag {
-                    script.push_str(text.as_str());
+                    let data = string_cleanup(text.as_bytes());
+                    script.push_str(data.as_str());
                 } else if assert_flag {
-                    assert.push_str(text.as_str());
+                    let data = string_cleanup(text.as_bytes());
+                    assert.push_str(data.as_str());
                 }
             }
             Token::Cdata { text, span: _ } => {
@@ -301,8 +441,6 @@ mod tests {
     file.push_str(".rs");
 
     let dir = folder(file.clone());
-
-    println!("{:?} | {:?}", file, dir);
 
     fs::create_dir_all(format!("src/xqts/{}", dir))
         .expect("Unable to create folders");
@@ -360,8 +498,6 @@ pub fn generate() {
                     },
                     ElementEnd::Empty => {
                         if inside_test_set {
-                            println!("{:?} {:?}", tests_name, tests_file);
-
                             let file = generate_tests(tests_name, tests_file);
 
                             files.push(file);
