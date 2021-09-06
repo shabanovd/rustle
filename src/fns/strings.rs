@@ -31,6 +31,28 @@ pub fn fn_string_join<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, con
     (current_env, Object::Atomic(Type::String(str)))
 }
 
+pub fn fn_string_to_codepoints<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+
+    let mut current_env = env;
+
+    let result = match arguments.as_slice() {
+        [Object::Empty] => Object::Empty,
+        [Object::Atomic(Type::String(str))] => {
+            let mut codes = Vec::with_capacity(str.len());
+            for char in str.chars() {
+                // let code = char as u32;
+                codes.push(Object::Atomic(Type::Integer(char as i128)));
+            }
+
+            Object::Sequence(codes)
+        },
+        _ => panic!("error")
+    };
+
+    (current_env, result)
+}
+
+
 pub fn object_to_array(object: Object) -> Vec<Object> {
     match object {
         Object::Array(array) => array,

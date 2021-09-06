@@ -10,6 +10,7 @@ mod sequences;
 mod boolean;
 mod strings;
 mod decimal;
+mod comparison;
 mod math;
 mod url;
 mod map;
@@ -110,10 +111,12 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(XPATH_FUNCTIONS.url, "string", 1, strings::fn_string);
         instance.register(XPATH_FUNCTIONS.url, "string-join", 1, strings::fn_string_join);
         instance.register(XPATH_FUNCTIONS.url, "string-join", 2, strings::fn_string_join);
-
+        instance.register(XPATH_FUNCTIONS.url, "string-to-codepoints", 1, strings::fn_string_to_codepoints);
 
         instance.register(XPATH_FUNCTIONS.url, "empty", 1, sequences::fn_empty);
         instance.register(XPATH_FUNCTIONS.url, "reverse", 1, sequences::fn_reverse);
+
+        instance.register(XPATH_FUNCTIONS.url, "deep-equal", 2, comparison::fn_deep_equal);
 
         instance
     }

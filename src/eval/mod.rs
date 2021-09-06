@@ -427,7 +427,7 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
                 } else if evaluated.len() == 1 {
                     (current_env, evaluated[0].clone()) //TODO: try to avoid clone here
                 } else {
-                    sort_and_dedup(&mut evaluated);
+                    // TODO understand when it should happen... sort_and_dedup(&mut evaluated);
                     (current_env, Object::Sequence(evaluated))
                 }
             }
@@ -710,7 +710,7 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
 
             let result = match operator {
                 Operator::Equals => {
-                    let flag = comparison::eq(left_result, right_result);
+                    let flag = comparison::eq(&left_result, &right_result);
                     Object::Atomic(Type::Boolean(flag))
                 },
                 _ => panic!("operator {:?} unimplemented", operator)
@@ -818,6 +818,8 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
         Expr::Sequence(expr) => {
             let (new_env, value) = eval_expr(*expr, current_env, context_item);
             current_env = new_env;
+
+            println!("{:?}", value);
 
             (current_env, value)
         },

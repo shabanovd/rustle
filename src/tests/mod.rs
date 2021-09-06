@@ -80,14 +80,14 @@ fn eval_assert(result: &Result<Object, String>, check: &str) -> Object {
 
 pub(crate) fn check_assert_eq(result: &Result<Object, String>, check: &str) {
     let expected = eval(check).unwrap();
-    if !crate::eval::comparison::eq(expected.clone(), result.as_ref().unwrap().clone()) {
+    if !crate::eval::comparison::eq(&expected, &result.as_ref().unwrap()) {
         assert_eq!(expected, result.as_ref().unwrap().clone());
     }
 }
 
 pub(crate) fn bool_check_assert_eq(result: &Result<Object, String>, check: &str) -> bool {
     let expected = eval(check).unwrap();
-    !crate::eval::comparison::eq(expected.clone(), result.as_ref().unwrap().clone())
+    !crate::eval::comparison::eq(&expected, result.as_ref().unwrap())
 }
 
 pub(crate) fn check_assert_count(result: &Result<Object, String>, check: &str) {
