@@ -1,4 +1,4 @@
-use crate::parser::op::found_qname;
+use crate::parser::op::{found_qname, Expr};
 use crate::namespaces::*;
 use crate::parser::errors::CustomError;
 use crate::value::QName;
@@ -19,6 +19,13 @@ fn parse_name(input: &str) -> IResult<&str, String, CustomError<&str>> {
 pub(crate) fn parse_qname(input: &str) -> IResult<&str, QName, CustomError<&str>> {
     // use as workaround
     parse_eqname(input)
+}
+
+pub(crate) fn parse_qname_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
+    // use as workaround
+    let (input, name) = parse_eqname(input)?;
+
+    Ok((input, Expr::QName { local_part: name.local_part, url: name.url, prefix: name.prefix }))
 }
 
 // [218]    	EQName 	   ::=    	QName TODO: | URIQualifiedName

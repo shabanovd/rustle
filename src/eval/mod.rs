@@ -8,14 +8,24 @@ use crate::parser::op::{Representation, Statement, Expr, Operator, ItemType};
 use crate::value::{QName, QNameResolved, resolve_element_qname, resolve_function_qname};
 
 pub use self::environment::Environment;
+use crate::fns::object_to_bool;
 use crate::serialization::object_to_string;
 use crate::serialization::to_string::{ref_to_string, object_to_string_xml};
 use rust_decimal::Decimal;
+use crate::namespaces::SCHEMA;
 
 mod environment;
 pub(crate) mod comparison;
 
 const DEBUG: bool = false;
+
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone, Hash)]
+pub enum NumberCase {
+    Normal,
+    NaN,
+    PlusInfinity,
+    MinusInfinity,
+}
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone, Hash)]
 pub enum Type {
@@ -29,12 +39,11 @@ pub enum Type {
     yearMonthDuration(),
     dayTimeDuration(),
 
-    float(),
-    double(),
-
     Integer(i128),
-    Decimal(Decimal),
-    Double(Decimal),
+    Decimal { number: Option<Decimal>, case: NumberCase },
+    Float { number: Option<Decimal>, case: NumberCase },
+    Double { number: Option<Decimal>, case: NumberCase },
+
     nonPositiveInteger(),
     negativeInteger(),
     long(),
@@ -367,8 +376,10 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
     match expression {
         Expr::Boolean(bool) => (current_env, Object::Atomic(Type::Boolean(bool))),
         Expr::Integer(number) => (current_env, Object::Atomic(Type::Integer(number))),
-        Expr::Decimal(number) => (current_env, Object::Atomic(Type::Decimal(number))),
-        Expr::Double(number) => (current_env, Object::Atomic(Type::Double(number))),
+        Expr::Decimal(number) =>
+            (current_env, Object::Atomic(Type::Decimal { number: Some(number), case: NumberCase::Normal })),
+        Expr::Double(number) =>
+            (current_env, Object::Atomic(Type::Double { number: Some(number), case: NumberCase::Normal })),
         Expr::String(string) => (current_env, Object::Atomic(Type::String(string))),
         Expr::StringComplex(exprs) => {
             let mut strings = Vec::with_capacity(exprs.len());
@@ -467,15 +478,15 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
         },
 
         Expr::Node { name, attributes , children } => {
-            // let (new_env, evaluated_name) = eval_expr(*name, current_env, context_item);
-            // current_env = new_env;
-            //
-            // let evaluated_name = match evaluated_name {
-            //     Object::QName { local_part, url, prefix } => {
-            //         QName { local_part, url, prefix }
-            //     }
-            //     _ => panic!("unexpected object") //TODO: better error
-            // };
+            let (new_env, evaluated_name) = eval_expr(*name, current_env, context_item);
+            current_env = new_env;
+
+            let evaluated_name = match evaluated_name {
+                Object::QName { local_part, url, prefix } => {
+                    QName { local_part, url, prefix }
+                }
+                _ => panic!("unexpected object") //TODO: better error
+            };
 
             let mut evaluated_attributes = vec![];
             for attribute in attributes {
@@ -498,20 +509,30 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
 
                 match evaluated_child {
                     Object::Sequence(items) => {
+                        let mut addSpace = false;
                         for item in items {
                             let id = current_env.next_id();
                             match item {
                                 Object::Node(Node::Attribute { sequence, name, value}) => { // TODO: avoid copy!
+                                    addSpace = false;
+
                                     let evaluated_attribute = Node::Attribute { sequence, name, value };
 
                                     evaluated_attributes.push(evaluated_attribute);
                                 },
                                 Object::Node(node) => {
+                                    addSpace = false;
+
                                     evaluated_children.push(node);
                                 }
                                 Object::Atomic(..) => {
-                                    let content = object_to_string_xml(&item);
+                                    let mut content = object_to_string_xml(&item);
+                                    if addSpace {
+                                        content.insert(0, ' ');
+                                    }
                                     evaluated_children.push(Node::NodeText { sequence: -1, content });
+
+                                    addSpace = true;
                                 }
                                 _ => panic!("unexpected object {:?}", item) //TODO: better error
                             }
@@ -531,26 +552,24 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
                     }
                     _ => panic!("unexpected object {:?}", evaluated_child) //TODO: better error
                 };
-
-
             }
 
             let id = current_env.next_id();
             (current_env, Object::Node(
-                Node::Node { sequence: id, name, attributes: evaluated_attributes, children: evaluated_children }
+                Node::Node { sequence: id, name: evaluated_name, attributes: evaluated_attributes, children: evaluated_children }
             ))
         },
 
         Expr::Attribute { name, value } => {
-            // let (new_env, evaluated_name) = eval_expr(*name, current_env, context_item);
-            // current_env = new_env;
-            //
-            // let evaluated_name = match evaluated_name {
-            //     Object::QName { prefix, url, local_part } => { // TODO: avoid copy!
-            //         QName { prefix, url, local_part }
-            //     }
-            //     _ => panic!("unexpected object") //TODO: better error
-            // };
+            let (new_env, evaluated_name) = eval_expr(*name, current_env, context_item);
+            current_env = new_env;
+
+            let evaluated_name = match evaluated_name {
+                Object::QName { prefix, url, local_part } => { // TODO: avoid copy!
+                    QName { prefix, url, local_part }
+                }
+                _ => panic!("unexpected object") //TODO: better error
+            };
 
             let (new_env, evaluated_value) = eval_expr(*value, current_env, context_item);
             current_env = new_env;
@@ -564,27 +583,42 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
 
             let id = current_env.next_id();
 
-            (current_env, Object::Node(Node::Attribute { sequence: id, name, value: evaluated_value }))
+            (current_env, Object::Node(Node::Attribute { sequence: id, name: evaluated_name, value: evaluated_value }))
         },
 
         Expr::NodeText(content) => {
+            let (new_env, evaluated) = eval_expr(*content, current_env, context_item);
+            current_env = new_env;
+
+            let content = object_to_string(&evaluated);
+
             let id = current_env.next_id();
             (current_env, Object::Node(Node::NodeText { sequence: id, content }))
         },
         Expr::NodeComment(content) => {
+            let (new_env, evaluated) = eval_expr(*content, current_env, context_item);
+            current_env = new_env;
+
+            let content = object_to_string(&evaluated);
+
             let id = current_env.next_id();
             (current_env, Object::Node(Node::NodeComment { sequence: id, content }))
         },
         Expr::NodePI { target, content } => {
-            // let (new_env, evaluated_target) = eval_expr(*target, current_env, context_item);
-            // current_env = new_env;
-            //
-            // let evaluated_target = match evaluated_target {
-            //     Object::QName { prefix, url, local_part } => { // TODO: avoid copy!
-            //         QName { prefix, url, local_part }
-            //     }
-            //     _ => panic!("unexpected object") //TODO: better error
-            // };
+            let (new_env, evaluated_target) = eval_expr(*target, current_env, context_item);
+            current_env = new_env;
+
+            let target = match evaluated_target {
+                Object::QName { prefix, url, local_part } => { // TODO: avoid copy!
+                    QName { prefix, url, local_part }
+                }
+                _ => panic!("unexpected object") //TODO: better error
+            };
+
+            let (new_env, evaluated) = eval_expr(*content, current_env, context_item);
+            current_env = new_env;
+
+            let content = object_to_string(&evaluated);
 
             let id = current_env.next_id();
             (current_env, Object::Node(Node::NodePI { sequence: id, target, content }))
@@ -646,8 +680,54 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
 
             let result = match result {
                 Object::Atomic(Type::Integer(num)) => Object::Atomic(Type::Integer(-num)),
-                Object::Atomic(Type::Decimal(num)) => Object::Atomic(Type::Decimal(-num)),
-                Object::Atomic(Type::Double(num)) => Object::Atomic(Type::Double(-num)),
+                Object::Atomic(Type::Decimal { number, case }) => {
+                    let t = match case {
+                        NumberCase::Normal => {
+                            if let Some(num) = number {
+                                Type::Decimal { number: Some(-num), case }
+                            } else {
+                                panic!("internal error")
+                            }
+                        },
+                        NumberCase::NaN => Type::Decimal { number, case },
+                        NumberCase::PlusInfinity => Type::Decimal { number, case: NumberCase::MinusInfinity },
+                        NumberCase::MinusInfinity => Type::Decimal { number, case: NumberCase::PlusInfinity },
+                    };
+
+                    Object::Atomic(t)
+                }
+                Object::Atomic(Type::Float { number, case }) => {
+                    let t = match case {
+                        NumberCase::Normal => {
+                            if let Some(num) = number {
+                                Type::Float { number: Some(-num), case }
+                            } else {
+                                panic!("internal error")
+                            }
+                        },
+                        NumberCase::NaN => Type::Float { number, case },
+                        NumberCase::PlusInfinity => Type::Float { number, case: NumberCase::MinusInfinity },
+                        NumberCase::MinusInfinity => Type::Float { number, case: NumberCase::PlusInfinity },
+                    };
+
+                    Object::Atomic(t)
+                },
+                Object::Atomic(Type::Double { number, case }) => {
+                    let t = match case {
+                        NumberCase::Normal => {
+                            if let Some(num) = number {
+                                Type::Double { number: Some(-num), case }
+                            } else {
+                                panic!("internal error")
+                            }
+                        },
+                        NumberCase::NaN => Type::Double { number, case },
+                        NumberCase::PlusInfinity => Type::Double { number, case: NumberCase::MinusInfinity },
+                        NumberCase::MinusInfinity => Type::Double { number, case: NumberCase::PlusInfinity },
+                    };
+
+                    Object::Atomic(t)
+                },
                 _ => panic!("Negative is unimplemented for {:?}", result)
             };
 
@@ -819,8 +899,6 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
             let (new_env, value) = eval_expr(*expr, current_env, context_item);
             current_env = new_env;
 
-            println!("{:?}", value);
-
             (current_env, value)
         },
 
@@ -894,11 +972,11 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
                     let object = sequence.remove(0);
                     (current_env, object)
                 } else {
-                    let result = sequence.into_iter()
+                    let str = sequence.into_iter()
                         .map(|item| object_to_string(&item))
                         .collect();
 
-                    (current_env, Object::Atomic(Type::String(result)))
+                    (current_env, Object::Atomic(Type::String(str)))
                 }
             }
         },
@@ -981,19 +1059,22 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
                 ItemType::AtomicOrUnionType(name) => {
                     match object {
                         Object::Atomic(Type::String(..)) => {
-                            name.local_part == "string" && name.prefix == "xs" // TODO name.url ==
+                            name.local_part == "string" && name.prefix == "xs" && name.url == SCHEMA.url
                         },
                         Object::Atomic(Type::NormalizedString(..)) => {
-                            name.local_part == "string" && name.prefix == "xs" // TODO name.url ==
+                            name.local_part == "string" && name.prefix == "xs" && name.url == SCHEMA.url
                         },
                         Object::Atomic(Type::Integer(..)) => {
-                            name.local_part == "integer" && name.prefix == "xs" // TODO name.url ==
+                            name.local_part == "integer" && name.prefix == "xs" && name.url == SCHEMA.url
                         },
-                        Object::Atomic(Type::Decimal(..)) => {
-                            name.local_part == "decimal" && name.prefix == "xs" // TODO name.url ==
+                        Object::Atomic(Type::Decimal{..}) => {
+                            name.local_part == "decimal" && name.prefix == "xs" && name.url == SCHEMA.url
                         },
-                        Object::Atomic(Type::Double(..)) => {
-                            name.local_part == "double" && name.prefix == "xs" // TODO name.url ==
+                        Object::Atomic(Type::Float{..}) => {
+                            name.local_part == "float" && name.prefix == "xs" && name.url == SCHEMA.url
+                        },
+                        Object::Atomic(Type::Double{..}) => {
+                            name.local_part == "double" && name.prefix == "xs" && name.url == SCHEMA.url
                         },
                         _ => panic!("TODO: {:?}", object)
                     }
@@ -1173,14 +1254,6 @@ impl Iterator for RangeIterator {
         } else {
             None
         }
-    }
-}
-
-pub fn object_to_bool(object: &Object) -> bool {
-    match object {
-        Object::Empty => false,
-        Object::Atomic(Type::Boolean(v)) => *v,
-        _ => panic!("TODO object_to_bool {:?}", object)
     }
 }
 

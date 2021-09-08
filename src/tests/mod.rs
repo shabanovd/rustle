@@ -1,7 +1,8 @@
-use crate::eval::{Object, Environment, Type, eval_statements, object_to_bool, object_to_iterator};
+use crate::eval::{Object, Environment, Type, eval_statements, object_to_iterator};
 use crate::parser::parse;
 use crate::value::{resolve_element_qname, QName};
 use crate::serialization::object_to_string;
+use crate::fns::object_to_bool;
 
 
 pub(crate) fn eval_on_spec(spec: &str, input: &str) -> Result<Object, String> {

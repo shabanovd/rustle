@@ -26,7 +26,7 @@ pub fn parse_main_module(input: &str) -> IResult<&str, Vec<Statement>, CustomErr
     let (input, _) = ws(input)?;
     let (input, program) = parse_expr(input)?;
 
-    found_statements(input, vec![Statement::Prolog(prolog), Statement::Program(program)])
+    Ok((input, vec![Statement::Prolog(prolog), Statement::Program(program)]))
 }
 
 // [6]    	Prolog 	   ::=
@@ -244,7 +244,7 @@ pub(crate) fn parse_enclosed_expr(input: &str) -> IResult<&str, Expr, CustomErro
 
 // [38]    	QueryBody 	   ::=    	Expr
 // [39]    	Expr 	   ::=    	ExprSingle ("," ExprSingle)*
-fn parse_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
+pub(crate) fn parse_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
     let mut program = vec![];
 
     let mut current_input = input;
@@ -269,26 +269,11 @@ fn parse_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
 //  TODO: | IfExpr
 //  TODO: | TryCatchExpr
 // | OrExpr
-fn parse_expr_single(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
-    if DEBUG {
-        println!("parse_expr_single: {:?}", input);
-    }
-
-    let check = parse_flwor_expr(input);
-    if check.is_ok() {
-        let (input, expr) = check?;
-        return found_expr(
-            input,
-            expr
-        )
-    }
-
-    let (input, expr) = parse_or_expr(input)?;
-    found_expr(
-        input,
-        expr
-    )
-}
+parse_one_of!(
+    parse_expr_single, Expr,
+    parse_flwor_expr,
+    parse_or_expr,
+);
 
 // [41]    	FLWORExpr 	   ::=    	InitialClause IntermediateClause* ReturnClause
 // [69]    	ReturnClause 	   ::=    	"return" ExprSingle

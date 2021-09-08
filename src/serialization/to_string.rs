@@ -1,4 +1,4 @@
-use crate::eval::{Object, Type, Node};
+use crate::eval::{Object, Type, Node, NumberCase};
 use crate::serialization::node_to_string;
 use crate::parser::op::Representation;
 
@@ -40,8 +40,21 @@ fn _object_to_string(object: &Object, ref_resolving: bool) -> String {
         Object::Atomic(Type::Integer(num)) => {
             num.to_string()
         },
-        Object::Atomic(Type::Decimal(num)) |
-        Object::Atomic(Type::Double(num)) => num.to_string(),
+        Object::Atomic(Type::Decimal { number, case }) |
+        Object::Atomic(Type::Double { number, case }) => {
+            match case {
+                NumberCase::Normal => {
+                    if let Some(num) = number {
+                        num.to_string()
+                    } else {
+                        panic!("internal error")
+                    }
+                }
+                NumberCase::NaN => String::from("NaN"),
+                NumberCase::PlusInfinity => String::from("INF"),
+                NumberCase::MinusInfinity => String::from("-INF"),
+            }
+        },
         Object::Sequence(items) => {
             let mut result = String::new();
             for item in items {

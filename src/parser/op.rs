@@ -112,11 +112,12 @@ pub enum Expr {
 
     Postfix { primary: Box<Expr>, suffix: Vec<Expr> },
 
-    Node { name: QName, attributes: Vec<Expr>, children: Vec<Expr> },
-    Attribute { name: QName, value: Box<Expr> },
-    NodeText(String),
-    NodeComment(String),
-    NodePI { target: QName, content: String },
+    NodeDocument(Box<Expr>),
+    Node { name: Box<Expr>, attributes: Vec<Expr>, children: Vec<Expr> },
+    Attribute { name: Box<Expr>, value: Box<Expr> },
+    NodeText(Box<Expr>),
+    NodeComment(Box<Expr>),
+    NodePI { target: Box<Expr>, content: Box<Expr> },
 
     Map { entries: Vec<Expr> }, // Expr because can't use MapEntry here
     MapEntry { key: Box<Expr>, value: Box<Expr> },

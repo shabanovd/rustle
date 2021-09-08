@@ -17,6 +17,7 @@ mod map;
 mod array;
 
 use crate::serialization::object_to_string;
+pub use crate::fns::boolean::object_to_bool;
 pub use sequences::sort_and_dedup;
 
 pub type FUNCTION<'a> = fn(Box<Environment<'a>>, Vec<Object>, &Object) -> (Box<Environment<'a>>, Object);
@@ -55,6 +56,8 @@ impl<'a> FunctionsRegister<'a> {
         };
 
         instance.register(SCHEMA.url, "decimal", 1, decimal::xs_decimal_eval);
+        instance.register(SCHEMA.url, "float", 1, math::xs_float_eval);
+        instance.register(SCHEMA.url, "double", 1, math::xs_double_eval);
         instance.register(SCHEMA.url, "anyURI", 1, url::xs_anyuri_eval);
 
 //        instance.register("op", "same-key", 2, map::map_merge);
@@ -106,9 +109,12 @@ impl<'a> FunctionsRegister<'a> {
 
         instance.register(XPATH_FUNCTIONS.url, "true", 0, boolean::fn_true);
         instance.register(XPATH_FUNCTIONS.url, "false", 0, boolean::fn_false);
+        instance.register(XPATH_FUNCTIONS.url, "not", 1, boolean::fn_not);
 
         instance.register(XPATH_FUNCTIONS.url, "string", 0, strings::fn_string);
         instance.register(XPATH_FUNCTIONS.url, "string", 1, strings::fn_string);
+        instance.register(XPATH_FUNCTIONS.url, "concat", 2, strings::fn_concat); // TODO number of arguments 2 or more
+        instance.register(XPATH_FUNCTIONS.url, "concat", 3, strings::fn_concat);
         instance.register(XPATH_FUNCTIONS.url, "string-join", 1, strings::fn_string_join);
         instance.register(XPATH_FUNCTIONS.url, "string-join", 2, strings::fn_string_join);
         instance.register(XPATH_FUNCTIONS.url, "string-to-codepoints", 1, strings::fn_string_to_codepoints);
@@ -134,14 +140,13 @@ impl<'a> FunctionsRegister<'a> {
     }
 
     pub fn get(&self, qname: &QNameResolved, arity: usize) -> Option<FUNCTION<'a>> {
-        // println!("function get {:?} {:?} {:?}", uri, local_part, arity);
         if let Some(list) = self.functions.get(qname) {
-            // println!("function list {:?}", list.len());
-            //TODO: fix it!
-            let rf = list.get(&arity).unwrap();
-            Some(*rf)
+            if let Some(rf) = list.get(&arity) {
+                Some(*rf)
+            } else {
+                None
+            }
         } else {
-            // println!("function list NONE");
             None
         }
     }

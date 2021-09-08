@@ -13,8 +13,8 @@ use nom::{
 };
 
 use crate::parser::helper::{ws, ws_tag_ws};
-use crate::parser::parse_names::parse_qname;
-use crate::parser::parse_expr::parse_enclosed_expr;
+use crate::parser::parse_names::{parse_qname, parse_eqname, parse_ncname, parse_qname_expr};
+use crate::parser::parse_expr::{parse_enclosed_expr, parse_expr_single, parse_expr};
 use nom::error::ParseError;
 
 const DEBUG: bool = false;
@@ -50,7 +50,7 @@ pub(crate) fn parse_direct_constructor(input: &str) -> IResult<&str, Expr, Custo
 
         return Ok((
             input,
-            Expr::NodeComment(String::from(content))
+            Expr::NodeComment(Box::new(Expr::String(String::from(content))))
         ))
     }
 
@@ -59,7 +59,7 @@ pub(crate) fn parse_direct_constructor(input: &str) -> IResult<&str, Expr, Custo
     if result.is_ok() {
         let input = result?.0;
 
-        let (input, target) = parse_qname(input)?;
+        let (input, target) = parse_qname_expr(input)?;
 
         //TODO: target must not be 'xml'
 
@@ -67,9 +67,11 @@ pub(crate) fn parse_direct_constructor(input: &str) -> IResult<&str, Expr, Custo
 
         let input = tag("?>")(input)?.0;
 
+        let content = Expr::String(String::from(content));
+
         return Ok((
             input,
-            Expr::NodePI { target, content: String::from(content) }
+            Expr::NodePI { target: Box::new(target), content: Box::new(content) }
         ))
     }
 
@@ -77,7 +79,7 @@ pub(crate) fn parse_direct_constructor(input: &str) -> IResult<&str, Expr, Custo
 
     // "<" QName DirAttributeList ("/>" | (">" DirElemContent* "</" QName S? ">"))
 
-    let (input, tag_name) = parse_qname(input)?;
+    let (input, tag_name) = parse_qname_expr(input)?;
 
     let (input, attributes) = parse_attribute_list(input)?;
 
@@ -122,7 +124,7 @@ pub(crate) fn parse_direct_constructor(input: &str) -> IResult<&str, Expr, Custo
 
         current_input = tag("</")(current_input)?.0;
 
-        let (input, close_tag_name) = parse_qname(current_input)?;
+        let (input, close_tag_name) = parse_qname_expr(current_input)?;
 
         current_input = ws(input)?.0;
 
@@ -139,7 +141,7 @@ pub(crate) fn parse_direct_constructor(input: &str) -> IResult<&str, Expr, Custo
 
     Ok((
         current_input,
-        Expr::Node { name: tag_name, attributes, children }
+        Expr::Node { name: Box::new(tag_name), attributes, children }
     ))
 }
 
@@ -160,7 +162,7 @@ pub(crate) fn parse_attribute_list(input: &str) -> IResult<&str, Vec<Expr>, Cust
         }
         current_input = check?.0;
 
-        let check = parse_qname(current_input);
+        let check = parse_qname_expr(current_input);
         if check.is_ok() {
             let (input, name) = check?;
 
@@ -169,7 +171,7 @@ pub(crate) fn parse_attribute_list(input: &str) -> IResult<&str, Vec<Expr>, Cust
             let (input, value) = parse_dir_attribute_value(input)?;
             current_input = input;
 
-            attributes.push(Expr::Attribute { name, value: Box::new(value) })
+            attributes.push(Expr::Attribute { name: Box::new(name), value: Box::new(value) })
         } else {
             break;
         }
@@ -262,7 +264,7 @@ pub(crate) fn parse_cdata_section(input: &str) -> IResult<&str, Expr, CustomErro
 
     let (input, _) = tag("]]>")(input)?;
 
-    found_expr(input, Expr::NodeComment(String::from(content)))
+    found_expr(input, Expr::NodeComment(Box::new(Expr::String(String::from(content)))))
 }
 
 // [155]    	ComputedConstructor 	   ::=    	CompDocConstructor
@@ -276,7 +278,7 @@ pub(crate) fn parse_cdata_section(input: &str) -> IResult<&str, Expr, CustomErro
 // [157]    	CompElemConstructor 	   ::=    	"element" (EQName | ("{" Expr "}")) EnclosedContentExpr
 // [158]    	EnclosedContentExpr 	   ::=    	EnclosedExpr
 // [159]    	CompAttrConstructor 	   ::=    	"attribute" (EQName | ("{" Expr "}")) EnclosedExpr
-// [160]    	CompNamespaceConstructor 	   ::=    	"namespace" (Prefix | EnclosedPrefixExpr) EnclosedURIExpr
+// TODO [160]    	CompNamespaceConstructor 	   ::=    	"namespace" (Prefix | EnclosedPrefixExpr) EnclosedURIExpr
 // [161]    	Prefix 	   ::=    	NCName
 // [162]    	EnclosedPrefixExpr 	   ::=    	EnclosedExpr
 // [163]    	EnclosedURIExpr 	   ::=    	EnclosedExpr
@@ -290,11 +292,84 @@ pub(crate) fn parse_computed_constructor(input: &str) -> IResult<&str, Expr, Cus
         ( tag("document"), tag("element"), tag("attribute"), tag("namespace"), tag("text"), tag("comment"), tag("processing-instruction")  )
     )(input)?;
 
-    // TODO: finish it
-    Ok((
-        "TODO",
-        Expr::String( String::from( "TODO" ))
-    ))
+    let (input, expr) = match name {
+        "document" => {
+            let (input, expr) = parse_enclosed_expr(input)?;
+            (input, Expr::NodeDocument(Box::new(expr)))
+        }
+        "text" => {
+            let (input, expr) = parse_enclosed_expr(input)?;
+            (input, Expr::NodeText(Box::new(expr)))
+        }
+        "comment" => {
+            let (input, expr) = parse_enclosed_expr(input)?;
+            (input, Expr::NodeComment(Box::new(expr)))
+        }
+        "element" => {
+            let check = parse_qname_expr(input);
+            let (input, name) = if check.is_ok() {
+                check?
+            } else {
+                let (input, _) = tag("{")(input).or_failure(CustomError::XPST0003)?;
+
+                let (input, expr) = parse_expr(input)?;
+
+                let (input, _) = tag("}")(input).or_failure(CustomError::XPST0003)?;
+
+                (input, expr)
+            };
+
+            let (input, expr) = parse_enclosed_expr(input)?;
+
+            (input, Expr::Node { name: Box::new(expr), attributes: vec![], children: vec![] })
+        }
+        "attribute" => {
+            let check = parse_qname_expr(input);
+            let (input, name) = if check.is_ok() {
+                check?
+            } else {
+                let (input, _) = tag("{")(input).or_failure(CustomError::XPST0003)?;
+
+                let (input, expr) = parse_expr(input)?;
+
+                let (input, _) = tag("}")(input).or_failure(CustomError::XPST0003)?;
+
+                (input, expr)
+            };
+
+            let (input, expr) = parse_enclosed_expr(input)?;
+
+            (input, Expr::Attribute { name: Box::new(name), value: Box::new(expr) })
+        }
+        "namespace" => {
+            // "namespace" (Prefix | EnclosedPrefixExpr) EnclosedURIExpr
+            todo!()
+        }
+        "processing-instruction" => {
+            // "processing-instruction" (NCName | ("{" Expr "}")) EnclosedExpr
+            let check = parse_ncname(input);
+            let (input, name) = if check.is_ok() {
+                let (input, name) = check?;
+
+                (input, Expr::String(name))
+            } else {
+                let (input, _) = tag("{")(input).or_failure(CustomError::XPST0003)?;
+
+                let (input, expr) = parse_expr(input)?;
+
+                let (input, _) = tag("}")(input).or_failure(CustomError::XPST0003)?;
+
+                (input, expr)
+            };
+
+            let (input, expr) = parse_enclosed_expr(input)?;
+
+            (input, Expr::NodePI { target: Box::new(name), content: Box::new(expr) })
+        }
+        _ => panic!("internal error")
+    };
+
+    found_expr(input, expr)
 }
 
 // raise error if "nothing" after '&'
@@ -398,5 +473,5 @@ pub(crate) fn parse_predefined_entity_ref(input: &str) -> IResult<&str, Expr, Cu
 pub(crate) fn parse_element_content_char(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
     let (input, content) = is_not("{}<&")(input)?;
 
-    found_expr(input, Expr::NodeText(String::from(content)))
+    found_expr(input, Expr::NodeText(Box::new(Expr::String(String::from(content)))))
 }

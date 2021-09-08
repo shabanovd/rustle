@@ -1,4 +1,4 @@
-use crate::eval::{Object, Type};
+use crate::eval::{Object, Type, eval_expr};
 use crate::eval::Environment;
 use crate::serialization::object_to_string;
 
@@ -15,6 +15,14 @@ pub fn fn_string<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_
     let str = object_to_string(item);
 
     (current_env, Object::Atomic(Type::String(str)))
+}
+
+pub fn fn_concat<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+    let str = arguments.iter()
+        .map(|item| object_to_string(item))
+        .collect();
+
+    (env, Object::Atomic(Type::String(str)))
 }
 
 pub fn fn_string_join<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
