@@ -168,12 +168,19 @@ pub enum Operator {
 
     Mod,
 
-    Equals,
-    NotEquals,
-    LessThan,
-    LessOrEquals,
-    GreaterThan,
-    GreaterOrEquals,
+    GeneralEquals,
+    GeneralNotEquals,
+    GeneralLessThan,
+    GeneralLessOrEquals,
+    GeneralGreaterThan,
+    GeneralGreaterOrEquals,
+
+    ValueEquals,
+    ValueNotEquals,
+    ValueLessThan,
+    ValueLessOrEquals,
+    ValueGreaterThan,
+    ValueGreaterOrEquals,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

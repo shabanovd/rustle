@@ -9,10 +9,10 @@ mod fun;
 mod sequences;
 mod boolean;
 mod strings;
-mod decimal;
+mod types;
+mod duration;
 mod comparison;
 mod math;
-mod url;
 mod map;
 mod array;
 
@@ -55,10 +55,16 @@ impl<'a> FunctionsRegister<'a> {
             declared: HashMap::new(),
         };
 
-        instance.register(SCHEMA.url, "decimal", 1, decimal::xs_decimal_eval);
-        instance.register(SCHEMA.url, "float", 1, math::xs_float_eval);
-        instance.register(SCHEMA.url, "double", 1, math::xs_double_eval);
-        instance.register(SCHEMA.url, "anyURI", 1, url::xs_anyuri_eval);
+        instance.register(SCHEMA.url, "untypedAtomic", 1, types::xs_untyped_atomic_eval);
+        instance.register(SCHEMA.url, "NCName", 1, types::xs_ncname_eval);
+        instance.register(SCHEMA.url, "anyURI", 1, types::xs_anyuri_eval);
+        instance.register(SCHEMA.url, "yearMonthDuration", 1, types::xs_year_month_duration_eval);
+        instance.register(SCHEMA.url, "dayTimeDuration", 1, types::xs_day_time_duration_eval);
+        instance.register(SCHEMA.url, "duration", 1, types::xs_duration_eval);
+
+        instance.register(SCHEMA.url, "decimal", 1, types::xs_decimal_eval);
+        instance.register(SCHEMA.url, "float", 1, types::xs_float_eval);
+        instance.register(SCHEMA.url, "double", 1, types::xs_double_eval);
 
 //        instance.register("op", "same-key", 2, map::map_merge);
         instance.register(XPATH_MAP.url, "merge", 1, map::map_merge);
@@ -94,6 +100,8 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(XPATH_ARRAY.url, "sort", 3, array::sort);
         instance.register(XPATH_ARRAY.url, "flatten", 1, array::flatten);
 
+        instance.register(XPATH_FUNCTIONS.url, "days-from-duration", 1, duration::fn_days_from_duration);
+
         instance.register(XPATH_FUNCTIONS.url, "for-each", 2, fun::for_each);
         instance.register(XPATH_FUNCTIONS.url, "filter", 2, fun::filter);
         instance.register(XPATH_FUNCTIONS.url, "fold-left", 3, fun::fold_left);
@@ -103,6 +111,8 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(XPATH_FUNCTIONS.url, "sort", 2, fun::sort);
         instance.register(XPATH_FUNCTIONS.url, "sort", 3, fun::sort);
         instance.register(XPATH_FUNCTIONS.url, "apply", 2, fun::apply);
+
+        instance.register(XPATH_FUNCTIONS.url, "avg", 1, math::fn_avg);
 
         instance.register(XPATH_FUNCTIONS.url, "abs", 1, math::fn_abs);
 

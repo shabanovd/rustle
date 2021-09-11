@@ -1,6 +1,7 @@
-use crate::eval::{Object, Type};
+use crate::eval::{Object, Type, NumberCase};
 use rust_decimal::Decimal;
 use crate::serialization::object_to_string;
+use crate::parser::parse_duration::string_to_dt_duration;
 
 pub(crate) fn eq(left: &Object, right: &Object) -> bool {
 
@@ -49,6 +50,76 @@ pub(crate) fn eq(left: &Object, right: &Object) -> bool {
             }
         }
         false
+    }
+}
+
+pub(crate) fn general_eq(left: &Object, right: &Object) -> bool {
+    match left {
+        Object::Atomic(lt) => {
+            match right {
+                Object::Atomic(Type::Untyped(rs)) => {
+                    match lt {
+                        Type::Untyped(ls) => {
+                            ls == rs
+                        }
+                        Type::DayTimeDuration { .. } => {
+                            match string_to_dt_duration(rs) {
+                                Ok(rd) => lt == &rd,
+                                Err(e) => panic!("error") // TODO: Err(..)
+                            }
+                        }
+                        Type::Integer(..) |
+                        Type::Decimal {..} |
+                        Type::Float {..} |
+                        Type::Decimal {..} => {
+                            if let Ok(num) = Decimal::from_scientific(rs) {
+                                let rv = Object::Atomic(Type::Double { number: Some(num), case: NumberCase::Normal });
+                                eq(left, &rv)
+                            } else {
+                                panic!("error")
+                            }
+                        }
+                        _ => panic!("error")
+                    }
+                }
+                Object::Atomic(..) => {
+                    eq(left, right)
+                },
+                Object::Sequence(items) => {
+                    for item in items {
+                        if eq(left, item) {
+                            return true;
+                        }
+                    }
+                    false
+                }
+                _ => panic!("error")
+            }
+        }
+        Object::Sequence(left_items) => {
+            match right {
+                Object::Atomic(..) => {
+                    for item in left_items {
+                        if eq(left, item) {
+                            return true;
+                        }
+                    }
+                    false
+                },
+                Object::Sequence(right_items) => {
+                    for left_item in left_items {
+                        for right_item in right_items {
+                            if eq(left_item, right_item) {
+                                return true;
+                            }
+                        }
+                    }
+                    false
+                }
+                _ => panic!("error")
+            }
+        }
+        _ => panic!("error")
     }
 }
 

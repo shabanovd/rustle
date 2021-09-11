@@ -1,60 +1,36 @@
 use crate::eval::{Object, Type, NumberCase};
 use crate::eval::Environment;
 use rust_decimal::Decimal;
+use rust_decimal::prelude::FromPrimitive;
 
-pub fn xs_float_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+pub fn fn_avg<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+
     match arguments.as_slice() {
-
-        [Object::Atomic(Type::String(string))] => {
-            let t = match string.as_str() {
-                "INF" => Type::Float { number: None, case: NumberCase::PlusInfinity },
-                "-INF" => Type::Float { number: None, case: NumberCase::MinusInfinity },
-                "NaN" => Type::Float { number: None, case: NumberCase::NaN },
-                _ => {
-                    if let Ok(num) = Decimal::from_scientific(string) {
-                        Type::Float { number: Some(num), case: NumberCase::Normal }
-                    } else {
-                        panic!("error")
-                    }
-                },
-            };
-
-            (env, Object::Atomic(t))
-        }
-
-        [Object::Atomic(Type::Float { number, case })] => {
-            (env, Object::Atomic(Type::Float { number: *number, case: case.clone() }))
+        [Object::Empty] => {
+            (env, Object::Empty)
         },
-
-        _ => (env, Object::Empty), // TODO: raise error?
-    }
-}
-
-pub fn xs_double_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
-    match arguments.as_slice() {
-
-        [Object::Atomic(Type::String(string))] => {
-            let t = match string.as_str() {
-                "INF" => Type::Double { number: None, case: NumberCase::PlusInfinity },
-                "-INF" => Type::Double { number: None, case: NumberCase::MinusInfinity },
-                "NaN" => Type::Double { number: None, case: NumberCase::NaN },
-                _ => {
-                    if let Ok(num) = Decimal::from_scientific(string) {
-                        Type::Double { number: Some(num), case: NumberCase::Normal }
-                    } else {
-                        panic!("error")
-                    }
-                },
-            };
-
-            (env, Object::Atomic(t))
-        }
-
-        [Object::Atomic(Type::Double { number, case })] => {
-            (env, Object::Atomic(Type::Double { number: *number, case: case.clone() }))
+        [Object::Sequence(items)] => {
+            // xs:untypedAtomic => xs:double
+            // xs:double, xs:float, xs:decimal, xs:yearMonthDuration, xs:dayTimeDuration
+            let mut sum = 0;
+            let mut count = 0;
+            for item in items {
+                match item {
+                    Object::Atomic(Type::Integer(num)) => {
+                        sum += num;
+                        count += 1;
+                    },
+                    _ => panic!("error")
+                }
+            }
+            let result = sum as f32 / count as f32;
+            if let Some(number) = Decimal::from_f32(result) {
+                (env, Object::Atomic(Type::Decimal { number: Some(number), case: NumberCase::Normal }))
+            } else {
+                panic!("error")
+            }
         },
-
-        _ => (env, Object::Empty), // TODO: raise error?
+        _ => panic!("error")
     }
 }
 

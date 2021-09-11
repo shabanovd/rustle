@@ -462,19 +462,19 @@ fn parse_binary_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
             }
 
             let operator = match op {
-                "=" => Operator::Equals,
-                "!=" => Operator::NotEquals,
-                "<" => Operator::LessThan,
-                "<=" => Operator::LessOrEquals,
-                ">" => Operator::GreaterThan,
-                ">=" => Operator::GreaterOrEquals,
+                "=" => Operator::GeneralEquals,
+                "!=" => Operator::GeneralNotEquals,
+                "<" => Operator::GeneralLessThan,
+                "<=" => Operator::GeneralLessOrEquals,
+                ">" => Operator::GeneralGreaterThan,
+                ">=" => Operator::GeneralGreaterOrEquals,
 
-                "eq" => Operator::Equals,
-                "ne" => Operator::NotEquals,
-                "lt" => Operator::LessThan,
-                "le" => Operator::LessOrEquals,
-                "gt" => Operator::GreaterThan,
-                "ge" => Operator::GreaterOrEquals,
+                "eq" => Operator::ValueEquals,
+                "ne" => Operator::ValueNotEquals,
+                "lt" => Operator::ValueLessThan,
+                "le" => Operator::ValueLessOrEquals,
+                "gt" => Operator::ValueGreaterThan,
+                "ge" => Operator::ValueGreaterOrEquals,
 
                 _ => Operator::Unknown,
             };

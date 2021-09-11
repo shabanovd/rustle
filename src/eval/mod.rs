@@ -13,6 +13,7 @@ use crate::serialization::object_to_string;
 use crate::serialization::to_string::{ref_to_string, object_to_string_xml};
 use rust_decimal::Decimal;
 use crate::namespaces::SCHEMA;
+use crate::parser::op::Expr::Comparison;
 
 mod environment;
 pub(crate) mod comparison;
@@ -29,15 +30,17 @@ pub enum NumberCase {
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone, Hash)]
 pub enum Type {
+    Untyped(String),
+
     dateTime(),
     dateTimeStamp(),
 
-    date(),
-    time(),
+    Date { y: u32, m: u32, d: u32 },
+    Time { h: u32, m: u32, s: u32, ms: u32},
 
-    duration(),
-    yearMonthDuration(),
-    dayTimeDuration(),
+    Duration { positive: bool, years: u32, months: u32, days: u32, hours: u32, minutes: u32, seconds: u32, microseconds: u32 },
+    YearMonthDuration  { positive: bool, years: u32, months: u32 },
+    DayTimeDuration { positive: bool, days: u32, hours: u32, minutes: u32, seconds: u32, microseconds: u32 },
 
     Integer(i128),
     Decimal { number: Option<Decimal>, case: NumberCase },
@@ -509,30 +512,30 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
 
                 match evaluated_child {
                     Object::Sequence(items) => {
-                        let mut addSpace = false;
+                        let mut add_space = false;
                         for item in items {
                             let id = current_env.next_id();
                             match item {
                                 Object::Node(Node::Attribute { sequence, name, value}) => { // TODO: avoid copy!
-                                    addSpace = false;
+                                    add_space = false;
 
                                     let evaluated_attribute = Node::Attribute { sequence, name, value };
 
                                     evaluated_attributes.push(evaluated_attribute);
                                 },
                                 Object::Node(node) => {
-                                    addSpace = false;
+                                    add_space = false;
 
                                     evaluated_children.push(node);
                                 }
                                 Object::Atomic(..) => {
                                     let mut content = object_to_string_xml(&item);
-                                    if addSpace {
+                                    if add_space {
                                         content.insert(0, ' ');
                                     }
                                     evaluated_children.push(Node::NodeText { sequence: -1, content });
 
-                                    addSpace = true;
+                                    add_space = true;
                                 }
                                 _ => panic!("unexpected object {:?}", item) //TODO: better error
                             }
@@ -754,12 +757,36 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
                         _ => panic!("plus fail")
                     }
                 },
+                Operator::Minus => {
+                    match (left_result, right_result) {
+                        (Object::Atomic(Type::Integer(left)), Object::Atomic(Type::Integer(right))) =>
+                            Object::Atomic(Type::Integer(left - right)),
+
+                        _ => panic!("plus fail")
+                    }
+                },
                 Operator::Multiply => {
                     match (left_result, right_result) {
                         (Object::Atomic(Type::Integer(left)), Object::Atomic(Type::Integer(right))) =>
                             Object::Atomic(Type::Integer(left * right)),
 
                         _ => panic!("multiply fail")
+                    }
+                },
+                Operator::Divide => {
+                    match (left_result, right_result) {
+                        (Object::Atomic(Type::Integer(left)), Object::Atomic(Type::Integer(right))) =>
+                            Object::Atomic(Type::Integer(left / right)),
+
+                        _ => panic!("divide fail")
+                    }
+                },
+                Operator::IDivide => {
+                    match (left_result, right_result) {
+                        (Object::Atomic(Type::Integer(left)), Object::Atomic(Type::Integer(right))) =>
+                            Object::Atomic(Type::Integer(left / right)),
+
+                        _ => panic!("divide fail")
                     }
                 },
                 Operator::Mod => {
@@ -789,9 +816,17 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
             // }
 
             let result = match operator {
-                Operator::Equals => {
+                Operator::GeneralEquals => {
+                    let flag = comparison::general_eq(&left_result, &right_result);
+                    Object::Atomic(Type::Boolean(flag))
+                },
+                Operator::ValueEquals => {
                     let flag = comparison::eq(&left_result, &right_result);
                     Object::Atomic(Type::Boolean(flag))
+                },
+                Operator::ValueNotEquals => {
+                    let flag = comparison::eq(&left_result, &right_result);
+                    Object::Atomic(Type::Boolean(!flag))
                 },
                 _ => panic!("operator {:?} unimplemented", operator)
             };
@@ -1191,8 +1226,8 @@ fn eval_predicates<'a>(exprs: Vec<Expr>, env: Box<Environment<'a>>, value: Objec
                             let (_, r_value) = eval_expr(*right.clone(), current_env.clone(), &context_item);
 
                             match operator {
-                                Operator::Equals => {
-                                    if l_value == r_value {
+                                Operator::GeneralEquals => {
+                                    if comparison::general_eq(&l_value, &r_value) {
                                         evaluated.push(context_item)
                                     }
                                 }

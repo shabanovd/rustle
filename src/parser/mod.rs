@@ -1,7 +1,7 @@
-use crate::parser::errors::{CustomError};
-use crate::parser::op::{Statement};
-use crate::parser::parse_expr::parse_main_module;
+use crate::parser::errors::CustomError;
 use crate::parser::helper::ws;
+use crate::parser::op::Statement;
+use crate::parser::parse_expr::parse_main_module;
 
 mod helper;
 pub(crate) mod op;
@@ -11,6 +11,7 @@ mod parse_names;
 mod parse_expr;
 mod parse_literal;
 mod parse_xml;
+pub mod parse_duration;
 
 // [1]    	Module 	   ::=    	TODO: VersionDecl? (LibraryModule | MainModule)
 pub fn parse(input: &str) -> Result<Vec<Statement>, CustomError<&str>> {
