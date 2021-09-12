@@ -1,10 +1,10 @@
-use crate::eval::{Object, Type};
+use crate::eval::{Object, Type, EvalResult};
 use crate::eval::Environment;
 
 use std::collections::HashMap;
 use crate::value::{resolve_function_qname, resolve_element_qname};
 
-pub fn fn_deep_equal<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+pub fn fn_deep_equal<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
 
     let result = match arguments.as_slice() {
         [o1, o2] => {
@@ -13,5 +13,5 @@ pub fn fn_deep_equal<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, cont
         _ => panic!("error")
     };
 
-    ( env, Object::Atomic(Type::Boolean(result)) )
+    Ok((env, Object::Atomic(Type::Boolean(result))))
 }

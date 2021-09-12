@@ -25,21 +25,25 @@ pub(crate) fn eval(input: &str) -> Result<Object, String> {
 
         let mut env = Environment::new();
 
-        let (new_env, result) = eval_statements(program, Box::new(env));
-
-        println!("result: {:?}", result);
-
-        Ok(result)
+        let check = eval_statements(program, Box::new(env));
+        match check {
+            Ok(obj) => Ok(obj),
+            Err((error_code, msg)) => {
+                let code = error_code.as_ref();
+                Err(String::from(code))
+            }
+        }
     } else {
         println!("error: {:#?}", parsed);
 
-        match parsed {
+        let msg = match parsed {
             Err(error) => {
                 let code = error.as_ref();
-                return Err(String::from(code))
+                String::from(code)
             }
-            _ => Err(format!("error {:?}", parsed))
-        }
+            _ => format!("error {:?}", parsed)
+        };
+        Err(msg)
     }
 }
 
@@ -70,10 +74,12 @@ fn eval_assert(result: &Result<Object, String>, check: &str) -> Object {
         let name = resolve_element_qname(QName::local_part("result"), &env);
         env.set(name, result.as_ref().unwrap().clone());
 
-        let (_, check_result) = eval_statements(program, env);
-
-        check_result
-
+        match eval_statements(program, env) {
+            Ok(obj) => obj,
+            Err((code, msg)) => {
+                panic!("error {:?} {:?}", code, msg);
+            }
+        }
     } else {
         panic!("error {:?}", parsed);
     }

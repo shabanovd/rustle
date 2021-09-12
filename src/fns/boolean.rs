@@ -1,20 +1,18 @@
-use crate::eval::{Object, Type, NumberCase};
+use crate::eval::{Object, Type, NumberCase, EvalResult};
 use crate::eval::Environment;
 
 use std::collections::HashMap;
 use crate::value::{resolve_function_qname, resolve_element_qname};
 
-pub fn fn_true<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
-    // TODO: check arity?
-    (env, Object::Atomic(Type::Boolean(true)))
+pub fn fn_true<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+    Ok((env, Object::Atomic(Type::Boolean(true))))
 }
 
-pub fn fn_false<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
-    // TODO: check arity?
-    (env, Object::Atomic(Type::Boolean(false)))
+pub fn fn_false<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+    Ok((env, Object::Atomic(Type::Boolean(false))))
 }
 
-pub fn fn_not<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+pub fn fn_not<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
     let result = match arguments.as_slice() {
         [object] => {
             !object_to_bool(object)
@@ -22,7 +20,7 @@ pub fn fn_not<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_ite
         _ => panic!("error")
     };
 
-    (env, Object::Atomic(Type::Boolean(result)))
+    Ok((env, Object::Atomic(Type::Boolean(result))))
 }
 
 pub fn object_to_bool(object: &Object) -> bool {

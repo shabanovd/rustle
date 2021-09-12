@@ -16,30 +16,36 @@ pub(crate) fn ws(input: &str) -> Result<(&str, &str), nom::Err<CustomError<&str>
     }
 }
 
+enum State {
+    None,
+    OpeningComment,
+    ClosingComment
+}
+
 fn find_ws_end(input: &str) -> Option<(usize, bool)> {
     let mut open_comments = 0;
-    let mut step = 1;
+    let mut step = State::None;
     for (i, c) in input.chars().enumerate() {
         if c == ' ' || c == '\t' || c == '\r' || c == '\n' {
-            step = 1;
+            step = State::None;
         } else {
-            if step == 1 && (c == '(' || c == ':') {
-                step = 2;
-            } else if step == 2 && c == ':' {
-                step = 1;
-                open_comments = open_comments + 1;
-            } else if step == 2 && c == ')' {
-                open_comments = open_comments - 1;
-                step = 1;
-            } else if step == 2 {
-                step = 1;
-                if open_comments == 0 {
-                    return Some((i - 1, false))
-                }
-            } else {
-                step = 1;
-                if open_comments == 0 {
-                    return Some((i, false))
+            match step {
+                State::None => {
+                    match c {
+                        '(' => step = State::OpeningComment,
+                        ':' => step = State::ClosingComment,
+                        _ => if open_comments == 0 { return Some((i, false)); }
+                    }
+                },
+                State::OpeningComment => {
+                    if c == ':' { open_comments += 1 }
+                    step = State::None;
+                    if open_comments == 0 { return Some((i - 1, false)); }
+                },
+                State::ClosingComment => {
+                    if c == ')' { open_comments -= 1 }
+                    step = State::None;
+                    if open_comments == 0 { return Some((i - 1, false)); }
                 }
             }
         }

@@ -1,8 +1,8 @@
-use crate::eval::{Object, Type, eval_expr};
+use crate::eval::{Object, Type, eval_expr, EvalResult};
 use crate::eval::Environment;
 use crate::serialization::object_to_string;
 
-pub fn fn_string<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+pub fn fn_string<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
 
     let mut current_env = env;
 
@@ -14,18 +14,18 @@ pub fn fn_string<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_
 
     let str = object_to_string(item);
 
-    (current_env, Object::Atomic(Type::String(str)))
+    Ok((current_env, Object::Atomic(Type::String(str))))
 }
 
-pub fn fn_concat<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+pub fn fn_concat<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
     let str = arguments.iter()
         .map(|item| object_to_string(item))
         .collect();
 
-    (env, Object::Atomic(Type::String(str)))
+    Ok((env, Object::Atomic(Type::String(str))))
 }
 
-pub fn fn_string_join<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+pub fn fn_string_join<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
 
     if arguments.len() != 1 {
         panic!("got {:?} arguments, but expected 1", arguments.len(), )
@@ -36,10 +36,10 @@ pub fn fn_string_join<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, con
 
     let str = object_to_string(item);
 
-    (current_env, Object::Atomic(Type::String(str)))
+    Ok((current_env, Object::Atomic(Type::String(str))))
 }
 
-pub fn fn_string_to_codepoints<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+pub fn fn_string_to_codepoints<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
 
     let mut current_env = env;
 
@@ -57,7 +57,7 @@ pub fn fn_string_to_codepoints<'a>(env: Box<Environment<'a>>, arguments: Vec<Obj
         _ => panic!("error")
     };
 
-    (current_env, result)
+    Ok((current_env, result))
 }
 
 

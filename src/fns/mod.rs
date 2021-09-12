@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::eval::{Object, Type, eval_expr};
+use crate::eval::{Object, Type, eval_expr, EvalResult};
 use crate::eval::Environment;
 use crate::namespaces::*;
 use crate::parser::op::Expr;
@@ -10,17 +10,20 @@ mod sequences;
 mod boolean;
 mod strings;
 mod types;
-mod duration;
+mod datetime;
 mod comparison;
 mod math;
 mod map;
 mod array;
+mod aggregates;
 
 use crate::serialization::object_to_string;
 pub use crate::fns::boolean::object_to_bool;
 pub use sequences::sort_and_dedup;
 
-pub type FUNCTION<'a> = fn(Box<Environment<'a>>, Vec<Object>, &Object) -> (Box<Environment<'a>>, Object);
+use crate::parser::errors::ErrorCode;
+
+pub type FUNCTION<'a> = fn(Box<Environment<'a>>, Vec<Object>, &Object) -> EvalResult<'a>;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Function {
@@ -58,6 +61,7 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(SCHEMA.url, "untypedAtomic", 1, types::xs_untyped_atomic_eval);
         instance.register(SCHEMA.url, "NCName", 1, types::xs_ncname_eval);
         instance.register(SCHEMA.url, "anyURI", 1, types::xs_anyuri_eval);
+        instance.register(SCHEMA.url, "date", 1, types::xs_date_eval);
         instance.register(SCHEMA.url, "yearMonthDuration", 1, types::xs_year_month_duration_eval);
         instance.register(SCHEMA.url, "dayTimeDuration", 1, types::xs_day_time_duration_eval);
         instance.register(SCHEMA.url, "duration", 1, types::xs_duration_eval);
@@ -100,7 +104,9 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(XPATH_ARRAY.url, "sort", 3, array::sort);
         instance.register(XPATH_ARRAY.url, "flatten", 1, array::flatten);
 
-        instance.register(XPATH_FUNCTIONS.url, "days-from-duration", 1, duration::fn_days_from_duration);
+        instance.register(XPATH_FUNCTIONS.url, "month-from-date", 1, datetime::fn_month_from_date);
+        instance.register(XPATH_FUNCTIONS.url, "day-from-date", 1, datetime::fn_day_from_date);
+        instance.register(XPATH_FUNCTIONS.url, "days-from-duration", 1, datetime::fn_days_from_duration);
 
         instance.register(XPATH_FUNCTIONS.url, "for-each", 2, fun::for_each);
         instance.register(XPATH_FUNCTIONS.url, "filter", 2, fun::filter);
@@ -112,7 +118,8 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(XPATH_FUNCTIONS.url, "sort", 3, fun::sort);
         instance.register(XPATH_FUNCTIONS.url, "apply", 2, fun::apply);
 
-        instance.register(XPATH_FUNCTIONS.url, "avg", 1, math::fn_avg);
+        instance.register(XPATH_FUNCTIONS.url, "count", 1, aggregates::fn_count);
+        instance.register(XPATH_FUNCTIONS.url, "avg", 1, aggregates::fn_avg);
 
         instance.register(XPATH_FUNCTIONS.url, "abs", 1, math::fn_abs);
 
@@ -194,7 +201,7 @@ pub fn expr_to_params(expr: Expr) -> Vec<Param> {
     }
 }
 
-pub fn call<'a>(env: Box<Environment<'a>>, name: QNameResolved, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+pub fn call<'a>(env: Box<Environment<'a>>, name: QNameResolved, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
     // println!("call: {:?} {:?}", name, arguments);
 
     let fun = env.functions.declared(&name, arguments.len());
@@ -209,9 +216,9 @@ pub fn call<'a>(env: Box<Environment<'a>>, name: QNameResolved, arguments: Vec<O
                     fn_env.set(resolve_element_qname(parameter.name, &env), argument.clone())
             );
 
-        let (_, result) = eval_expr(fun.body.clone(), Box::new(fn_env), context_item);
+        let (_, result) = eval_expr(fun.body.clone(), Box::new(fn_env), context_item)?;
 
-        (env, result)
+        Ok((env, result))
 
     } else {
         let fun: Option<FUNCTION> = env.functions.get(&name, arguments.len());
@@ -219,7 +226,7 @@ pub fn call<'a>(env: Box<Environment<'a>>, name: QNameResolved, arguments: Vec<O
         if fun.is_some() {
             fun.unwrap()(env, arguments, context_item)
         } else {
-            panic!("no function {:?}#{:?}", name, arguments.len())
+            Err((ErrorCode::XPST0017, format!("no function {:?}#{:?}", name, arguments.len())))
         }
     }
 }

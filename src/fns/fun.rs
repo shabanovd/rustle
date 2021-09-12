@@ -1,12 +1,12 @@
 //use crate::eval::Type;
-use crate::eval::{Object, eval_expr, object_to_iterator};
+use crate::eval::{Object, eval_expr, object_to_iterator, EvalResult};
 use crate::eval::Environment;
 
 use crate::value::{resolve_function_qname, resolve_element_qname};
 use crate::fns::{call, object_to_string};
 use crate::fns::strings::object_to_array;
 
-pub fn for_each<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+pub fn for_each<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
     let mut current_env = env;
 
     match arguments.as_slice() {
@@ -17,7 +17,7 @@ pub fn for_each<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_i
     }
 }
 
-pub fn filter<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+pub fn filter<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
     let mut current_env = env;
 
     match arguments.as_slice() {
@@ -28,7 +28,7 @@ pub fn filter<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_ite
     }
 }
 
-pub fn fold_left<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+pub fn fold_left<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
     match arguments.as_slice() {
         [seq, Object::Array(array), Object::FunctionRef { name, arity }] => {
             let mut result = array.clone();
@@ -38,23 +38,23 @@ pub fn fold_left<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_
             let it = object_to_iterator(seq);
             for item in it {
                 let arguments = vec![Object::Array(result), item.clone()];
-                let (new_env, obj) = call(current_env, name.clone(), arguments, context_item);
+                let (new_env, obj) = call(current_env, name.clone(), arguments, context_item)?;
                 current_env = new_env;
 
                 result = object_to_array(obj);
             }
 
             if result.is_empty() {
-                (current_env, Object::Empty)
+                Ok((current_env, Object::Empty))
             } else {
-                (current_env, Object::Array(result))
+                Ok((current_env, Object::Array(result)))
             }
         },
         _ => panic!("error")
     }
 }
 
-pub fn fold_right<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+pub fn fold_right<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
     let mut current_env = env;
 
     println!("arguments {:?}", arguments);
@@ -67,7 +67,7 @@ pub fn fold_right<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context
     }
 }
 
-pub fn for_each_pair<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+pub fn for_each_pair<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
     let mut current_env = env;
 
     println!("arguments {:?}", arguments);
@@ -80,7 +80,7 @@ pub fn for_each_pair<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, cont
     }
 }
 
-pub fn sort<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+pub fn sort<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
     let mut current_env = env;
 
     println!("arguments {:?}", arguments);
@@ -93,7 +93,7 @@ pub fn sort<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item:
     }
 }
 
-pub fn apply<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> (Box<Environment<'a>>, Object) {
+pub fn apply<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
 
     let mut current_env = env;
 
@@ -110,9 +110,9 @@ pub fn apply<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item
                 function_environment.set(name, argument.clone());
             }
 
-            let (_, result) = eval_expr(*body.clone(), Box::new(function_environment), &Object::Nothing);
+            let (_, result) = eval_expr(*body.clone(), Box::new(function_environment), &Object::Nothing)?;
 
-            (current_env, result)
+            Ok((current_env, result))
         },
         [Object::FunctionRef { name, arity }, Object::Array( arguments )] => {
             let fun = current_env.functions.get(&name, *arity);

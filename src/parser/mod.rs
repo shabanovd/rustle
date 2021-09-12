@@ -5,7 +5,7 @@ use crate::parser::parse_expr::parse_main_module;
 
 mod helper;
 pub(crate) mod op;
-mod errors;
+pub mod errors;
 mod macros;
 mod parse_names;
 mod parse_expr;

@@ -410,7 +410,7 @@ fn parse_range_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
             Expr::Range { from: Box::new(from), till: Box::new(till) }
         )
     } else {
-        found_expr(input, from)
+        Ok((input, from))
     }
 }
 
@@ -698,7 +698,7 @@ fn parse_relative_path_expr(input: &str) -> IResult<&str, Expr, CustomError<&str
 
     if exprs.len() == 1 {
         let expr = exprs.remove(0);
-        found_expr(current_input, expr)
+        Ok((current_input, expr))
     } else {
         found_expr(current_input, Expr::Steps(exprs))
     }
@@ -809,10 +809,7 @@ fn parse_postfix_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
     }
 
     if suffix.len() == 0 {
-        found_expr(
-            current_input,
-            primary
-        )
+        Ok((current_input, primary))
     } else {
         found_expr(
             current_input,
@@ -1217,13 +1214,22 @@ fn parse_sequence_type(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
         let (input, item_type) = parse_item_type(input)?;
 
         let check: Result<(&str, &str), nom::Err<Error<&str>>> = alt((tag("?"), tag("*"), tag("+")))(input);
-        if check.is_ok() {
-            todo!()
-        }
+        let (input, occurrence_indicator) = if check.is_ok() {
+            let (input, sign) = check.unwrap();
+            let oi = match sign {
+                "?" => OccurrenceIndicator::ZeroOrOne,
+                "*" => OccurrenceIndicator::ZeroOrMore,
+                "+" => OccurrenceIndicator::OneOrMore,
+                _ => panic!("internal error")
+            };
+            (input, oi)
+        } else {
+            (input, OccurrenceIndicator::ExactlyOne)
+        };
 
         Ok((
             input,
-            Expr::SequenceType { item_type, occurrence_indicator: OccurrenceIndicator::ExactlyOne }
+            Expr::SequenceType { item_type, occurrence_indicator }
         ))
     }
 }

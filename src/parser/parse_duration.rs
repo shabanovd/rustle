@@ -7,6 +7,20 @@ use crate::eval::Type;
 use crate::parser::CustomError;
 use crate::parser::parse_literal::is_digits;
 
+pub fn string_to_date(input: &str) -> Result<Type, String> {
+    match parse_date(input) {
+        Ok((input, dt)) => {
+            if input.is_empty() {
+                Ok(dt)
+            } else {
+                Err(String::from(input))
+            }
+        },
+        Err(e) => {
+            Err(format!("{:?}", e))
+        }
+    }
+}
 pub fn string_to_duration(input: &str) -> Result<Type, String> {
     match parse_duration(input) {
         Ok((input, dt)) => {
@@ -52,7 +66,49 @@ pub fn string_to_dt_duration(input: &str) -> Result<Type, String> {
     }
 }
 
-pub fn parse_duration(input: &str) -> IResult<&str, Type> {
+pub fn parse_date(input: &str) -> IResult<&str, Type> {
+    map(
+        tuple((
+            parse_year,
+            tag("-"),
+            parse_month,
+            tag("-"),
+            parse_day,
+            opt(alt((timezone_hour, timezone_utc))),
+        )),
+        |(y, _, m, _, d, z)| {
+            let (tz_h, tz_m) = z.unwrap_or((0, 0));
+            Type::Date { y, m, d, tz_h, tz_m }
+        }
+    )(input)
+}
+
+fn timezone_hour(input: &str) -> IResult<&str, (i32, i32)> {
+    map(
+        tuple((
+            opt(alt((tag("+"), tag("-")))),
+            time_hour,
+            opt(preceded(tag(":"), time_minute))
+        )),
+        |(sign, h, m)| {
+            let s = if let Some(ch) = sign {
+                match ch {
+                    "+" => 1,
+                    "-" => -1,
+                    _ => 1
+                }
+            } else { 1 };
+
+            (s * h as i32, s * m.unwrap_or(0) as i32)
+        }
+    )(input)
+}
+
+fn timezone_utc(input: &str) -> IResult<&str, (i32, i32)> {
+    map(tag("Z"), |_| (0, 0))(input)
+}
+
+fn parse_duration(input: &str) -> IResult<&str, Type> {
     map(
         tuple((
             opt(tag("-")),
@@ -60,7 +116,7 @@ pub fn parse_duration(input: &str) -> IResult<&str, Type> {
                 tag("P"),
                 tuple((
                     opt(terminated(take_digits, tag("Y"))),
-                    opt(terminated(duration_month, tag("M"))),
+                    opt(terminated(parse_month, tag("M"))),
                     opt(terminated(duration_day, tag("D"))),
                     opt(preceded(tag("T"), parse_duration_time)),
                 ))
@@ -74,7 +130,7 @@ pub fn parse_duration(input: &str) -> IResult<&str, Type> {
             let days = d.unwrap_or(0);
 
             let (hours, minutes, seconds, microseconds) = match time {
-                Some(Type::Time { h, m, s, ms}) => {
+                Some(Type::Time { h, m, s, ms, ..}) => {
                     (h, m, s, ms)
                 }
                 _ => (0,0,0,0)
@@ -103,7 +159,7 @@ pub fn parse_year_month_duration(input: &str) -> IResult<&str, Type> {
                 tag("P"),
                 tuple((
                     opt(terminated(take_digits, tag("Y"))),
-                    opt(terminated(duration_month, tag("M"))),
+                    opt(terminated(parse_month, tag("M"))),
                 ))
             )
         )),
@@ -137,7 +193,7 @@ pub fn parse_day_time_duration(input: &str) -> IResult<&str, Type> {
             let days = d.unwrap_or(0);
 
             let (hours, minutes, seconds, microseconds) = match time {
-                Some(Type::Time { h, m, s, ms}) => {
+                Some(Type::Time { h, m, s, ms, ..}) => {
                     (h, m, s, ms)
                 }
                 _ => (0,0,0,0)
@@ -155,7 +211,7 @@ pub fn parse_day_time_duration(input: &str) -> IResult<&str, Type> {
     )(input)
 }
 
-pub fn parse_duration_time(input: &str) -> IResult<&str, Type> {
+fn parse_duration_time(input: &str) -> IResult<&str, Type> {
     map(
         tuple((
             opt(terminated(duration_hour, tag("H"))),
@@ -168,17 +224,33 @@ pub fn parse_duration_time(input: &str) -> IResult<&str, Type> {
 
             let (s, ms) = s.unwrap_or((0,0));
 
-            Type::Time { h, m, s, ms }
+            Type::Time { h, m, s, ms, tz_h: 0, tz_m: 0 }
         }
     )(input)
 }
 
-fn duration_month(input: &str) -> IResult<&str, u32> {
+fn parse_year(input: &str) -> IResult<&str, u32> {
+    digit_in_range(input, (1, 4), 0..=9999)
+}
+
+fn parse_month(input: &str) -> IResult<&str, u32> {
     digit_in_range(input, (1, 2), 0..=12)
 }
 
+fn parse_day(input: &str) -> IResult<&str, u32> {
+    digit_in_range(input, (1, 2), 0..=31)
+}
+
+fn time_hour(input: &str) -> IResult<&str, u32> {
+    digit_in_range(input, (2, 2), 0..=24)
+}
+
+fn time_minute(input: &str) -> IResult<&str, u32> {
+    digit_in_range(input, (2, 2), 0..=59)
+}
+
 fn duration_day(input: &str) -> IResult<&str, u32> {
-    digit_in_range(input, (1, 4_294_967_295), 0..=31)
+    digit_in_range(input, (1, 10), 0..=4_294_967_295)
 }
 
 fn duration_hour(input: &str) -> IResult<&str, u32> {

@@ -2,18 +2,18 @@ use crate::eval::{Object, Type, NumberCase};
 use rust_decimal::Decimal;
 use crate::serialization::object_to_string;
 use crate::parser::parse_duration::string_to_dt_duration;
+use std::cmp::Ordering;
 
-pub(crate) fn eq(left: &Object, right: &Object) -> bool {
-
+pub(crate) fn cmp(left: &Object, right: &Object) -> Option<Ordering> {
     if left == right {
-        true
+        Some(Ordering::Equal)
     } else {
         // xs:string or xs:anyURI => xs:string
         if let Some(l_str) = object_to_string_if_string(left) {
             if let Some(r_str) = object_to_string_if_string(right) {
-                return l_str == r_str;
+                return Some(l_str.cmp(&r_str));
             } else {
-                return false;
+                return None;
             }
         }
 
@@ -26,30 +26,65 @@ pub(crate) fn eq(left: &Object, right: &Object) -> bool {
                     NT::Integer => {
                         if let Some(left_num) = object_to_i128(left) {
                             if let Some(right_num) = object_to_i128(right) {
-                                left_num.eq(&right_num)
+                                Some(left_num.cmp(&right_num))
                             } else {
-                                false
+                                None
                             }
                         } else {
-                            false
+                            None
                         }
                     },
                     NT::Decimal |
                     NT::Double => {
                         if let Some(left_num) = object_to_decimal(left) {
                             if let Some(right_num) = object_to_decimal(right) {
-                                left_num.eq(&right_num)
+                                Some(left_num.cmp(&right_num))
                             } else {
-                                false
+                                None
                             }
                         } else {
-                            false
+                            None
                         }
                     },
                 }
             }
         }
-        false
+        None
+    }
+}
+
+pub(crate) fn eq(left: &Object, right: &Object) -> bool {
+    match cmp(left, right) {
+        Some(v) => v == Ordering::Equal,
+        _ => false
+    }
+}
+
+pub(crate) fn ls_or_eq(left: &Object, right: &Object) -> bool {
+    match cmp(left, right) {
+        Some(v) => v == Ordering::Equal || v == Ordering::Less,
+        _ => false
+    }
+}
+
+pub(crate) fn ls(left: &Object, right: &Object) -> bool {
+    match cmp(left, right) {
+        Some(v) => v == Ordering::Less,
+        _ => false
+    }
+}
+
+pub(crate) fn gr_or_eq(left: &Object, right: &Object) -> bool {
+    match cmp(left, right) {
+        Some(v) => v == Ordering::Equal || v == Ordering::Greater,
+        _ => false
+    }
+}
+
+pub(crate) fn gr(left: &Object, right: &Object) -> bool {
+    match cmp(left, right) {
+        Some(v) => v == Ordering::Greater,
+        _ => false
     }
 }
 
