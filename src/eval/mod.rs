@@ -1057,6 +1057,23 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
             Ok((current_env, Object::Function { parameters: arguments, body }))
         },
 
+        Expr::If { condition, consequence, alternative } => {
+            let (new_env, evaluated) = eval_expr(*condition, current_env, context_item)?;
+            current_env = new_env;
+
+            if object_to_bool(&evaluated) {
+                let (new_env, evaluated) = eval_expr(*consequence, current_env, context_item)?;
+                current_env = new_env;
+
+                Ok((current_env, evaluated))
+            } else {
+                let (new_env, evaluated) = eval_expr(*alternative, current_env, context_item)?;
+                current_env = new_env;
+
+                Ok((current_env, evaluated))
+            }
+        },
+
         Expr::FLWOR { clauses, return_expr } => {
             // TODO: new env?
             // TODO: handle  WhereClause | GroupByClause | OrderByClause | CountClause

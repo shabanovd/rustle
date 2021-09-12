@@ -131,7 +131,7 @@ pub enum Expr {
     Binary { left: Box<Expr>, operator: Operator, right: Box<Expr> },
     Comparison { left: Box<Expr>, operator: Operator, right: Box<Expr> },
 
-    If { condition: Box<Expr>, consequence: Vec<Statement>, alternative: Vec<Statement> },
+    If { condition: Box<Expr>, consequence: Box<Expr>, alternative: Box<Expr> },
 
     ArgumentList { arguments: Vec<Expr> },
     Function { arguments: Vec<Param>, body: Box<Expr> },

@@ -197,6 +197,9 @@ pub fn expr_to_params(expr: Expr) -> Vec<Param> {
             }
             params
         },
+        Expr::Param { name, type_declaration } => {
+            vec![Param { name, sequence_type: None }]
+        },
         _ => panic!("expected ParamList but got {:?}", expr)
     }
 }

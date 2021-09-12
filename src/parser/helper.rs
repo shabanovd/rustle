@@ -26,32 +26,29 @@ fn find_ws_end(input: &str) -> Option<(usize, bool)> {
     let mut open_comments = 0;
     let mut step = State::None;
     for (i, c) in input.chars().enumerate() {
-        if c == ' ' || c == '\t' || c == '\r' || c == '\n' {
-            step = State::None;
-        } else {
-            match step {
-                State::None => {
-                    match c {
-                        '(' => step = State::OpeningComment,
-                        ':' => step = State::ClosingComment,
-                        _ => if open_comments == 0 { return Some((i, false)); }
-                    }
-                },
-                State::OpeningComment => {
-                    if c == ':' { open_comments += 1 }
-                    step = State::None;
-                    if open_comments == 0 { return Some((i - 1, false)); }
-                },
-                State::ClosingComment => {
-                    if c == ')' { open_comments -= 1 }
-                    step = State::None;
-                    if open_comments == 0 { return Some((i - 1, false)); }
+        match step {
+            State::None => {
+                match c {
+                    ' ' | '\t' | '\r' | '\n' => {},
+                    '(' => step = State::OpeningComment,
+                    ':' => step = State::ClosingComment,
+                    _ => if open_comments == 0 { return Some((i, false)); }
                 }
+            },
+            State::OpeningComment => {
+                if c == ':' { open_comments += 1 }
+                step = State::None;
+                if open_comments == 0 { return Some((i - 1, false)); }
+            },
+            State::ClosingComment => {
+                if c == ')' { open_comments -= 1 }
+                step = State::None;
+                if open_comments == 0 { return Some((i - 1, false)); }
             }
         }
     }
     if open_comments == 0 {
-        None
+        Some((input.len(), false))
     } else {
         Some((0, true))
     }

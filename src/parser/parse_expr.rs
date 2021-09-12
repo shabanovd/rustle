@@ -171,11 +171,18 @@ parse_sequence!(parse_param_list, ",", parse_param, ParamList);
 fn parse_param(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
     let (input, _) = tag("$")(input)?;
     let (input, name) = parse_eqname(input)?;
-    // TODO: TypeDeclaration?
+
+    let check = parse_type_declaration(input);
+    let (input, td) = if check.is_ok() {
+        let (input, expr) = check?;
+        (input, Some(expr))
+    } else {
+        (input, None)
+    };
 
     found_expr(
         input,
-        Expr::Param { name, type_declaration: Box::new(None)}
+        Expr::Param { name, type_declaration: Box::new(td)}
     )
 }
 
@@ -266,12 +273,13 @@ pub(crate) fn parse_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> 
 //  TODO: | QuantifiedExpr
 //  TODO: | SwitchExpr
 //  TODO: | TypeswitchExpr
-//  TODO: | IfExpr
+// | IfExpr
 //  TODO: | TryCatchExpr
 // | OrExpr
 parse_one_of!(
     parse_expr_single, Expr,
     parse_flwor_expr,
+    parse_if_expr,
     parse_or_expr,
 );
 
@@ -377,6 +385,35 @@ fn parse_let_binding_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>>
         input,
         Expr::LetBinding { name, type_declaration: Box::new(td),  value: Box::new(value)}
     )
+}
+
+// [77]    	IfExpr 	   ::=    	"if" "(" Expr ")" "then" ExprSingle "else" ExprSingle
+fn parse_if_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
+    let (input, _) = ws_tag("if", input)?;
+
+    let (input, _) = ws_tag("(", input)?;
+
+    let (input, condition) = parse_expr(input)?;
+
+    let (input, _) = ws_tag(")", input)?;
+
+    let (input, _) = ws_tag("then", input)?;
+
+    let (input, consequence) = parse_expr_single(input)?;
+
+    let (input, _) = ws_tag("else", input)?;
+
+    let (input, alternative) = parse_expr_single(input)?;
+
+    found_expr(
+        input,
+        Expr::If {
+            condition: Box::new(condition),
+            consequence: Box::new(consequence),
+            alternative: Box::new(alternative)
+        }
+    )
+
 }
 
 // [83]    	OrExpr 	   ::=    	AndExpr ( "or" AndExpr )*
@@ -1196,10 +1233,11 @@ fn parse_type_declaration(input: &str) -> IResult<&str, Expr, CustomError<&str>>
 }
 
 // [184]    	SequenceType 	   ::=    	("empty-sequence" "(" ")")
-// | (ItemType TODO: OccurrenceIndicator?)
-// TODO [185]    	OccurrenceIndicator 	   ::=    	"?" | "*" | "+"
+// | (ItemType OccurrenceIndicator?)
+// [185]    	OccurrenceIndicator 	   ::=    	"?" | "*" | "+"
 fn parse_sequence_type(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
-    let check = ws_tag("empty-sequence", input);
+    let (input, _) = ws(input)?;
+    let check = tag("empty-sequence")(input);
     if check.is_ok() {
         let input = check?.0;
 

@@ -21,7 +21,9 @@ pub fn parse(input: &str) -> Result<Vec<Statement>, CustomError<&str>> {
         Err(CustomError::XPST0003)
     } else {
         let (input, program) = parse_main_module(input)?;
+        let (input, _) = ws(input)?;
         if input.len() > 0 {
+            println!("{:?}", input);
             // something left unparsed
             Err(CustomError::XPST0003)
         } else {

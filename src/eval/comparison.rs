@@ -90,8 +90,10 @@ pub(crate) fn gr(left: &Object, right: &Object) -> bool {
 
 pub(crate) fn general_eq(left: &Object, right: &Object) -> bool {
     match left {
+        Object::Empty => false,
         Object::Atomic(lt) => {
             match right {
+                Object::Empty => false,
                 Object::Atomic(Type::Untyped(rs)) => {
                     match lt {
                         Type::Untyped(ls) => {
@@ -133,6 +135,7 @@ pub(crate) fn general_eq(left: &Object, right: &Object) -> bool {
         }
         Object::Sequence(left_items) => {
             match right {
+                Object::Empty => false,
                 Object::Atomic(..) => {
                     for item in left_items {
                         if eq(left, item) {
