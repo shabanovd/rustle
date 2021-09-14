@@ -18,261 +18,15 @@ use crate::parser::errors::ErrorCode;
 
 mod environment;
 pub(crate) mod comparison;
+mod value;
+pub(crate) use value::*;
+
+mod arithmetic;
+use arithmetic::eval_arithmetic;
 
 pub type EvalResult<'a> = Result<(Box<Environment<'a>>, Object), (ErrorCode, String)>;
 
 const DEBUG: bool = false;
-
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone, Hash)]
-pub enum NumberCase {
-    Normal,
-    NaN,
-    PlusInfinity,
-    MinusInfinity,
-}
-
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone, Hash)]
-pub enum Type {
-    Untyped(String),
-
-    dateTime(),
-    dateTimeStamp(),
-
-    Date { y: u32, m: u32, d: u32, tz_h: i32, tz_m: i32 },
-    Time { h: u32, m: u32, s: u32, ms: u32, tz_h: i32, tz_m: i32},
-
-    Duration { positive: bool, years: u32, months: u32, days: u32, hours: u32, minutes: u32, seconds: u32, microseconds: u32 },
-    YearMonthDuration  { positive: bool, years: u32, months: u32 },
-    DayTimeDuration { positive: bool, days: u32, hours: u32, minutes: u32, seconds: u32, microseconds: u32 },
-
-    Integer(i128),
-    Decimal { number: Option<Decimal>, case: NumberCase },
-    Float { number: Option<Decimal>, case: NumberCase },
-    Double { number: Option<Decimal>, case: NumberCase },
-
-    nonPositiveInteger(),
-    negativeInteger(),
-    long(),
-    int(),
-    short(),
-    byte(),
-
-    nonNegativeInteger(),
-    unsignedLong(),
-    unsignedInt(),
-    unsignedShort(),
-    unsignedByte(),
-
-    positiveInteger(),
-
-    gYearMonth(),
-    gYear(),
-    gMonthDay(),
-    gDay(),
-    gMonth(),
-
-    // TODO CharRef { representation: Representation, reference: u32 }, ?
-    String(String),
-    NormalizedString(String),
-    Token(String),
-    language(String),
-    NMTOKEN(String),
-    Name(String),
-    NCName(String),
-    ID(String),
-    IDREF(String),
-    ENTITY(String),
-
-    Boolean(bool),
-    base64Binary(),
-    hexBinary(),
-    AnyURI(String),
-    QName(),
-    NOTATION(),
-}
-
-fn type_to_int(t: Type) -> i128 {
-    match t {
-        Type::Integer(num) => num,
-        _ => panic!("can't convert to int {:?}", t)
-    }
-}
-
-fn object_to_qname(t: Object) -> QName {
-    match t {
-        Object::QName { prefix, url, local_part } => QName { prefix, url, local_part },
-        _ => panic!("can't convert to QName {:?}", t)
-    }
-}
-
-#[derive(Eq, PartialEq, Clone, Hash)]
-pub enum Node {
-    Node { sequence: isize, name: QName, attributes: Vec<Node>, children: Vec<Node> },
-    Attribute { sequence: isize, name: QName, value: String },
-    NodeText { sequence: isize, content: String },
-    NodeComment { sequence: isize, content: String },
-    NodePI { sequence: isize, target: QName, content: String },
-}
-
-fn node_to_number(node: &Node) -> &isize {
-    match node {
-        Node::Node { sequence, .. } => sequence,
-        Node::Attribute { sequence, .. } => sequence,
-        Node::NodeText { sequence, .. } => sequence,
-        Node::NodeComment { sequence, .. } => sequence,
-        Node::NodePI { sequence, .. } => sequence,
-    }
-}
-
-impl Ord for Node {
-    fn cmp(&self, other: &Self) -> Ordering {
-        node_to_number(self).cmp(node_to_number(other))
-    }
-}
-
-impl PartialOrd<Self> for Node {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        node_to_number(self).partial_cmp(node_to_number(other))
-    }
-}
-
-impl fmt::Debug for Node {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let write = |f: &mut fmt::Formatter, qname: &QName| {
-            if !qname.prefix.is_empty() {
-                write!(f, "{}:", qname.prefix).unwrap();
-            }
-            write!(f, "{}", qname.local_part).unwrap();
-        };
-
-        match self {
-            Node:: NodePI { sequence, target, content } => {
-                write!(f, "<?")?;
-                write(f, target);
-                write!(f, "{:?}?>", content)?;
-            },
-            Node:: NodeComment {sequence, content} => {
-                write!(f, "<!--{}-->", content)?;
-            },
-            Node:: NodeText { sequence, content} => {
-                write!(f, "{}", content)?;
-            },
-            Node:: Attribute { sequence, name, value } => {
-                write!(f, "@")?;
-                write(f, name);
-                write!(f, "={:?}", value)?;
-            },
-            Node::Node { sequence, name, attributes, children } => {
-                write!(f, "<")?;
-
-                write(f, name);
-
-                if attributes.len() > 0 {
-                    for attribute in attributes {
-                        println!("attribute {:?}", attribute);
-                        match attribute {
-                            Node::Attribute { sequence, name, value } => {
-                                write!(f, " ")?;
-                                write(f, name);
-                                write!(f, "={}", value)?;
-                            },
-                            _ => panic!("unexpected")
-                        }
-                    }
-                }
-
-                if children.len() == 0 {
-                    write!(f, "/>")?;
-                } else {
-                    write!(f, ">").unwrap();
-                    for child in children {
-                        write!(f, "{:?}", child)?;
-                    }
-                    write!(f, "</")?;
-                    write(f, name);
-                }
-            },
-            _ => panic!("unexpected")
-        }
-        write!(f, "")
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Object {
-    // workaround
-    Error { code: String },
-    CharRef { representation: Representation, reference: u32 },
-    EntityRef(String),
-    
-    Nothing,
-
-    Empty,
-
-    Range { min: i128, max: i128 },
-    Sequence(Vec<Object>),
-
-    QName { prefix: String, url: String, local_part: String },
-
-    Atomic(Type),
-    Node(Node),
-
-    Array(Vec<Object>),
-    Map(HashMap<Type, Object>),
-
-    Function { parameters: Vec<Param>, body: Box<Expr> },
-    FunctionRef { name: QNameResolved, arity: usize },
-
-    Return(Box<Object>),
-}
-
-impl Ord for Object {
-    fn cmp(&self, other: &Self) -> Ordering {
-        match self {
-            Object::Atomic(t1) => {
-                match other {
-                    Object::Atomic(t2) => {
-                        t1.cmp(t2)
-                    },
-                    _ => Ordering::Greater,
-                }
-            },
-            Object::Node(n1) => {
-                match other {
-                    Object::Node(n2) => {
-                        n1.cmp(n2)
-                    },
-                    _ => Ordering::Less,
-                }
-            },
-            _ => Ordering::Less
-        }
-    }
-}
-
-impl PartialOrd for Object {
-    fn partial_cmp(&self, other: &Object) -> Option<Ordering> {
-        match self {
-            Object::Atomic(t1) => {
-                match other {
-                    Object::Atomic(t2) => {
-                        t1.partial_cmp(t2)
-                    },
-                    _ => Some(Ordering::Greater),
-                }
-            },
-            Object::Node(n1) => {
-                match other {
-                    Object::Node(n2) => {
-                        n1.partial_cmp(n2)
-                    },
-                    _ => Some(Ordering::Less),
-                }
-            },
-            _ => Some(Ordering::Less)
-        }
-    }
-}
 
 pub fn eval_statements(statements: Vec<Statement>, env: Box<Environment>) -> Result<Object, (ErrorCode, String)> {
 
@@ -747,68 +501,14 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
             let (new_env, left_result) = eval_expr(*left, current_env, context_item)?;
             current_env = new_env;
 
-            let (new_env, right_result) = eval_expr(*right, current_env, context_item)?;
-            current_env = new_env;
+            if left_result == Object::Empty {
+                Ok((current_env, Object::Empty))
+            } else {
+                let (new_env, right_result) = eval_expr(*right, current_env, context_item)?;
+                current_env = new_env;
 
-            if DEBUG {
-                println!("left_result {:?}", left_result);
-                println!("right_result {:?}", right_result);
+                eval_arithmetic(current_env, operator, left_result, right_result)
             }
-
-            let result = match operator {
-                Operator::Plus => {
-                    match (left_result, right_result) {
-                        (Object::Atomic(Type::Integer(left)), Object::Atomic(Type::Integer(right))) =>
-                            Object::Atomic(Type::Integer(left + right)),
-
-                        _ => panic!("plus fail")
-                    }
-                },
-                Operator::Minus => {
-                    match (left_result, right_result) {
-                        (Object::Atomic(Type::Integer(left)), Object::Atomic(Type::Integer(right))) =>
-                            Object::Atomic(Type::Integer(left - right)),
-
-                        _ => panic!("plus fail")
-                    }
-                },
-                Operator::Multiply => {
-                    match (left_result, right_result) {
-                        (Object::Atomic(Type::Integer(left)), Object::Atomic(Type::Integer(right))) =>
-                            Object::Atomic(Type::Integer(left * right)),
-
-                        _ => panic!("multiply fail")
-                    }
-                },
-                Operator::Divide => {
-                    match (left_result, right_result) {
-                        (Object::Atomic(Type::Integer(left)), Object::Atomic(Type::Integer(right))) =>
-                            Object::Atomic(Type::Integer(left / right)),
-
-                        _ => panic!("divide fail")
-                    }
-                },
-                Operator::IDivide => {
-                    match (left_result, right_result) {
-                        (Object::Atomic(Type::Integer(left)), Object::Atomic(Type::Integer(right))) =>
-                            Object::Atomic(Type::Integer(left / right)),
-
-                        _ => panic!("divide fail")
-                    }
-                },
-                Operator::Mod => {
-                    match (left_result, right_result) {
-                        (Object::Atomic(Type::Integer(left)), Object::Atomic(Type::Integer(right))) =>
-                            Object::Atomic(Type::Integer(left % right)),
-
-                        _ => panic!("multiply fail")
-                    }
-                },
-                _ => panic!("operator {:?} unimplemented", operator)
-            };
-
-
-            Ok((current_env, result))
         },
         Expr::Comparison { left, operator, right } => {
             let (new_env, left_result) = eval_expr(*left, current_env, context_item)?;
@@ -1107,6 +807,22 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
 
             Ok((Box::new(new_env), Object::Empty))
         },
+        Expr::ForClause { bindings } => {
+            for binding in bindings {
+                match binding {
+                    Expr::ForBinding { name, values } => {
+                        let (new_env, evaluated) = eval_expr(*values, current_env, context_item)?;
+                        current_env = new_env;
+
+                        let name = resolve_element_qname(name, &current_env);
+                        current_env.set(name.clone(), Object::ForBinding { name, values: Box::new(evaluated) } );
+                    },
+                    _ => panic!("internal error")
+                }
+            }
+
+            Ok((current_env, Object::Empty))
+        },
         Expr::VarRef { name } => {
 
             let name = resolve_element_qname(name, &current_env);
@@ -1210,6 +926,22 @@ fn step_and_test<'a>(step: Axis, test: Expr, env: Box<Environment<'a>>, context_
                                 Ok((env, Object::Sequence(result)))
                             }
                         },
+                        Axis::ForwardAttribute => {
+                            let mut result = vec![];
+                            for attribute in attributes {
+                                if test_node(&test, attribute) {
+                                    result.push(Object::Node(attribute.clone()))
+                                }
+                            }
+
+                            if result.len() == 0 {
+                                Ok((env, Object::Empty))
+                            } else if result.len() == 1 {
+                                Ok((env, result.remove(0)))
+                            } else {
+                                Ok((env, Object::Sequence(result)))
+                            }
+                        }
                         _ => todo!()
                     }
                 },
@@ -1225,6 +957,9 @@ fn test_node(test: &Expr, node: &Node) -> bool {
         Expr::NameTest(qname) => {
             match node {
                 Node::Node { sequence, name, attributes, children } => {
+                    qname.local_part == name.local_part && qname.url == name.url
+                },
+                Node::Attribute { sequence, name, value } => {
                     qname.local_part == name.local_part && qname.url == name.url
                 },
                 Node::NodeText { sequence, content } => false,
@@ -1246,18 +981,29 @@ fn eval_predicates<'a>(exprs: Vec<Expr>, env: Box<Environment<'a>>, value: Objec
                 match *cond {
                     Expr::Integer(pos) => {
                         let pos = pos;
-                        match result {
-                            Object::Range { min , max } => {
-                                let len = max - min + 1;
+                        if pos <= 0 {
+                            result = Object::Empty
+                        } else {
+                            match result {
+                                Object::Range { min, max } => {
+                                    let len = max - min + 1;
 
-                                if pos > len {
-                                    result = Empty;
-                                } else {
-                                    let num = min + pos - 1;
-                                    result = Object::Atomic(Type::Integer(num));
+                                    if pos > len {
+                                        result = Empty;
+                                    } else {
+                                        let num = min + pos - 1;
+                                        result = Object::Atomic(Type::Integer(num));
+                                    }
+                                },
+                                Object::Sequence(items) => {
+                                    result = if let Some(item) = items.get((pos - 1) as usize) {
+                                        item.clone()
+                                    } else {
+                                        Object::Empty
+                                    };
                                 }
-                            },
-                            _ => panic!("predicate {:?} on {:?}", pos, result)
+                                _ => panic!("predicate {:?} on {:?}", pos, result)
+                            }
                         }
                     },
                     Expr::Comparison { left, operator, right } => {
@@ -1362,6 +1108,9 @@ pub fn object_to_iterator<'a>(object: &Object) -> Vec<Object> {
             result
         },
         Object::Array(items) => {
+            items.clone() // optimize?
+        },
+        Object::Sequence(items) => {
             items.clone() // optimize?
         },
         _ => panic!("TODO object_to_iterator {:?}", object)

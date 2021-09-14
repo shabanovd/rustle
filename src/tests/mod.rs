@@ -7,7 +7,7 @@ use crate::fns::object_to_bool;
 
 pub(crate) fn eval_on_spec(spec: &str, input: &str) -> Result<Object, String> {
     match spec {
-        "XQ10+" => {
+        "XQ10+" | "XQ31+" | "XP31+ XQ31+" => {
             eval(input)
         }
         _ => panic!("unsupported spec {}", spec)
@@ -156,6 +156,27 @@ pub(crate) fn _check_assert_type(result: &Result<Object, String>, check: &str) -
             Object::Array(..) => None,
             _ => {
                 Some(String::from("not array(*)"))
+            }
+        }
+    } else if check == "array(xs:string)" {
+        match result {
+            Object::Array(items) => {
+                if items.len() == 0 {
+                    Some(String::from("not array(xs:string)"))
+                } else {
+                    for item in items {
+                        match item {
+                            Object::Atomic(Type::String(..)) => {},
+                            _ => {
+                                return Some(String::from("not array(xs:string)"));
+                            }
+                        }
+                    }
+                    None
+                }
+            },
+            _ => {
+                Some(String::from("not array(xs:string)"))
             }
         }
     } else if check == "xs:integer" {

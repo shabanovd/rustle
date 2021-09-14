@@ -154,6 +154,9 @@ pub enum Expr {
     LetClause { bindings: Vec<Expr> },
     LetBinding { name: QName, type_declaration: Box<Option<Expr>>,  value: Box<Expr>},
 
+    ForClause { bindings: Vec<Expr> },
+    ForBinding { name: QName, values: Box<Expr>},
+
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]

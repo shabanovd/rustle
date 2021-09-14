@@ -41,6 +41,7 @@ fn _object_to_string(object: &Object, ref_resolving: bool) -> String {
             num.to_string()
         },
         Object::Atomic(Type::Decimal { number, case }) |
+        Object::Atomic(Type::Float { number, case }) |
         Object::Atomic(Type::Double { number, case }) => {
             match case {
                 NumberCase::Normal => {

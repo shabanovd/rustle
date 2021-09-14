@@ -66,6 +66,7 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(SCHEMA.url, "dayTimeDuration", 1, types::xs_day_time_duration_eval);
         instance.register(SCHEMA.url, "duration", 1, types::xs_duration_eval);
 
+        instance.register(SCHEMA.url, "integer", 1, types::xs_integer_eval);
         instance.register(SCHEMA.url, "decimal", 1, types::xs_decimal_eval);
         instance.register(SCHEMA.url, "float", 1, types::xs_float_eval);
         instance.register(SCHEMA.url, "double", 1, types::xs_double_eval);
@@ -118,6 +119,11 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(XPATH_FUNCTIONS.url, "sort", 3, fun::sort);
         instance.register(XPATH_FUNCTIONS.url, "apply", 2, fun::apply);
 
+        instance.register(XPATH_FUNCTIONS.url, "error", 0, fun::error);
+        instance.register(XPATH_FUNCTIONS.url, "error", 1, fun::error);
+        instance.register(XPATH_FUNCTIONS.url, "error", 2, fun::error);
+        instance.register(XPATH_FUNCTIONS.url, "error", 3, fun::error);
+
         instance.register(XPATH_FUNCTIONS.url, "count", 1, aggregates::fn_count);
         instance.register(XPATH_FUNCTIONS.url, "avg", 1, aggregates::fn_avg);
 
@@ -136,6 +142,8 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(XPATH_FUNCTIONS.url, "string-join", 2, strings::fn_string_join);
         instance.register(XPATH_FUNCTIONS.url, "string-to-codepoints", 1, strings::fn_string_to_codepoints);
 
+        instance.register(XPATH_FUNCTIONS.url, "data", 0, sequences::fn_data);
+        instance.register(XPATH_FUNCTIONS.url, "data", 1, sequences::fn_data);
         instance.register(XPATH_FUNCTIONS.url, "empty", 1, sequences::fn_empty);
         instance.register(XPATH_FUNCTIONS.url, "reverse", 1, sequences::fn_reverse);
 

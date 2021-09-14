@@ -5,6 +5,7 @@ use crate::eval::Environment;
 use crate::value::{resolve_function_qname, resolve_element_qname};
 use crate::fns::{call, object_to_string};
 use crate::fns::strings::object_to_array;
+use crate::parser::errors::ErrorCode;
 
 pub fn for_each<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
     let mut current_env = env;
@@ -122,6 +123,15 @@ pub fn apply<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item
             } else {
                 panic!("no function {:?}#{:?}", name, arity)
             }
+        },
+        _ => panic!("error")
+    }
+}
+
+pub fn error<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+    match arguments.as_slice() {
+        [] => {
+            Err((ErrorCode::FOER0000, String::new()))
         },
         _ => panic!("error")
     }
