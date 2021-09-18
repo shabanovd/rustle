@@ -1,10 +1,7 @@
-//use crate::eval::Type;
 use crate::eval::{Object, Type, EvalResult, typed_value_of_node};
 use crate::eval::Environment;
 
-use std::collections::HashMap;
-use crate::value::{resolve_function_qname, resolve_element_qname};
-use crate::eval::Object::Atomic;
+use crate::eval::helpers::relax;
 
 pub fn fn_data<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
 
@@ -14,19 +11,10 @@ pub fn fn_data<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_it
         arguments.get(0).unwrap()
     };
 
-    println!("{:?}", arguments);
-
     let mut result = vec![];
     data(item.clone(), &mut result);
 
-    if result.len() == 0 {
-        Ok((env, Object::Empty))
-    } else if result.len() == 1 {
-        let item = result.remove(0);
-        Ok((env, item))
-    } else {
-        Ok((env, Object::Sequence(result)))
-    }
+    relax(env, result)
 }
 
 fn data(obj: Object, result: &mut Vec<Object>) {
@@ -50,12 +38,7 @@ fn data_of_vec(items: Vec<Object>, result: &mut Vec<Object>) {
     }
 }
 
-pub fn fn_empty<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
-
-    let mut current_env = env;
-
-    println!("arguments {:?}", arguments);
-
+pub fn fn_empty<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     let result = match arguments.as_slice() {
         [Object::Empty] => true,
         [Object::Range { min, max}] => {
@@ -64,22 +47,44 @@ pub fn fn_empty<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_i
         _ => false
     };
 
-    Ok((current_env, Object::Atomic(Type::Boolean(result))))
+    Ok((env, Object::Atomic(Type::Boolean(result))))
 }
 
-pub fn fn_reverse<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
-
-    let mut current_env = env;
+pub fn fn_reverse<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
 
     match arguments.as_slice() {
         [Object::Range { min, max}] => {
-            Ok((current_env, Object::Range { min: *max, max: *min } ))
+            Ok((env, Object::Range { min: *max, max: *min } ))
         },
         _ => panic!("error")
     }
 }
 
-pub fn sort_and_dedup(seq: &mut Vec<Object>) {
-    seq.sort();
-    seq.dedup();
+pub fn fn_subsequence<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+    match arguments.as_slice() {
+        [Object::Empty, ..] => Ok((env, Object::Empty)),
+        [Object::Atomic(t), Object::Atomic(Type::Integer(start)), Object::Atomic(Type::Integer(length))] => {
+            if *start == 1 && *length >= 1 {
+                Ok((env, Object::Atomic(t.clone())))
+            } else {
+                Ok((env, Object::Empty))
+            }
+        },
+        [Object::Sequence(items), Object::Atomic(Type::Integer(start)), Object::Atomic(Type::Integer(length))] => {
+            let mut result = Vec::with_capacity(*length as usize);
+
+            let from = *start as usize;
+            let till = (*start + *length) as usize;
+
+            for position in from..till as usize {
+                if let Some(item) = items.get((position - 1) as usize) {
+                    result.push(item.clone());
+                } else {
+                    break
+                }
+            }
+            Ok((env, Object::Sequence(result)))
+        },
+        _ => panic!("error")
+    }
 }

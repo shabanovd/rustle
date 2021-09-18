@@ -17,9 +17,7 @@ mod map;
 mod array;
 mod aggregates;
 
-use crate::serialization::object_to_string;
 pub use crate::fns::boolean::object_to_bool;
-pub use sequences::sort_and_dedup;
 
 use crate::parser::errors::ErrorCode;
 
@@ -70,6 +68,19 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(SCHEMA.url, "decimal", 1, types::xs_decimal_eval);
         instance.register(SCHEMA.url, "float", 1, types::xs_float_eval);
         instance.register(SCHEMA.url, "double", 1, types::xs_double_eval);
+
+        instance.register(SCHEMA.url, "nonPositiveInteger", 1, types::xs_non_positive_integer_eval);
+        instance.register(SCHEMA.url, "negativeInteger", 1, types::xs_negative_integer_eval);
+        instance.register(SCHEMA.url, "long", 1, types::xs_long_eval);
+        instance.register(SCHEMA.url, "int", 1, types::xs_int_eval);
+        instance.register(SCHEMA.url, "short", 1, types::xs_short_eval);
+        instance.register(SCHEMA.url, "byte", 1, types::xs_byte_eval);
+        instance.register(SCHEMA.url, "nonNegativeInteger", 1, types::xs_non_negative_integer_eval);
+        instance.register(SCHEMA.url, "unsignedLong", 1, types::xs_unsigned_long_eval);
+        instance.register(SCHEMA.url, "unsignedInt", 1, types::xs_unsigned_int_eval);
+        instance.register(SCHEMA.url, "unsignedShort", 1, types::xs_unsigned_short_eval);
+        instance.register(SCHEMA.url, "unsignedByte", 1, types::xs_unsigned_byte_eval);
+        instance.register(SCHEMA.url, "positiveInteger", 1, types::xs_positive_integer_eval);
 
 //        instance.register("op", "same-key", 2, map::map_merge);
         instance.register(XPATH_MAP.url, "merge", 1, map::map_merge);
@@ -128,6 +139,9 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(XPATH_FUNCTIONS.url, "avg", 1, aggregates::fn_avg);
 
         instance.register(XPATH_FUNCTIONS.url, "abs", 1, math::fn_abs);
+        instance.register(XPATH_FUNCTIONS.url, "floor", 1, math::fn_floor);
+        instance.register(XPATH_FUNCTIONS.url, "round", 1, math::fn_round);
+        instance.register(XPATH_FUNCTIONS.url, "round-half-to-even", 1, math::fn_round_half_to_even);
 
 
         instance.register(XPATH_FUNCTIONS.url, "true", 0, boolean::fn_true);
@@ -146,6 +160,8 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(XPATH_FUNCTIONS.url, "data", 1, sequences::fn_data);
         instance.register(XPATH_FUNCTIONS.url, "empty", 1, sequences::fn_empty);
         instance.register(XPATH_FUNCTIONS.url, "reverse", 1, sequences::fn_reverse);
+        instance.register(XPATH_FUNCTIONS.url, "subsequence", 2, sequences::fn_subsequence);
+        instance.register(XPATH_FUNCTIONS.url, "subsequence", 3, sequences::fn_subsequence);
 
         instance.register(XPATH_FUNCTIONS.url, "deep-equal", 2, comparison::fn_deep_equal);
 

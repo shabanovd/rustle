@@ -1,19 +1,15 @@
-use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::fmt;
 
 use crate::eval::Object::Empty;
-use crate::fns::{call, Param, sort_and_dedup};
-use crate::parser::op::{Representation, Statement, Expr, Operator, ItemType, OccurrenceIndicator};
-use crate::value::{QName, QNameResolved, resolve_element_qname, resolve_function_qname};
+use crate::fns::call;
+use crate::parser::op::{Statement, Expr, ItemType, OccurrenceIndicator, OperatorComparison};
+use crate::value::{QName, resolve_element_qname, resolve_function_qname};
 
 pub use self::environment::Environment;
 use crate::fns::object_to_bool;
 use crate::serialization::object_to_string;
-use crate::serialization::to_string::{ref_to_string, object_to_string_xml};
-use rust_decimal::Decimal;
+use crate::serialization::to_string::object_to_string_xml;
 use crate::namespaces::SCHEMA;
-use crate::parser::op::Expr::Comparison;
 use crate::parser::errors::ErrorCode;
 
 mod environment;
@@ -23,6 +19,11 @@ pub(crate) use value::*;
 
 mod arithmetic;
 use arithmetic::eval_arithmetic;
+use crate::eval::comparison::eval_comparison;
+use crate::eval::arithmetic::eval_unary;
+
+pub(crate) mod helpers;
+use helpers::*;
 
 pub type EvalResult<'a> = Result<(Box<Environment<'a>>, Object), (ErrorCode, String)>;
 
@@ -56,7 +57,6 @@ fn eval_statement(statement: Statement, env: Box<Environment>) -> EvalResult {
     match statement {
         Statement::Prolog(exprs) => Ok((eval_prolog(exprs, env), Object::Nothing)),
         Statement::Program(expr) => eval_expr(expr, env, &Object::Nothing),
-        _ => panic!("TODO: {:?}", statement)
     }
 }
 
@@ -139,9 +139,9 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
         Expr::Integer(number) =>
             Ok((current_env, Object::Atomic(Type::Integer(number)))),
         Expr::Decimal(number) =>
-            Ok((current_env, Object::Atomic(Type::Decimal { number: Some(number), case: NumberCase::Normal }))),
+            Ok((current_env, Object::Atomic(Type::Decimal(number)))),
         Expr::Double(number) =>
-            Ok((current_env, Object::Atomic(Type::Double { number: Some(number), case: NumberCase::Normal }))),
+            Ok((current_env, Object::Atomic(Type::Double(number)))),
         Expr::String(string) =>
             Ok((current_env, Object::Atomic(Type::String(string)))),
         Expr::StringComplex(exprs) => {
@@ -239,7 +239,7 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
             }
         },
 
-        Expr::Node { name, attributes , children } => {
+        Expr::NodeElement { name, attributes , children } => {
             let (new_env, evaluated_name) = eval_expr(*name, current_env, context_item)?;
             current_env = new_env;
 
@@ -322,7 +322,7 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
             )))
         },
 
-        Expr::Attribute { name, value } => {
+        Expr::NodeAttribute { name, value } => {
             let (new_env, evaluated_name) = eval_expr(*name, current_env, context_item)?;
             current_env = new_env;
 
@@ -438,64 +438,16 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
             Ok((current_env, result))
         },
 
-        Expr::Negative(expr) => {
-            let (new_env, result) = eval_expr(*expr, current_env, context_item)?;
+        Expr::Unary { expr, sign_is_positive } => {
+            let (new_env, evaluated) = eval_expr(*expr, current_env, context_item)?;
             current_env = new_env;
 
-            let result = match result {
-                Object::Atomic(Type::Integer(num)) => Object::Atomic(Type::Integer(-num)),
-                Object::Atomic(Type::Decimal { number, case }) => {
-                    let t = match case {
-                        NumberCase::Normal => {
-                            if let Some(num) = number {
-                                Type::Decimal { number: Some(-num), case }
-                            } else {
-                                panic!("internal error")
-                            }
-                        },
-                        NumberCase::NaN => Type::Decimal { number, case },
-                        NumberCase::PlusInfinity => Type::Decimal { number, case: NumberCase::MinusInfinity },
-                        NumberCase::MinusInfinity => Type::Decimal { number, case: NumberCase::PlusInfinity },
-                    };
-
-                    Object::Atomic(t)
+            process_items(current_env, evaluated, |env, item| {
+                match item {
+                    Object::Empty => Ok((env, Object::Empty)),
+                    _ => eval_unary(env, item, sign_is_positive)
                 }
-                Object::Atomic(Type::Float { number, case }) => {
-                    let t = match case {
-                        NumberCase::Normal => {
-                            if let Some(num) = number {
-                                Type::Float { number: Some(-num), case }
-                            } else {
-                                panic!("internal error")
-                            }
-                        },
-                        NumberCase::NaN => Type::Float { number, case },
-                        NumberCase::PlusInfinity => Type::Float { number, case: NumberCase::MinusInfinity },
-                        NumberCase::MinusInfinity => Type::Float { number, case: NumberCase::PlusInfinity },
-                    };
-
-                    Object::Atomic(t)
-                },
-                Object::Atomic(Type::Double { number, case }) => {
-                    let t = match case {
-                        NumberCase::Normal => {
-                            if let Some(num) = number {
-                                Type::Double { number: Some(-num), case }
-                            } else {
-                                panic!("internal error")
-                            }
-                        },
-                        NumberCase::NaN => Type::Double { number, case },
-                        NumberCase::PlusInfinity => Type::Double { number, case: NumberCase::MinusInfinity },
-                        NumberCase::MinusInfinity => Type::Double { number, case: NumberCase::PlusInfinity },
-                    };
-
-                    Object::Atomic(t)
-                },
-                _ => panic!("Negative is unimplemented for {:?}", result)
-            };
-
-            Ok((current_env, result))
+            })
         },
         Expr::Binary { left, operator, right } => {
             let (new_env, left_result) = eval_expr(*left, current_env, context_item)?;
@@ -517,44 +469,7 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
             let (new_env, right_result) = eval_expr(*right, current_env, context_item)?;
             current_env = new_env;
 
-            // if DEBUG {
-            println!("left_result {:?}", left_result);
-            println!("right_result {:?}", right_result);
-            // }
-
-            let result = match operator {
-                Operator::GeneralEquals => {
-                    let flag = comparison::general_eq(&left_result, &right_result);
-                    Object::Atomic(Type::Boolean(flag))
-                },
-                Operator::ValueEquals => {
-                    let flag = comparison::eq(&left_result, &right_result);
-                    Object::Atomic(Type::Boolean(flag))
-                },
-                Operator::ValueNotEquals => {
-                    let flag = comparison::eq(&left_result, &right_result);
-                    Object::Atomic(Type::Boolean(!flag))
-                },
-                Operator::ValueLessOrEquals => {
-                    let flag = comparison::ls_or_eq(&left_result, &right_result);
-                    Object::Atomic(Type::Boolean(flag))
-                },
-                Operator::ValueLessThan => {
-                    let flag = comparison::ls(&left_result, &right_result);
-                    Object::Atomic(Type::Boolean(flag))
-                },
-                Operator::ValueGreaterOrEquals => {
-                    let flag = comparison::gr_or_eq(&left_result, &right_result);
-                    Object::Atomic(Type::Boolean(flag))
-                },
-                Operator::ValueGreaterThan => {
-                    let flag = comparison::gr(&left_result, &right_result);
-                    Object::Atomic(Type::Boolean(flag))
-                },
-                _ => panic!("operator {:?} unimplemented", operator)
-            };
-
-            Ok((current_env, result))
+            eval_comparison(current_env, operator, left_result, right_result)
         },
 
         Expr::Call {function, arguments} => {
@@ -619,7 +534,7 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
             }
         },
 
-        Expr::SquareArrayConstructor { items } => {
+        Expr::SquareArrayConstructor(items) => {
             let mut values = Vec::with_capacity(items.len());
             for item in items {
                 let (new_env, evaluated) = eval_expr(item, current_env, context_item)?;
@@ -740,6 +655,21 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
             }
         },
 
+        Expr::Union(exprs) => {
+            let mut result = vec![];
+            for expr in exprs {
+                let (new_env, items) = eval_expr(expr, current_env, context_item)?;
+                current_env = new_env;
+
+                let mut items = object_owned_to_sequence(items);
+
+                join_sequences(&mut result, items);
+                sort_and_dedup(&mut result)
+            }
+
+            relax(current_env, result)
+        },
+
         Expr::NamedFunctionRef { name, arity } => {
             let (new_env, arity) = eval_expr(*arity, current_env, context_item)?;
             current_env = new_env;
@@ -834,7 +764,7 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
             }
         },
 
-        Expr::TreatExpr { expr, st } => {
+        Expr::Treat { expr, st } => {
             let (new_env, object) = eval_expr(*expr, current_env, context_item)?;
             current_env = new_env;
 
@@ -1001,6 +931,13 @@ fn eval_predicates<'a>(exprs: Vec<Expr>, env: Box<Environment<'a>>, value: Objec
                                     } else {
                                         Object::Empty
                                     };
+                                },
+                                Object::Node(node) => {
+                                    result = if pos == 1 {
+                                        Object::Node(node)
+                                    } else {
+                                        Object::Empty
+                                    }
                                 }
                                 _ => panic!("predicate {:?} on {:?}", pos, result)
                             }
@@ -1016,13 +953,23 @@ fn eval_predicates<'a>(exprs: Vec<Expr>, env: Box<Environment<'a>>, value: Objec
                             let (_, l_value) = eval_expr(*left.clone(), current_env.clone(), &context_item)?;
                             let (_, r_value) = eval_expr(*right.clone(), current_env.clone(), &context_item)?;
 
-                            match operator {
-                                Operator::GeneralEquals => {
-                                    if comparison::general_eq(&l_value, &r_value) {
-                                        evaluated.push(context_item)
-                                    }
-                                }
+                            let check = match operator {
+                                OperatorComparison::GeneralEquals => comparison::general_eq(&l_value, &r_value),
+                                OperatorComparison::ValueEquals => comparison::eq(&l_value, &r_value),
+                                OperatorComparison::ValueNotEquals => comparison::ne(&l_value, &r_value),
+                                OperatorComparison::ValueLessThan => comparison::ls(&l_value, &r_value),
+                                OperatorComparison::ValueLessOrEquals => comparison::ls_or_eq(&l_value, &r_value),
+                                OperatorComparison::ValueGreaterThan => comparison::gr(&l_value, &r_value),
+                                OperatorComparison::ValueGreaterOrEquals => comparison::gr_or_eq(&l_value, &r_value),
                                 _ => panic!("operator {:?} is not implemented", operator)
+                            };
+
+                            match check {
+                                Ok(true) => evaluated.push(context_item),
+                                Err(code) => {
+                                    return Err((code, String::from("TODO")));
+                                },
+                                _ => {}
                             }
                         }
 
@@ -1061,6 +1008,15 @@ pub struct RangeIterator {
 }
 
 impl RangeIterator {
+
+    pub(crate) fn create(min: i128, max: i128) -> (Self, usize) {
+        if min > max {
+            (RangeIterator::new(min, -1, max), (min - max).min(0) as usize)
+        } else {
+            (RangeIterator::new(min, 1, max), (max - min).min(0) as usize)
+        }
+    }
+
     fn new(next: i128, step: i128, till: i128) -> Self {
         RangeIterator {
             till, next, step
@@ -1090,16 +1046,16 @@ pub fn object_to_integer(object: Object) -> i128 {
     }
 }
 
+// TODO: optimize!!!
 pub fn object_to_iterator<'a>(object: &Object) -> Vec<Object> {
-    // println!("object_to_iterator for {:?}", object);
     match object {
+        Object::Atomic(..) => {
+            let mut result = Vec::with_capacity(1);
+            result.push(object.clone());
+            result
+        },
         Object::Range { min , max } => {
-            // TODO: optimize!!!
-            let (it, count) = if min > max {
-                (RangeIterator::new(*min, -1, *max), *min - *max)
-            } else {
-                (RangeIterator::new(*min, 1, *max), *max - *min)
-            };
+            let (it, count) = RangeIterator::create(*min, *max);
 
             let mut result = Vec::with_capacity(count.min(0) as usize);
             for item in it {
@@ -1112,6 +1068,38 @@ pub fn object_to_iterator<'a>(object: &Object) -> Vec<Object> {
         },
         Object::Sequence(items) => {
             items.clone() // optimize?
+        },
+        _ => panic!("TODO object_to_iterator {:?}", object)
+    }
+}
+
+// TODO: optimize!!!
+pub fn object_owned_to_sequence<'a>(object: Object) -> Vec<Object> {
+    // println!("object_to_iterator for {:?}", object);
+    match object {
+        Object::ForBinding { name, values } => {
+            object_owned_to_sequence(*values)
+        },
+        Object::Empty |
+        Object::Node(..) |
+        Object::Atomic(..) => {
+            let mut result = Vec::with_capacity(1);
+            result.push(object);
+            result
+        },
+        Object::Range { min , max } => {
+            let (it, count) = RangeIterator::create(min, max);
+            let mut result = Vec::with_capacity(count.min(0) as usize);
+            for item in it {
+                result.push(item);
+            }
+            result
+        },
+        Object::Array(items) => {
+            items
+        },
+        Object::Sequence(items) => {
+            items
         },
         _ => panic!("TODO object_to_iterator {:?}", object)
     }

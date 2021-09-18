@@ -1,4 +1,4 @@
-use crate::eval::{Object, Type, Node, NumberCase};
+use crate::eval::{Object, Type, RangeIterator};
 use crate::serialization::node_to_string;
 use crate::parser::op::Representation;
 
@@ -12,6 +12,19 @@ pub fn object_to_string(object: &Object) -> String {
 
 fn _object_to_string(object: &Object, ref_resolving: bool) -> String {
     match object {
+        Object::ForBinding { values, .. } => {
+            _object_to_string(values, ref_resolving)
+        },
+        Object::Range { min, max } => {
+            let (it, count) = RangeIterator::create(*min, *max);
+
+            let mut buf = Vec::with_capacity(count);
+            for item in it {
+                buf.push(_object_to_string(&item, ref_resolving));
+            }
+
+            buf.join(" ")
+        }
         Object::CharRef { reference, representation } => {
             if ref_resolving {
                 String::from(ref_to_char(*reference))
@@ -37,41 +50,50 @@ fn _object_to_string(object: &Object, ref_resolving: bool) -> String {
             }
         },
         Object::Atomic(Type::String(str)) => str.clone(),
-        Object::Atomic(Type::Integer(num)) => {
-            num.to_string()
-        },
-        Object::Atomic(Type::Decimal { number, case }) |
-        Object::Atomic(Type::Float { number, case }) |
-        Object::Atomic(Type::Double { number, case }) => {
-            match case {
-                NumberCase::Normal => {
-                    if let Some(num) = number {
-                        num.to_string()
-                    } else {
-                        panic!("internal error")
-                    }
+        Object::Atomic(Type::Integer(number)) => number.to_string(),
+        Object::Atomic(Type::Decimal(number)) => number.to_string(),
+        Object::Atomic(Type::Float(number)) => {
+            if number.is_nan() {
+                String::from("NaN")
+            } else if number.is_infinite() {
+                if number.is_sign_positive() {
+                    String::from("INF")
+                } else {
+                    String::from("-INF")
                 }
-                NumberCase::NaN => String::from("NaN"),
-                NumberCase::PlusInfinity => String::from("INF"),
-                NumberCase::MinusInfinity => String::from("-INF"),
+            } else {
+                number.to_string()
+            }
+        },
+        Object::Atomic(Type::Double(number)) => {
+            if number.is_nan() {
+                String::from("NaN")
+            } else if number.is_infinite() {
+                if number.is_sign_positive() {
+                    String::from("INF")
+                } else {
+                    String::from("-INF")
+                }
+            } else {
+                number.to_string()
             }
         },
         Object::Sequence(items) => {
-            let mut result = String::new();
+            let mut buf = String::new();
             for item in items {
-                let str = object_to_string(item);
-                result.push_str(str.as_str());
+                let str = _object_to_string(item, ref_resolving);
+                buf.push_str(str.as_str());
             }
-            result
+            buf
         },
         Object::Node(node) => {
             node_to_string(node)
-        }
+        },
         _ => panic!("TODO object_to_string {:?}", object)
     }
 }
 
-pub(crate) fn ref_to_string(representation: Representation, code: u32) -> String {
+fn ref_to_string(representation: Representation, code: u32) -> String {
      match representation {
         Representation::Hexadecimal => { format!("&#x{:X};", code) }
         Representation::Decimal => { format!("&#{};", code) }

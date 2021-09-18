@@ -1,15 +1,12 @@
-//use crate::eval::Type;
 use crate::eval::{Object, eval_expr, object_to_iterator, EvalResult};
 use crate::eval::Environment;
 
-use crate::value::{resolve_function_qname, resolve_element_qname};
-use crate::fns::{call, object_to_string};
+use crate::value::resolve_element_qname;
+use crate::fns::call;
 use crate::fns::strings::object_to_array;
 use crate::parser::errors::ErrorCode;
 
-pub fn for_each<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
-    let mut current_env = env;
-
+pub fn for_each<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Function { parameters, body }, Object::Array(arguments)] => {
             todo!()
@@ -18,9 +15,7 @@ pub fn for_each<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_i
     }
 }
 
-pub fn filter<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
-    let mut current_env = env;
-
+pub fn filter<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Function { parameters, body }, Object::Array(arguments)] => {
             todo!()
@@ -55,7 +50,7 @@ pub fn fold_left<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_
     }
 }
 
-pub fn fold_right<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn fold_right<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     let mut current_env = env;
 
     println!("arguments {:?}", arguments);
@@ -68,7 +63,7 @@ pub fn fold_right<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context
     }
 }
 
-pub fn for_each_pair<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn for_each_pair<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     let mut current_env = env;
 
     println!("arguments {:?}", arguments);
@@ -81,7 +76,7 @@ pub fn for_each_pair<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, cont
     }
 }
 
-pub fn sort<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn sort<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     let mut current_env = env;
 
     println!("arguments {:?}", arguments);
@@ -128,7 +123,7 @@ pub fn apply<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item
     }
 }
 
-pub fn error<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn error<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     match arguments.as_slice() {
         [] => {
             Err((ErrorCode::FOER0000, String::new()))

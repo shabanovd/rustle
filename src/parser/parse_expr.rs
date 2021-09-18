@@ -4,7 +4,7 @@ use crate::parse_surroundings;
 use crate::parser::op;
 use crate::parser::errors::CustomError;
 
-use nom::{branch::alt, bytes::complete::{is_not, tag, take_till, take_until, take_while, take_while1, take_while_m_n}, character::complete::{multispace0, multispace1, one_of}, error::Error, IResult, InputTakeAtPosition};
+use nom::{branch::alt, bytes::complete::tag, character::complete::one_of, error::Error, IResult};
 
 use crate::parser::helper::*;
 use crate::fns::expr_to_params;
@@ -12,7 +12,9 @@ use crate::value::QName;
 use crate::parser::parse_literal::{parse_literal, parse_integer_literal};
 use crate::parser::parse_xml::parse_node_constructor;
 use crate::parser::parse_names::{parse_eqname, parse_ncname};
-use crate::parser::op::{Expr, found_expr, Operator, Statement, found_exprs, found_statements, ItemType, OccurrenceIndicator};
+use crate::parser::op::{Expr, found_expr, Statement, found_exprs, ItemType, OccurrenceIndicator, OperatorComparison, OperatorArithmetic};
+use nom::sequence::{preceded, delimited};
+use nom::combinator::opt;
 
 const DEBUG: bool = false;
 
@@ -38,13 +40,10 @@ pub fn parse_prolog(input: &str) -> IResult<&str, Vec<Expr>, CustomError<&str>> 
     let mut prolog = vec![];
 
     let mut current_input = input;
-
     loop {
         let check = parse_annotated_decl(current_input);
         if check.is_ok() {
             let (input, expr) = check?;
-            current_input = input;
-
             let (input, _) = tag(";")(input)?;
             current_input = input;
 
@@ -189,7 +188,7 @@ fn parse_param(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
 // [32]    	FunctionDecl 	   ::=    	"function" EQName "(" ParamList? ")" ("as" SequenceType)? (FunctionBody | "external")
 // [35]    	FunctionBody 	   ::=    	EnclosedExpr
 fn parse_function_decl(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
-    let (input, _) = ws_tag_ws("function", input)?;
+    let (input, _) = ws1_tag_ws1("function", input)?;
 
     let (input, name) = parse_eqname(input)?;
 
@@ -207,7 +206,7 @@ fn parse_function_decl(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
         vec![]
     };
 
-    let (input, _) = ws_tag_ws(")", current_input)?;
+    let (input, _) = ws_tag(")", current_input)?;
     current_input = input;
 
     let check = parse_type_declaration(current_input);
@@ -220,7 +219,7 @@ fn parse_function_decl(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
         Box::new(None)
     };
 
-    let check = ws_tag_ws("external", current_input);
+    let check = ws1_tag_ws1("external", current_input);
     let (input, external, body) = if check.is_ok() {
         let (input, _) = check?;
 
@@ -305,7 +304,7 @@ fn parse_flwor_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
         }
     }
 
-    let (input, _) = ws_tag_ws("return", current_input)?;
+    let (input, _) = ws1_tag_ws1("return", current_input)?;
     current_input = input;
 
     let (input, return_expr) = parse_expr_single(current_input)?;
@@ -464,34 +463,36 @@ fn parse_comparison_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> 
 
     let current_input = input;
 
-    let (input, _) = ws(current_input)?;
-    let check = alt((
-        tag("="), tag("!="), tag("<"), tag("<="), tag(">"), tag(">="),
-        tag("eq"), tag("ne"), tag("lt"), tag("le"), tag("gt"), tag("ge"),
-        // TODO: tag("is"), tag("<<"), tag(">>"),
-    ))(input);
-
+    let check = delimited(
+        ws1,
+        alt((
+            tag("="), tag("!="), tag("<"), tag("<="), tag(">"), tag(">="),
+            tag("eq"), tag("ne"), tag("lt"), tag("le"), tag("gt"), tag("ge"),
+            // TODO: tag("is"), tag("<<"), tag(">>"),
+        )),
+        ws1
+    )(current_input);
     if check.is_ok() {
-        let (mut input, op) = check?;
+        let (input, op) = check?;
 
         let (input, right) = parse_string_concat_expr(input)?;
 
         let operator = match op {
-            "=" => Operator::GeneralEquals,
-            "!=" => Operator::GeneralNotEquals,
-            "<" => Operator::GeneralLessThan,
-            "<=" => Operator::GeneralLessOrEquals,
-            ">" => Operator::GeneralGreaterThan,
-            ">=" => Operator::GeneralGreaterOrEquals,
+            "=" => OperatorComparison::GeneralEquals,
+            "!=" => OperatorComparison::GeneralNotEquals,
+            "<" => OperatorComparison::GeneralLessThan,
+            "<=" => OperatorComparison::GeneralLessOrEquals,
+            ">" => OperatorComparison::GeneralGreaterThan,
+            ">=" => OperatorComparison::GeneralGreaterOrEquals,
 
-            "eq" => Operator::ValueEquals,
-            "ne" => Operator::ValueNotEquals,
-            "lt" => Operator::ValueLessThan,
-            "le" => Operator::ValueLessOrEquals,
-            "gt" => Operator::ValueGreaterThan,
-            "ge" => Operator::ValueGreaterOrEquals,
+            "eq" => OperatorComparison::ValueEquals,
+            "ne" => OperatorComparison::ValueNotEquals,
+            "lt" => OperatorComparison::ValueLessThan,
+            "le" => OperatorComparison::ValueLessOrEquals,
+            "gt" => OperatorComparison::ValueGreaterThan,
+            "ge" => OperatorComparison::ValueGreaterOrEquals,
 
-            _ => Operator::Unknown,
+            _ => panic!("internal error"),
         };
 
         found_expr(
@@ -510,7 +511,7 @@ parse_sequence!(parse_string_concat_expr, "||", parse_range_expr, StringConcat);
 fn parse_range_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
     let (input, from) = parse_additive_expr(input)?;
 
-    let check = ws_tag("to", input);
+    let check = ws1_tag_ws1("to", input);
     if check.is_ok() {
         let input = check?.0;
 
@@ -533,8 +534,10 @@ fn parse_additive_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
 
     let mut current_input = input;
     loop {
-        let (input, _) = ws(current_input)?;
-        let check = alt((tag("+"), tag("-")))(input);
+        let check = alt((
+            preceded(ws, tag("+")),
+            preceded(ws1, tag("-"))
+        ))(current_input);
         if check.is_ok() {
             let (input, sign) = check?;
 
@@ -542,8 +545,8 @@ fn parse_additive_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
             current_input = input;
 
             let operator = match sign {
-                "+" => Operator::Plus,
-                "-" => Operator::Minus,
+                "+" => OperatorArithmetic::Plus,
+                "-" => OperatorArithmetic::Minus,
                 _ => panic!("internal error")
             };
 
@@ -563,8 +566,10 @@ fn parse_multiplicative_expr(input: &str) -> IResult<&str, Expr, CustomError<&st
 
     let mut current_input = input;
     loop {
-        let (input, _) = ws(current_input)?;
-        let check = alt((tag("*"), tag("div"), tag("idiv"), tag("mod")))(input);
+        let check = alt((
+            delimited(ws,tag("*"), ws),
+            delimited(ws1,alt((tag("div"), tag("idiv"), tag("mod"))), ws1)
+        ))(current_input);
         if check.is_ok() {
             let (input, sign) = check?;
 
@@ -572,10 +577,10 @@ fn parse_multiplicative_expr(input: &str) -> IResult<&str, Expr, CustomError<&st
             current_input = input;
 
             let operator = match sign {
-                "*" => Operator::Multiply,
-                "div" => Operator::Divide,
-                "idiv" => Operator::IDivide,
-                "mod" => Operator::Mod,
+                "*" => OperatorArithmetic::Multiply,
+                "div" => OperatorArithmetic::Divide,
+                "idiv" => OperatorArithmetic::IDivide,
+                "mod" => OperatorArithmetic::Mod,
                 _ => panic!("internal error")
             };
 
@@ -587,136 +592,78 @@ fn parse_multiplicative_expr(input: &str) -> IResult<&str, Expr, CustomError<&st
     Ok((current_input, left))
 }
 
-// [97]    	UnaryExpr 	   ::=    	("-" | "+")* ValueExpr
-// [98]    	ValueExpr 	   ::=    	ValidateExpr | ExtensionExpr | SimpleMapExpr
-
-// [85]    	ComparisonExpr 	   ::=    	 TODO: StringConcatExpr ( (ValueComp
-// TODO: | GeneralComp
-// TODO: | NodeComp) StringConcatExpr )?
-// [88]    	AdditiveExpr 	   ::=    	MultiplicativeExpr ( ("+" | "-") MultiplicativeExpr )*
-// [89]    	MultiplicativeExpr 	   ::=    	UnionExpr ( ("*" | "div" | "idiv" | "mod") UnionExpr )*
-// [99] GeneralComp    ::=    	"=" | "!=" | "<" | "<=" | ">" | ">="
-// [100] ValueComp 	   ::=    	"eq" | "ne" | "lt" | "le" | "gt" | "ge"
-// [101] NodeComp 	   ::=    	"is" | "<<" | ">>"
-fn parse_binary_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
-
-    if DEBUG {
-        println!("parse_binary_expr 1: {:?}", input);
-    }
-
-    let (input, expr) = parse_union_expr(input)?;
-
-    let mut left = expr;
-    let mut current_input = input;
-
-    loop {
-        if DEBUG {
-            println!("parse_binary_expr 2: {:?}", current_input);
-        }
-
-        current_input = ws(current_input)?.0;
-
-        let check = alt(
-            (
-                tag("+"), tag("-"), tag("*"), tag("div"), tag("idiv"), tag("mod"),
-                tag("="), tag("!="), tag("<"), tag("<="), tag(">"), tag(">="),
-                tag("eq"), tag("ne"), tag("lt"), tag("le"), tag("gt"), tag("ge"),
-                // TODO: tag("is"), tag("<<"), tag(">>"),
-            )
-        )(current_input);
-
-        if check.is_ok() {
-            let (mut input, op) = check?;
-
-            input = ws(input)?.0;
-
-            let (input, right) = parse_union_expr(input)?;
-            current_input = input;
-
-            if DEBUG {
-                println!("parse_binary_expr: {:?} {:?} {:?}", left, op, right);
-            }
-
-            let operator = match op {
-                "=" => Operator::GeneralEquals,
-                "!=" => Operator::GeneralNotEquals,
-                "<" => Operator::GeneralLessThan,
-                "<=" => Operator::GeneralLessOrEquals,
-                ">" => Operator::GeneralGreaterThan,
-                ">=" => Operator::GeneralGreaterOrEquals,
-
-                "eq" => Operator::ValueEquals,
-                "ne" => Operator::ValueNotEquals,
-                "lt" => Operator::ValueLessThan,
-                "le" => Operator::ValueLessOrEquals,
-                "gt" => Operator::ValueGreaterThan,
-                "ge" => Operator::ValueGreaterOrEquals,
-
-                _ => Operator::Unknown,
-            };
-
-            if operator != Operator::Unknown {
-                left = Expr::Comparison { left: Box::new(left), operator, right: Box::new(right) };
-            } else {
-                let operator = match op {
-                    "+" => Operator::Plus,
-                    "-" => Operator::Minus,
-                    "*" => Operator::Multiply,
-                    "div" => Operator::Divide,
-                    "idiv" => Operator::IDivide,
-                    "mod" => Operator::Mod,
-                    _ => panic!("this must not happen") // TODO: raise error instead
-                };
-
-                left = Expr::Binary { left: Box::new(left), operator, right: Box::new(right) }
-            }
-        } else {
-            return found_expr(
-                current_input,
-                left
-            );
-        }
-    }
-}
-
-// [90]    	UnionExpr 	   ::=    	IntersectExceptExpr TODO: ( ("union" | "|") IntersectExceptExpr )*
+// [90]    	UnionExpr 	   ::=    	IntersectExceptExpr ( ("union" | "|") IntersectExceptExpr )*
 fn parse_union_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
     let (input, expr) = parse_intersect_except_expr(input)?;
 
-    let check: Result<(&str, &str), nom::Err<Error<&str>>> = alt((tag("union"), tag("|")))(input);
-    if check.is_err() {
-        Ok((input, expr))
+    let mut exprs = vec![];
+    exprs.push(expr);
+
+    let mut current_input = input;
+    loop {
+        let check = preceded(ws1, alt((tag("union"), tag("|"))))(current_input);
+        if check.is_err() {
+            break
+        } else {
+            let (input, _) = check?;
+            let (input, expr) = parse_intersect_except_expr(input)?;
+            current_input = input;
+
+            exprs.push(expr);
+        }
+    }
+
+    if exprs.len() == 1 {
+        let expr = exprs.remove(0);
+        Ok((current_input, expr))
     } else {
-        todo!()
+        found_expr(current_input, Expr::Union(exprs))
     }
 }
 
-// [91]    	IntersectExceptExpr 	   ::=    	InstanceofExpr TODO: ( ("intersect" | "except") InstanceofExpr )*
+// [91]    	IntersectExceptExpr 	   ::=    	InstanceofExpr ( ("intersect" | "except") InstanceofExpr )*
 fn parse_intersect_except_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
     let (input, expr) = parse_instanceof_expr(input)?;
 
-    let check: Result<(&str, &str), nom::Err<Error<&str>>> = alt((tag("intersect"), tag("except")))(input);
-    if check.is_err() {
-        Ok((input, expr))
-    } else {
-        todo!()
+    let mut left = expr;
+
+    let mut current_input = input;
+    loop {
+        let check = preceded(ws1, alt((tag("intersect"), tag("except"))))(current_input);
+        if check.is_err() {
+            break
+        } else {
+            let (input, op) = check?;
+            let (input, right) = parse_instanceof_expr(input)?;
+            current_input = input;
+
+            let is_intersect = match op {
+                "intersect" => true,
+                "except" => false,
+                _ => panic!("internal error")
+            };
+
+            left = Expr::IntersectExcept { left: Box::new(left), is_intersect, right: Box::new(right) }
+        }
     }
+
+    Ok((current_input, left))
 }
 
 // [92]    	InstanceofExpr 	   ::=    	TreatExpr ( "instance" "of" SequenceType )?
 fn parse_instanceof_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
     let (input, expr) = parse_treat_expr(input)?;
 
-    let check = ws_tag_ws("instance", input);
+    let check = ws1_tag_ws1("instance", input);
     if check.is_err() {
         Ok((input, expr))
     } else {
         let (input, _) = check?;
-        let (input, _) = ws_tag_ws("of", input)?;
+        let (input, _) = tag_ws1("of", input)?;
 
         let (input, st) = parse_sequence_type(input)?;
 
-        found_expr(input, Expr::TreatExpr { expr: Box::new(expr), st: Box::new(st) } )
+        found_expr(input, Expr::Treat { expr: Box::new(expr), st: Box::new(st) } )
     }
 }
 
@@ -724,16 +671,16 @@ fn parse_instanceof_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> 
 fn parse_treat_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
     let (input, expr) = parse_castable_expr(input)?;
 
-    let check = ws_tag_ws("treat", input);
+    let check = ws1_tag_ws1("treat", input);
     if check.is_err() {
         Ok((input, expr))
     } else {
         let (input, _) = check?;
-        let (input, _) = ws_tag_ws("as", input)?;
+        let (input, _) = tag_ws1("as", input)?;
 
         let (input, st) = parse_sequence_type(input)?;
 
-        found_expr(input, Expr::CastableExpr { expr: Box::new(expr), st: Box::new(st) } )
+        found_expr(input, Expr::Castable { expr: Box::new(expr), st: Box::new(st) } )
     }
 }
 
@@ -741,16 +688,16 @@ fn parse_treat_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
 fn parse_castable_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
     let (input, expr) = parse_cast_expr(input)?;
 
-    let check = ws_tag_ws("castable", input);
+    let check = ws1_tag_ws1("castable", input);
     if check.is_err() {
         Ok((input, expr))
     } else {
         let (input, _) = check?;
-        let (input, _) = ws_tag_ws("as", input)?;
+        let (input, _) = tag_ws1("as", input)?;
 
         let (input, st) = parse_single_type(input)?;
 
-        found_expr(input, Expr::CastableExpr { expr: Box::new(expr), st: Box::new(st) } )
+        found_expr(input, Expr::Castable { expr: Box::new(expr), st: Box::new(st) } )
     }
 }
 
@@ -758,16 +705,16 @@ fn parse_castable_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
 fn parse_cast_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
     let (input, expr) = parse_arrow_expr(input)?;
 
-    let check = ws_tag_ws("cast", input);
+    let check = ws1_tag_ws1("cast", input);
     if check.is_err() {
         Ok((input, expr))
     } else {
         let (input, _) = check?;
-        let (input, _) = ws_tag_ws("as", input)?;
+        let (input, _) = tag_ws1("as", input)?;
 
         let (input, st) = parse_single_type(input)?;
 
-        found_expr(input, Expr::CastableExpr { expr: Box::new(expr), st: Box::new(st) } )
+        found_expr(input, Expr::Castable { expr: Box::new(expr), st: Box::new(st) } )
     }
 }
 
@@ -776,7 +723,7 @@ fn parse_cast_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
 fn parse_arrow_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
     let (input, expr) = parse_unary_expr(input)?;
 
-    let check = ws_tag_ws("=>", input);
+    let check = ws1_tag_ws1("=>", input);
     if check.is_err() {
         Ok((input, expr))
     } else {
@@ -792,7 +739,7 @@ fn parse_arrow_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
 // [98]    	ValueExpr 	   ::=    	TODO: ValidateExpr | TODO: ExtensionExpr | SimpleMapExpr
 fn parse_unary_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
 
-    let mut is_positive = true;
+    let mut is_positive: Option<bool> = None;
     let mut current_input = input;
 
     //TODO: optimize by relaxing
@@ -804,25 +751,21 @@ fn parse_unary_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
             let (input, op) = check?;
             current_input = input;
 
-            if op == '-' {
-                is_positive = !is_positive
+            if op == '+' {
+                is_positive = Some(is_positive.unwrap_or(true));
+            } else {
+                is_positive = Some(!is_positive.unwrap_or(true));
             }
         } else {
             break;
         }
     }
 
-    let check = parse_simple_map_expr(current_input);
-    if check.is_ok() {
-        let (input, expr) = check?;
-
-        if is_positive {
-            Ok((input, expr))
-        } else {
-            found_expr(input, Expr::Negative(Box::new(expr)))
-        }
+    let (input, expr) = parse_simple_map_expr(current_input)?;
+    if let Some(sign_is_positive) = is_positive {
+        found_expr(input, Expr::Unary { expr: Box::new(expr), sign_is_positive })
     } else {
-        check
+        Ok((input, expr))
     }
 }
 
@@ -996,11 +939,11 @@ fn parse_postfix_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
 
 // [122]    	ArgumentList 	   ::=    	"(" (Argument ("," Argument)*)? ")"
 fn parse_argument_list(input: &str) -> IResult<&str, Vec<Expr>, CustomError<&str>> {
-    let (input, _) = ws_tag_ws("(", input)?;
+    let (input, _) = ws_tag("(", input)?;
 
     let (input, arguments) = parse_arguments(input)?;
 
-    let (input, _) = ws_tag_ws(")", input)?;
+    let (input, _) = ws_tag(")", input)?;
 
     found_exprs(
         input,
@@ -1092,7 +1035,7 @@ fn parse_var_ref(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
 // [133]    	ParenthesizedExpr 	   ::=    	"(" Expr? ")"
 fn parse_parenthesized_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
 
-    let input = ws_tag("(", input)?.0;
+    let (input, _) = ws_tag("(", input)?;
 
     let check = parse_expr(input);
     let (input, expr) = if check.is_ok() {
@@ -1102,7 +1045,7 @@ fn parse_parenthesized_expr(input: &str) -> IResult<&str, Expr, CustomError<&str
         (input, Expr::SequenceEmpty())
     };
 
-    let input = ws_tag(")", input)?.0;
+    let (input, _) = ws_tag(")", input)?;
 
     Ok((input, expr))
 }
@@ -1144,33 +1087,34 @@ fn parse_arguments(input: &str) -> IResult<&str, Vec<Expr>, CustomError<&str>> {
     let mut current_input = input;
 
     let check = parse_expr_single(current_input);
-    if check.is_ok() {
-        let (input, argument) = check?;
-        current_input = input;
-
-        arguments.push(argument);
-
-        loop {
-            let tmp = ws_tag(",", current_input);
-            if tmp.is_err() {
-                return
-                    found_exprs(
-                        current_input,
-                        arguments
-                    )
-            }
-            current_input = tmp?.0;
-
-            let (input, argument) = parse_expr_single(current_input)?;
+    match check {
+        Ok((input, argument)) => {
             current_input = input;
 
             arguments.push(argument);
+
+            loop {
+                let tmp = ws_tag(",", current_input);
+                if tmp.is_err() {
+                    return
+                        found_exprs(
+                            current_input,
+                            arguments
+                        )
+                }
+                current_input = tmp?.0;
+
+                let (input, argument) = parse_expr_single(current_input)?;
+                current_input = input;
+
+                arguments.push(argument);
+            }
+        },
+        Err(nom::Err::Failure(code)) => Err(nom::Err::Failure(code)),
+        _ => {
+            found_exprs(current_input, arguments)
         }
     }
-    found_exprs(
-        current_input,
-        arguments
-    )
 }
 
 // [167]    	FunctionItemExpr 	   ::=    	NamedFunctionRef | InlineFunctionExpr
@@ -1326,13 +1270,9 @@ fn parse_square_array_constructor(input: &str) -> IResult<&str, Expr, CustomErro
             }
         }
     }
-
     let (input, _) = ws_tag("]", current_input)?;
 
-    Ok((
-        input,
-        Expr::SquareArrayConstructor { items: exprs }
-    ))
+    found_expr(input, Expr::SquareArrayConstructor(exprs))
 }
 
 // [176]    	CurlyArrayConstructor 	   ::=    	"array" EnclosedExpr
@@ -1341,10 +1281,7 @@ fn parse_curly_array_constructor(input: &str) -> IResult<&str, Expr, CustomError
 
     let (input, expr) = parse_enclosed_expr(input)?;
 
-    Ok((
-        input,
-        Expr::CurlyArrayConstructor(Box::new(expr))
-    ))
+    found_expr(input, Expr::CurlyArrayConstructor(Box::new(expr)))
 }
 
 // [182]    	SingleType 	   ::=    	SimpleTypeName "?"?

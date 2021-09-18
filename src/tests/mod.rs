@@ -1,4 +1,4 @@
-use crate::eval::{Object, Environment, Type, eval_statements, object_to_iterator};
+use crate::eval::{Object, Environment, Type, eval_statements, object_to_iterator, comparison};
 use crate::parser::parse;
 use crate::value::{resolve_element_qname, QName};
 use crate::serialization::object_to_string;
@@ -7,7 +7,7 @@ use crate::fns::object_to_bool;
 
 pub(crate) fn eval_on_spec(spec: &str, input: &str) -> Result<Object, String> {
     match spec {
-        "XQ10+" | "XQ31+" | "XP31+ XQ31+" => {
+        "XQ10+" | "XP30+ XQ30+" | "XQ31+" | "XP31+ XQ31+" => {
             eval(input)
         }
         _ => panic!("unsupported spec {}", spec)
@@ -23,12 +23,11 @@ pub(crate) fn eval(input: &str) -> Result<Object, String> {
 
         println!("{:#?}", program);
 
-        let mut env = Environment::new();
-
+        let env = Environment::new();
         let check = eval_statements(program, Box::new(env));
         match check {
             Ok(obj) => Ok(obj),
-            Err((error_code, msg)) => {
+            Err((error_code, ..)) => {
                 let code = error_code.as_ref();
                 Err(String::from(code))
             }
@@ -87,14 +86,18 @@ fn eval_assert(result: &Result<Object, String>, check: &str) -> Object {
 
 pub(crate) fn check_assert_eq(result: &Result<Object, String>, check: &str) {
     let expected = eval(check).unwrap();
-    if !crate::eval::comparison::eq(&expected, &result.as_ref().unwrap()) {
-        assert_eq!(expected, result.as_ref().unwrap().clone());
+    match comparison::eq(&expected, &result.as_ref().unwrap()) {
+        Ok(v) => if !v { assert_eq!(expected, result.as_ref().unwrap().clone()) },
+        Err(code) => panic!("Error {:?}", code)
     }
 }
 
 pub(crate) fn bool_check_assert_eq(result: &Result<Object, String>, check: &str) -> bool {
     let expected = eval(check).unwrap();
-    !crate::eval::comparison::eq(&expected, result.as_ref().unwrap())
+    match comparison::eq(&expected, result.as_ref().unwrap()) {
+        Ok(v) => !v,
+        Err(code) => panic!("Error {:?}", code)
+    }
 }
 
 pub(crate) fn check_assert_count(result: &Result<Object, String>, check: &str) {

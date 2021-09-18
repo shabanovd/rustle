@@ -1,8 +1,7 @@
 use crate::eval::{Object, Type, EvalResult};
 use crate::eval::Environment;
-use crate::eval::Object::Atomic;
 
-pub fn size<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn size<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array)] => {
             let size = array.len();
@@ -12,7 +11,7 @@ pub fn size<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item:
     }
 }
 
-pub fn get<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn get<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -22,7 +21,7 @@ pub fn get<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: 
     }
 }
 
-pub fn put<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn put<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -32,7 +31,7 @@ pub fn put<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: 
     }
 }
 
-pub fn append<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn append<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             let mut result = array.clone();
@@ -45,7 +44,7 @@ pub fn append<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_ite
     }
 }
 
-pub fn subarray<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn subarray<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -55,7 +54,7 @@ pub fn subarray<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_i
     }
 }
 
-pub fn remove<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn remove<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -65,7 +64,7 @@ pub fn remove<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_ite
     }
 }
 
-pub fn insert_before<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn insert_before<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -75,7 +74,7 @@ pub fn insert_before<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, cont
     }
 }
 
-pub fn head<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn head<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -85,7 +84,7 @@ pub fn head<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item:
     }
 }
 
-pub fn tail<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn tail<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -95,7 +94,7 @@ pub fn tail<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item:
     }
 }
 
-pub fn reverse<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn reverse<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -105,7 +104,7 @@ pub fn reverse<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_it
     }
 }
 
-pub fn join<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn join<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -115,7 +114,7 @@ pub fn join<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item:
     }
 }
 
-pub fn for_each<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn for_each<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -125,7 +124,7 @@ pub fn for_each<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_i
     }
 }
 
-pub fn filter<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn filter<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -135,7 +134,7 @@ pub fn filter<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_ite
     }
 }
 
-pub fn fold_left<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn fold_left<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -145,7 +144,7 @@ pub fn fold_left<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_
     }
 }
 
-pub fn fold_right<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn fold_right<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -155,7 +154,7 @@ pub fn fold_right<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context
     }
 }
 
-pub fn for_each_pair<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn for_each_pair<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -165,7 +164,7 @@ pub fn for_each_pair<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, cont
     }
 }
 
-pub fn sort<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn sort<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -175,7 +174,7 @@ pub fn sort<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item:
     }
 }
 
-pub fn flatten<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn flatten<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()

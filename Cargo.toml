@@ -10,10 +10,9 @@ edition = "2018"
 strum = "0.21"
 strum_macros = "0.21"
 
-#fast-float = "0.2"
-#bigdecimal = "0.3.0"
-rust_decimal = "1.15"
-rust_decimal_macros = "1.15"
+bigdecimal = "0.3.0"
+ordered-float = "2.0"
+libmath = "0.2.1"
 
 nom = "7.0"
 xmlparser = "0.13.3"

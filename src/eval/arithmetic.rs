@@ -1,10 +1,8 @@
-use crate::eval::{Object, EvalResult, atomization, Type, NumberCase, string_to_double, Environment, object_to_iterator};
-use crate::parser::op::Operator;
-use core::ops;
-use std::any::Any;
-use rust_decimal::Decimal;
-use rust_decimal::prelude::FromPrimitive;
+use crate::eval::{Object, EvalResult, atomization, Type, string_to_double, Environment, object_to_iterator, relax};
 use crate::parser::errors::ErrorCode;
+use ordered_float::OrderedFloat;
+use bigdecimal::{BigDecimal, ToPrimitive, FromPrimitive, Zero};
+use crate::parser::op::OperatorArithmetic;
 
 // XS_DOUBLE    XS_DOUBLE       > DOUBLE_DOUBLE
 // XS_DOUBLE    XS_FLOAT        > DOUBLE_FLOAT
@@ -34,246 +32,485 @@ use crate::parser::errors::ErrorCode;
 // XS_DECIMAL   XS_DURATION     > NUMERIC_DURATION
 // XS_INTEGER*  XS_DURATION     > NUMERIC_DURATION
 
-fn number_number(
-    l: Number,
-    r: Number,
-    op: fn(Decimal, Decimal) -> (Option<Decimal>, NumberCase)
-) -> (Option<Decimal>, NumberCase) {
-    if let Some(l) = l.number {
-        if let Some(r) = r.number {
-            op(l, r)
-        } else {
-            (None, r.case)
-        }
-    } else {
-        (None, l.case)
-    }
-}
-
+type OperandReturn = Result<Box<dyn Operand>, ErrorCode>;
 trait Operand {
-    fn add(&self, rhs: Box<dyn Operand>) -> Box<dyn Operand>;
-    fn sub(&self, rhs: Box<dyn Operand>) -> Box<dyn Operand>;
-    fn mul(&self, rhs: Box<dyn Operand>) -> Box<dyn Operand>;
-    fn div(&self, rhs: Box<dyn Operand>) -> Box<dyn Operand>;
+    fn add(&self, rhs: &dyn Operand) -> OperandReturn;
+    fn rev_add(&self, rhs: &dyn Operand) -> OperandReturn;
+    fn sub(&self, rhs: &dyn Operand) -> OperandReturn;
+    fn rev_sub(&self, rhs: &dyn Operand) -> OperandReturn;
+    fn mul(&self, rhs: &dyn Operand) -> OperandReturn;
+    fn rev_mul(&self, rhs: &dyn Operand) -> OperandReturn;
+    fn div(&self, rhs: &dyn Operand) -> OperandReturn;
+    fn rev_div(&self, rhs: &dyn Operand) -> OperandReturn;
 
-    fn create(&self, number: Option<Decimal>, case: NumberCase) -> Box<dyn Operand>;
+    fn remainder(&self, rhs: &dyn Operand) -> OperandReturn;
+    fn rev_remainder(&self, rhs: &dyn Operand) -> OperandReturn;
+
+    fn negative(&self) -> OperandReturn;
+
+    fn is_zero(&self) -> bool;
 
     fn level(&self) -> u8;
 
-    fn integer(&self) -> i128;
-    fn is_integer(&self) -> bool;
-
-    fn number(&self) -> Number;
+    fn to_integer(&self) -> i128;
+    fn to_decimal(&self) -> Result<BigDecimal, ErrorCode>;
+    fn to_float(&self) -> f32;
+    fn to_double(&self) -> f64;
 
     fn to_atomic(&self) -> Object;
 }
 
-struct Number {
-    number: Option<Decimal>,
-    case: NumberCase
-}
-
 struct VDouble {
-    number: Option<Decimal>,
-    case: NumberCase
+    number: f64,
 }
 
 impl Operand for VDouble {
-    fn add(&self, rhs: Box<dyn Operand>) -> Box<dyn Operand> {
-        let (number, case) = number_number(self.number(), rhs.number(), |l, r| {
-            (Some(l + r), NumberCase::Normal)
-        });
-        if self.level() > rhs.level() {
-            self.create(number, case)
+    fn add(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_double();
+
+            let number = self.number + other;
+
+            Ok(Box::new(VDouble { number }))
         } else {
-            rhs.create(number, case)
+            rhs.add(self)
         }
     }
 
-    fn sub(&self, rhs: Box<dyn Operand>) -> Box<dyn Operand> {
-        let (number, case) = number_number(self.number(), rhs.number(), |l, r| {
-            (Some(l - r), NumberCase::Normal)
-        });
-        if self.level() > rhs.level() {
-            self.create(number, case)
+    fn rev_add(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_double();
+
+            let number = self.number + other;
+
+            Ok(Box::new(VDouble { number }))
         } else {
-            rhs.create(number, case)
+            Err(ErrorCode::FOAR0002)
         }
     }
 
-    fn mul(&self, rhs: Box<dyn Operand>) -> Box<dyn Operand> {
-        let (number, case) = number_number(self.number(), rhs.number(), |l, r| {
-            (Some(l * r), NumberCase::Normal)
-        });
-        if self.level() > rhs.level() {
-            self.create(number, case)
+    fn sub(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_double();
+
+            let number = self.number - other;
+
+            Ok(Box::new(VDouble { number }))
         } else {
-            rhs.create(number, case)
+            rhs.sub(self)
         }
     }
 
-    fn div(&self, rhs: Box<dyn Operand>) -> Box<dyn Operand> {
-        let (number, case) = number_number(self.number(), rhs.number(), |l, r| {
-            (Some(l / r), NumberCase::Normal)
-        });
-        if self.level() > rhs.level() {
-            self.create(number, case)
+    fn rev_sub(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_double();
+
+            let number = other - self.number;
+
+            Ok(Box::new(VDouble { number }))
         } else {
-            rhs.create(number, case)
+            Err(ErrorCode::FOAR0002)
         }
+    }
+
+    fn mul(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_double();
+
+            let number = self.number * other;
+
+            Ok(Box::new(VDouble { number }))
+        } else {
+            rhs.rev_mul(self)
+        }
+    }
+
+    fn rev_mul(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_double();
+
+            let number = self.number * other;
+
+            Ok(Box::new(VDouble { number }))
+        } else {
+            Err(ErrorCode::FOAR0002)
+        }
+    }
+
+    fn div(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_double();
+
+            let number = self.number / other;
+
+            Ok(Box::new(VDouble { number }))
+        } else {
+            rhs.rev_div(self)
+        }
+    }
+
+    fn rev_div(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_double();
+
+            let number = other / self.number;
+
+            Ok(Box::new(VDouble { number }))
+        } else {
+            Err(ErrorCode::FOAR0002)
+        }
+    }
+
+    fn remainder(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_double();
+
+            let number = self.number % other;
+
+            Ok(Box::new(VDouble { number }))
+        } else {
+            rhs.rev_remainder(self)
+        }
+    }
+
+    fn rev_remainder(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_double();
+
+            let number = other % self.number;
+
+            Ok(Box::new(VDouble { number }))
+        } else {
+            Err(ErrorCode::FOAR0002)
+        }
+    }
+
+    fn negative(&self) -> OperandReturn {
+        let number = -self.number;
+        Ok(Box::new(VDouble { number }))
+    }
+
+    fn is_zero(&self) -> bool {
+        self.number.is_zero()
     }
 
     fn level(&self) -> u8 { 4 }
 
-    fn create(&self, number: Option<Decimal>, case: NumberCase) -> Box<dyn Operand> {
-        Box::new(VDouble { number, case })
-    }
-
-    fn integer(&self) -> i128 { panic!("internal error") }
-    fn is_integer(&self) -> bool { false }
-
-    fn number(&self) -> Number {
-        Number { number: self.number, case: self.case.clone() }
-    }
+    fn to_integer(&self) -> i128 { panic!("internal error") }
+    fn to_decimal(&self) -> Result<BigDecimal, ErrorCode> { Err(ErrorCode::FOAR0002) }
+    fn to_float(&self) -> f32 { panic!("internal error") }
+    fn to_double(&self) -> f64 { self.number }
 
     fn to_atomic(&self) -> Object {
-        Object::Atomic(Type::Double { number: self.number, case: self.case.clone() })
+        Object::Atomic(Type::Double(OrderedFloat::from(self.number)))
     }
 }
 
 struct VFloat {
-    number: Option<Decimal>,
-    case: NumberCase
+    number: f32,
 }
 
 impl Operand for VFloat {
-    fn add(&self, rhs: Box<dyn Operand>) -> Box<dyn Operand> {
-        let (number, case) = number_number(self.number(), rhs.number(), |l, r| {
-            (Some(l + r), NumberCase::Normal)
-        });
-        if self.level() > rhs.level() {
-            self.create(number, case)
+    fn add(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_float();
+
+            let number = self.number + other;
+
+            Ok(Box::new(VFloat { number }))
         } else {
-            rhs.create(number, case)
+            rhs.add(self)
         }
     }
 
-    fn sub(&self, rhs: Box<dyn Operand>) -> Box<dyn Operand> {
-        let (number, case) = number_number(self.number(), rhs.number(), |l, r| {
-            (Some(l - r), NumberCase::Normal)
-        });
-        if self.level() > rhs.level() {
-            self.create(number, case)
+    fn rev_add(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_float();
+
+            let number = self.number + other;
+
+            Ok(Box::new(VFloat { number }))
         } else {
-            rhs.create(number, case)
+            Err(ErrorCode::FOAR0002)
         }
     }
 
-    fn mul(&self, rhs: Box<dyn Operand>) -> Box<dyn Operand> {
-        let (number, case) = number_number(self.number(), rhs.number(), |l, r| {
-            (Some(l * r), NumberCase::Normal)
-        });
-        if self.level() > rhs.level() {
-            self.create(number, case)
+    fn sub(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_float();
+
+            let number = self.number - other;
+
+            Ok(Box::new(VFloat { number }))
         } else {
-            rhs.create(number, case)
+            rhs.rev_sub(self)
         }
     }
 
-    fn div(&self, rhs: Box<dyn Operand>) -> Box<dyn Operand> {
-        let (number, case) = number_number(self.number(), rhs.number(), |l, r| {
-            (Some(l / r), NumberCase::Normal)
-        });
-        if self.level() > rhs.level() {
-            self.create(number, case)
+    fn rev_sub(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_float();
+
+            let number = other - self.number;
+
+            Ok(Box::new(VFloat { number }))
         } else {
-            rhs.create(number, case)
+            Err(ErrorCode::FOAR0002)
         }
+    }
+
+    fn mul(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_float();
+
+            let number = self.number * other;
+
+            Ok(Box::new(VFloat { number }))
+        } else {
+            rhs.rev_mul(self)
+        }
+    }
+
+    fn rev_mul(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_float();
+
+            let number = self.number * other;
+
+            Ok(Box::new(VFloat { number }))
+        } else {
+            Err(ErrorCode::FOAR0002)
+        }
+    }
+
+    fn div(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_float();
+
+            let number = self.number / other;
+
+            Ok(Box::new(VFloat { number }))
+        } else {
+            rhs.rev_div(self)
+        }
+    }
+
+    fn rev_div(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_float();
+
+            let number = other / self.number;
+
+            Ok(Box::new(VFloat { number }))
+        } else {
+            Err(ErrorCode::FOAR0002)
+        }
+    }
+
+    fn remainder(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_float();
+
+            let number = self.number % other;
+
+            Ok(Box::new(VFloat { number }))
+        } else {
+            rhs.rev_remainder(self)
+        }
+    }
+
+    fn rev_remainder(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_float();
+
+            let number = other % self.number;
+
+            Ok(Box::new(VFloat { number }))
+        } else {
+            Err(ErrorCode::FOAR0002)
+        }
+    }
+
+    fn negative(&self) -> OperandReturn {
+        let number = -self.number;
+        Ok(Box::new(VFloat { number }))
+    }
+
+    fn is_zero(&self) -> bool {
+        self.number.is_zero()
     }
 
     fn level(&self) -> u8 { 3 }
 
-    fn create(&self, number: Option<Decimal>, case: NumberCase) -> Box<dyn Operand> {
-        Box::new(VFloat { number, case })
-    }
-
-    fn integer(&self) -> i128 { panic!("internal error") }
-    fn is_integer(&self) -> bool { false }
-
-    fn number(&self) -> Number {
-        Number { number: self.number, case: self.case.clone() }
-    }
+    fn to_integer(&self) -> i128 { panic!("internal error") }
+    fn to_decimal(&self) -> Result<BigDecimal, ErrorCode> { Err(ErrorCode::FOAR0002) }
+    fn to_float(&self) -> f32 { self.number }
+    fn to_double(&self) -> f64 { self.number as f64 }
 
     fn to_atomic(&self) -> Object {
-        Object::Atomic(Type::Float { number: self.number, case: self.case.clone() })
+        Object::Atomic(Type::Float(OrderedFloat::from(self.number)))
     }
 }
 
 struct VDecimal {
-    number: Option<Decimal>,
-    case: NumberCase
+    number: BigDecimal,
 }
 
 impl Operand for VDecimal {
-    fn add(&self, rhs: Box<dyn Operand>) -> Box<dyn Operand> {
-        let (number, case) = number_number(self.number(), rhs.number(), |l, r| {
-            (Some(l + r), NumberCase::Normal)
-        });
-        if self.level() > rhs.level() {
-            self.create(number, case)
+    fn add(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_decimal()?;
+
+            let number = &self.number + other;
+
+            Ok(Box::new(VDecimal { number }))
         } else {
-            rhs.create(number, case)
+            rhs.add(self)
         }
     }
 
-    fn sub(&self, rhs: Box<dyn Operand>) -> Box<dyn Operand> {
-        let (number, case) = number_number(self.number(), rhs.number(), |l, r| {
-            (Some(l - r), NumberCase::Normal)
-        });
-        if self.level() > rhs.level() {
-            self.create(number, case)
+    fn rev_add(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_decimal()?;
+
+            let number = &self.number + other;
+
+            Ok(Box::new(VDecimal { number }))
         } else {
-            rhs.create(number, case)
+            Err(ErrorCode::FOAR0002)
         }
     }
 
-    fn mul(&self, rhs: Box<dyn Operand>) -> Box<dyn Operand> {
-        let (number, case) = number_number(self.number(), rhs.number(), |l, r| {
-            (Some(l * r), NumberCase::Normal)
-        });
-        if self.level() > rhs.level() {
-            self.create(number, case)
+    fn sub(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_decimal()?;
+
+            let number = &self.number - other;
+
+            Ok(Box::new(VDecimal { number }))
         } else {
-            rhs.create(number, case)
+            rhs.rev_sub(self)
         }
     }
 
-    fn div(&self, rhs: Box<dyn Operand>) -> Box<dyn Operand> {
-        let (number, case) = number_number(self.number(), rhs.number(), |l, r| {
-            (Some(l / r), NumberCase::Normal)
-        });
-        if self.level() > rhs.level() {
-            self.create(number, case)
+    fn rev_sub(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_decimal()?;
+
+            let number = other - &self.number;
+
+            Ok(Box::new(VDecimal { number }))
         } else {
-            rhs.create(number, case)
+            Err(ErrorCode::FOAR0002)
         }
+    }
+
+    fn mul(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_decimal()?;
+
+            let number = &self.number * other;
+
+            Ok(Box::new(VDecimal { number }))
+        } else {
+            rhs.rev_mul(self)
+        }
+    }
+
+    fn rev_mul(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_decimal()?;
+
+            let number = &self.number * other;
+
+            Ok(Box::new(VDecimal { number }))
+        } else {
+            Err(ErrorCode::FOAR0002)
+        }
+    }
+
+    fn div(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            if rhs.is_zero() {
+                Err(ErrorCode::FOAR0001)
+            } else {
+                let other = rhs.to_decimal()?;
+
+                let number = &self.number / other;
+
+                Ok(Box::new(VDecimal { number }))
+            }
+        } else {
+            rhs.rev_div(self)
+        }
+    }
+
+    fn rev_div(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            if self.is_zero() {
+                Err(ErrorCode::FOAR0001)
+            } else {
+                let other = rhs.to_decimal()?;
+
+                let number = other / &self.number;
+
+                Ok(Box::new(VDecimal { number }))
+            }
+        } else {
+            Err(ErrorCode::FOAR0002)
+        }
+    }
+
+    fn remainder(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            if rhs.is_zero() {
+                Err(ErrorCode::FOAR0001)
+            } else {
+                let other = rhs.to_decimal()?;
+
+                let number = &self.number % other;
+
+                Ok(Box::new(VDecimal { number }))
+            }
+        } else {
+            rhs.rev_div(self)
+        }
+    }
+
+    fn rev_remainder(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            if self.is_zero() {
+                Err(ErrorCode::FOAR0001)
+            } else {
+                let other = rhs.to_decimal()?;
+
+                let number = other % &self.number;
+
+                Ok(Box::new(VDecimal { number }))
+            }
+        } else {
+            Err(ErrorCode::FOAR0002)
+        }
+    }
+
+    fn negative(&self) -> OperandReturn {
+        let number = -self.number.clone();
+        Ok(Box::new(VDecimal { number }))
+    }
+
+    fn is_zero(&self) -> bool {
+        self.number.is_zero()
     }
 
     fn level(&self) -> u8 { 2 }
 
-    fn create(&self, number: Option<Decimal>, case: NumberCase) -> Box<dyn Operand> {
-        Box::new(VDecimal { number, case })
-    }
-
-    fn integer(&self) -> i128 { panic!("internal error") }
-    fn is_integer(&self) -> bool { false }
-
-    fn number(&self) -> Number {
-        Number { number: self.number, case: self.case.clone() }
-    }
+    fn to_integer(&self) -> i128 { panic!("internal error") }
+    fn to_decimal(&self) -> Result<BigDecimal, ErrorCode> { Ok(self.number.clone()) }
+    fn to_float(&self) -> f32 { self.number.to_f32().unwrap() } // TODO: code it
+    fn to_double(&self) -> f64 { self.number.to_f64().unwrap() } // TODO: code it
 
     fn to_atomic(&self) -> Object {
-        Object::Atomic(Type::Decimal { number: self.number, case: self.case.clone() })
+        Object::Atomic(Type::Decimal(self.number.normalized()))
     }
 }
 
@@ -282,67 +519,172 @@ struct VInteger {
 }
 
 impl Operand for VInteger {
-    fn add(&self, rhs: Box<dyn Operand>) -> Box<dyn Operand> {
-        if rhs.is_integer() {
-            Box::new(VInteger { number: self.integer() + rhs.integer() })
-        } else {
-            let (number, case) = number_number(self.number(), rhs.number(), |l, r| {
-                (Some(l + r), NumberCase::Normal)
-            });
-            rhs.create(number, case)
-        }
-    }
+    fn add(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_integer();
 
-    fn sub(&self, rhs: Box<dyn Operand>) -> Box<dyn Operand> {
-        if rhs.is_integer() {
-            Box::new(VInteger { number: self.integer() - rhs.integer() })
-        } else {
-            let (number, case) = number_number(self.number(), rhs.number(), |l, r| {
-                (Some(l - r), NumberCase::Normal)
-            });
-            rhs.create(number, case)
-        }
-    }
-
-    fn mul(&self, rhs: Box<dyn Operand>) -> Box<dyn Operand> {
-        if rhs.is_integer() {
-            Box::new(VInteger { number: self.integer() * rhs.integer() })
-        } else {
-            let (number, case) = number_number(self.number(), rhs.number(), |l, r| {
-                (Some(l * r), NumberCase::Normal)
-            });
-            rhs.create(number, case)
-        }
-    }
-
-    fn div(&self, rhs: Box<dyn Operand>) -> Box<dyn Operand> {
-        if rhs.is_integer() {
-            let number = self.integer() as f64 / rhs.integer() as f64;
-            if let Some(number) = Decimal::from_f64(number) {
-                Box::new(VDecimal { number: Some(number), case: NumberCase::Normal })
-            } else {
-                panic!("error")
+            match self.number.checked_add(other) {
+                Some(number) => Ok(Box::new(VInteger { number })),
+                None => Err(ErrorCode::FOAR0002)
             }
         } else {
-            let (number, case) = number_number(self.number(), rhs.number(), |l, r| {
-                (Some(l / r), NumberCase::Normal)
-            });
-            rhs.create(number, case)
+            rhs.rev_add(self)
         }
+    }
+
+    fn rev_add(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_integer();
+
+            match self.number.checked_add(other) {
+                Some(number) => Ok(Box::new(VInteger { number })),
+                None => Err(ErrorCode::FOAR0002)
+            }
+        } else {
+            Err(ErrorCode::FOAR0002)
+        }
+    }
+
+    fn sub(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_integer();
+
+            match self.number.checked_sub(other) {
+                Some(number) => Ok(Box::new(VInteger { number })),
+                None => Err(ErrorCode::FOAR0002)
+            }
+        } else {
+            rhs.rev_sub(self)
+        }
+    }
+
+    fn rev_sub(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_integer();
+
+            match other.checked_sub(self.number) {
+                Some(number) => Ok(Box::new(VInteger { number })),
+                None => Err(ErrorCode::FOAR0002)
+            }
+        } else {
+            Err(ErrorCode::FOAR0002)
+        }
+    }
+
+    fn mul(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_integer();
+
+            match self.number.checked_mul(other) {
+                Some(number) => Ok(Box::new(VInteger { number })),
+                None => Err(ErrorCode::FOAR0002)
+            }
+        } else {
+            rhs.rev_mul(self)
+        }
+    }
+
+    fn rev_mul(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_integer();
+
+            match self.number.checked_mul(other) {
+                Some(number) => Ok(Box::new(VInteger { number })),
+                None => Err(ErrorCode::FOAR0002)
+            }
+        } else {
+            Err(ErrorCode::FOAR0002)
+        }
+    }
+
+    fn div(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            if rhs.is_zero() {
+                Err(ErrorCode::FOAR0001)
+            } else {
+                let self_number = self.to_decimal()?;
+                let other = rhs.to_decimal()?;
+
+                let number = self_number / other;
+
+                Ok(Box::new(VDecimal { number }))
+            }
+        } else {
+            rhs.rev_div(self)
+        }
+    }
+
+    fn rev_div(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            if rhs.is_zero() {
+                Err(ErrorCode::FOAR0001)
+            } else {
+                let self_number = self.to_decimal()?;
+                let other = rhs.to_decimal()?;
+
+                let number = other / self_number;
+
+                Ok(Box::new(VDecimal { number }))
+            }
+        } else {
+            Err(ErrorCode::FOAR0002)
+        }
+    }
+
+    fn remainder(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            if rhs.is_zero() {
+                Err(ErrorCode::FOAR0001)
+            } else {
+                let self_number = self.to_integer();
+                let other = rhs.to_integer();
+
+                let number = self_number % other;
+
+                Ok(Box::new(VInteger { number }))
+            }
+        } else {
+            rhs.rev_div(self)
+        }
+    }
+
+    fn rev_remainder(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            if rhs.is_zero() {
+                Err(ErrorCode::FOAR0001)
+            } else {
+                let self_number = self.to_integer();
+                let other = rhs.to_integer();
+
+                let number = other % self_number;
+
+                Ok(Box::new(VInteger { number }))
+            }
+        } else {
+            Err(ErrorCode::FOAR0002)
+        }
+    }
+
+    fn negative(&self) -> OperandReturn {
+        let number = -self.number;
+        Ok(Box::new(VInteger { number }))
+    }
+
+    fn is_zero(&self) -> bool {
+        self.number.is_zero()
     }
 
     fn level(&self) -> u8 { 1 }
 
-    fn create(&self, number: Option<Decimal>, case: NumberCase) -> Box<dyn Operand> {
-        panic!("internal error")
+    fn to_integer(&self) -> i128 { self.number }
+    fn to_decimal(&self) -> Result<BigDecimal, ErrorCode> {
+        match BigDecimal::from_i128(self.number) {
+            Some(number) => Ok(number),
+            None => Err(ErrorCode::FOAR0002)
+        }
     }
-
-    fn integer(&self) -> i128 { self.number }
-    fn is_integer(&self) -> bool { true }
-
-    fn number(&self) -> Number {
-        Number { number: Some(Decimal::from(self.number)), case: NumberCase::Normal }
-    }
+    fn to_float(&self) -> f32 { self.number as f32 }
+    fn to_double(&self) -> f64 { self.number as f64 }
 
     fn to_atomic(&self) -> Object {
         Object::Atomic(Type::Integer(self.number))
@@ -355,16 +697,16 @@ struct VDateTime {
 struct VDuration {
 }
 
-fn object_to_items(object: &Object) -> Vec<Object> {
+pub fn object_to_items(object: &Object) -> Vec<Object> {
     match object {
-        Object::ForBinding { name, values} => {
+        Object::ForBinding { values, ..} => {
             object_to_iterator(values)
         },
         _ => vec![object.clone()]
     }
 }
 
-pub fn eval_arithmetic(env: Box<Environment>, operator: Operator, left: Object, right: Object) -> EvalResult {
+pub fn eval_arithmetic(env: Box<Environment>, operator: OperatorArithmetic, left: Object, right: Object) -> EvalResult {
 
     let mut current_env = env;
     let mut result = vec![];
@@ -382,23 +724,10 @@ pub fn eval_arithmetic(env: Box<Environment>, operator: Operator, left: Object, 
         }
     }
 
-    if result.len() == 0 {
-        Ok((current_env, Object::Empty))
-    } else if result.len() == 1 {
-        let item = result.remove(0);
-        Ok((current_env, item))
-    } else {
-        Ok((current_env, Object::Sequence(result)))
-    }
+    relax(current_env, result)
 }
 
-pub fn eval_arithmetic_item(env: Box<Environment>, operator: Operator, left: Object, right: Object) -> EvalResult {
-    // if DEBUG {
-    println!("before atomization");
-    println!("left_result {:?}", left);
-    println!("right_result {:?}", right);
-    // }
-
+pub fn eval_arithmetic_item(env: Box<Environment>, operator: OperatorArithmetic, left: Object, right: Object) -> EvalResult {
     let left = match atomization(left) {
         Ok(v) => v,
         Err(e) => return Err((e, String::from("TODO")))
@@ -407,10 +736,6 @@ pub fn eval_arithmetic_item(env: Box<Environment>, operator: Operator, left: Obj
         Ok(v) => v,
         Err(e) => return Err((e, String::from("TODO")))
     };
-
-    println!("after atomization");
-    println!("left_result {:?}", left);
-    println!("right_result {:?}", right);
 
     let left_value = match into_type(left) {
         Ok(v) => v,
@@ -421,42 +746,51 @@ pub fn eval_arithmetic_item(env: Box<Environment>, operator: Operator, left: Obj
         Err(e) => return Err((e, String::from("TODO")))
     };
 
-    // println!("after into_type");
-    // println!("left_result {:?}", left_value);
-    // println!("right_result {:?}", right_value);
-
     let result = match operator {
         // Operator::Unknown => {}
-        Operator::Plus => {
-            left_value.add(right_value)
-        }
-        Operator::Minus => {
-            left_value.sub(right_value)
-        }
-        Operator::Multiply => {
-            left_value.mul(right_value)
-        }
-        Operator::Divide => {
-            left_value.div(right_value)
-        }
-        // Operator::IDivide => {}
-        // Operator::Mod => {}
-        // Operator::GeneralEquals => {}
-        // Operator::GeneralNotEquals => {}
-        // Operator::GeneralLessThan => {}
-        // Operator::GeneralLessOrEquals => {}
-        // Operator::GeneralGreaterThan => {}
-        // Operator::GeneralGreaterOrEquals => {}
-        // Operator::ValueEquals => {}
-        // Operator::ValueNotEquals => {}
-        // Operator::ValueLessThan => {}
-        // Operator::ValueLessOrEquals => {}
-        // Operator::ValueGreaterThan => {}
-        // Operator::ValueGreaterOrEquals => {}
-        _ => panic!("error")
+        OperatorArithmetic::Plus => left_value.add(&*right_value),
+        OperatorArithmetic::Minus => left_value.sub(&*right_value),
+        OperatorArithmetic::Multiply => left_value.mul(&*right_value),
+        OperatorArithmetic::Divide => left_value.div(&*right_value),
+        // OperatorArithmetic::IDivide => left_value.idiv(&*right_value),
+        OperatorArithmetic::Mod => left_value.remainder(&*right_value),
+        _ => panic!("internal error")
     };
 
-    Ok((env, result.to_atomic()))
+    match result {
+        Ok(number) => {
+            let obj = number.to_atomic();
+            println!("result {:?}", obj);
+            Ok((env, obj))
+        },
+        Err(code) => Err((code, String::from("TODO")))
+    }
+}
+
+pub fn eval_unary(env: Box<Environment>, object: Object, sign_is_positive: bool) -> EvalResult {
+    let object = match atomization(object) {
+        Ok(v) => v,
+        Err(e) => return Err((e, String::from("TODO")))
+    };
+
+    let value = match into_type(object) {
+        Ok(v) => v,
+        Err(e) => return Err((e, String::from("TODO")))
+    };
+
+    if sign_is_positive {
+        let obj = value.to_atomic();
+        Ok((env, obj))
+    } else {
+        match value.negative() {
+            Ok(number) => {
+                let obj = number.to_atomic();
+                println!("result {:?}", obj);
+                Ok((env, obj))
+            },
+            Err(code) => Err((code, String::from("TODO")))
+        }
+    }
 }
 
 fn into_type(obj: Object) -> Result<Box<Operand>, ErrorCode> {
@@ -465,10 +799,10 @@ fn into_type(obj: Object) -> Result<Box<Operand>, ErrorCode> {
             match t {
                 Type::Untyped(str) => {
                     match string_to_double(&str) {
-                        Ok(Object::Atomic(Type::Double { number, case })) => {
-                            Ok(Box::new(VDouble { number, case }))
+                        Ok(Object::Atomic(Type::Double(number))) => {
+                            Ok(Box::new(VDouble { number: number.into_inner() }))
                         },
-                        _ => panic!("error")
+                        _ => Err(ErrorCode::FORG0001)
                     }
                 }
                 // Type::dateTime() => {}
@@ -479,9 +813,9 @@ fn into_type(obj: Object) -> Result<Box<Operand>, ErrorCode> {
                 // Type::YearMonthDuration { .. } => {}
                 // Type::DayTimeDuration { .. } => {}
                 Type::Integer(number) => Ok(Box::new( VInteger { number } )),
-                Type::Decimal { number, case } => Ok(Box::new( VDecimal { number, case } )),
-                Type::Float { number, case } => Ok(Box::new( VFloat { number, case } )),
-                Type::Double { number, case } => Ok(Box::new( VDouble { number, case } )),
+                Type::Decimal(number) => Ok(Box::new( VDecimal { number } )),
+                Type::Float(number) => Ok(Box::new( VFloat { number: number.into_inner() } )),
+                Type::Double(number) => Ok(Box::new( VDouble { number: number.into_inner() } )),
                 // Type::nonPositiveInteger() => {}
                 // Type::negativeInteger() => {}
                 // Type::long() => {}

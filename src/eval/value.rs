@@ -1,12 +1,13 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
-use rust_decimal::Decimal;
 use crate::value::{QName, QNameResolved};
-use crate::fns::{Param, sort_and_dedup};
+use crate::fns::Param;
 use crate::parser::op::{Expr, Representation};
-use rust_decimal::prelude::FromStr;
-use crate::parser::errors::{CustomError, ErrorCode};
+use crate::parser::errors::ErrorCode;
+use ordered_float::OrderedFloat;
+use bigdecimal::BigDecimal;
+use crate::eval::helpers::sort_and_dedup;
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone, Hash)]
 pub enum NumberCase {
@@ -31,24 +32,24 @@ pub enum Type {
     DayTimeDuration { positive: bool, days: u32, hours: u32, minutes: u32, seconds: u32, microseconds: u32 },
 
     Integer(i128),
-    Decimal { number: Option<Decimal>, case: NumberCase },
-    Float { number: Option<Decimal>, case: NumberCase },
-    Double { number: Option<Decimal>, case: NumberCase },
+    Decimal(BigDecimal),
+    Float(OrderedFloat<f32>),
+    Double(OrderedFloat<f64>),
 
-    nonPositiveInteger(),
-    negativeInteger(),
-    long(),
-    int(),
-    short(),
-    byte(),
+    // nonPositiveInteger(),
+    // negativeInteger(),
+    // long(),
+    // int(),
+    // short(),
+    // byte(),
 
-    nonNegativeInteger(),
-    unsignedLong(),
-    unsignedInt(),
-    unsignedShort(),
-    unsignedByte(),
+    // nonNegativeInteger(),
+    // unsignedLong(),
+    // unsignedInt(),
+    // unsignedShort(),
+    // unsignedByte(),
 
-    positiveInteger(),
+    // positiveInteger(),
 
     gYearMonth(),
     gYear(),
@@ -83,42 +84,26 @@ pub(crate) fn type_to_int(t: Type) -> i128 {
     }
 }
 
-fn object_to_qname(t: Object) -> QName {
-    match t {
-        Object::QName { prefix, url, local_part } => QName { prefix, url, local_part },
-        _ => panic!("can't convert to QName {:?}", t)
-    }
-}
+// fn object_to_qname(t: Object) -> QName {
+//     match t {
+//         Object::QName { prefix, url, local_part } => QName { prefix, url, local_part },
+//         _ => panic!("can't convert to QName {:?}", t)
+//     }
+// }
 
 pub fn string_to_double(string: &String) -> Result<Object, ErrorCode> {
-    match string_to_number(string) {
-        Ok((number, case)) => {
-            Ok(Object::Atomic(Type::Double { number, case }))
+    match string.trim().parse() {
+        Ok(number) => {
+            Ok(Object::Atomic(Type::Double(number)))
         },
-        Err(code) => Err(code)
+        Err(..) => Err(ErrorCode::FORG0001)
     }
 }
 
-pub fn string_to_number(string: &String) -> Result<(Option<Decimal>, NumberCase), ErrorCode> {
-    match string.as_str() {
-        "INF" => Ok((None, NumberCase::PlusInfinity)),
-        "-INF" => Ok((None, NumberCase::MinusInfinity)),
-        "NaN" => Ok((None, NumberCase::NaN)),
-        _ => {
-            if string.contains(|c| c == 'e' || c == 'E') {
-                if let Ok(num) = Decimal::from_scientific(string) {
-                    Ok((Some(num), NumberCase::Normal))
-                } else {
-                    Err(ErrorCode::FORG0001)
-                }
-            } else {
-                if let Ok(num) = Decimal::from_str(string) {
-                    Ok((Some(num), NumberCase::Normal))
-                } else {
-                    Err(ErrorCode::FORG0001)
-                }
-            }
-        },
+pub fn string_to_decimal(string: &String) -> Result<BigDecimal, ErrorCode> {
+    match string.trim().parse() {
+        Ok(num) => Ok(num),
+        Err(..) => Err(ErrorCode::FORG0001)
     }
 }
 
@@ -163,23 +148,23 @@ impl fmt::Debug for Node {
         };
 
         match self {
-            Node:: NodePI { sequence, target, content } => {
+            Node:: NodePI { target, content, .. } => {
                 write!(f, "<?")?;
                 write(f, target);
                 write!(f, "{:?}?>", content)?;
             },
-            Node:: NodeComment {sequence, content} => {
+            Node:: NodeComment { content, ..} => {
                 write!(f, "<!--{}-->", content)?;
             },
-            Node:: NodeText { sequence, content} => {
+            Node:: NodeText { content, ..} => {
                 write!(f, "{}", content)?;
             },
-            Node:: Attribute { sequence, name, value } => {
+            Node:: Attribute { name, value, .. } => {
                 write!(f, "@")?;
                 write(f, name);
                 write!(f, "={:?}", value)?;
             },
-            Node::Node { sequence, name, attributes, children } => {
+            Node::Node { name, attributes, children, .. } => {
                 write!(f, "<")?;
 
                 write(f, name);
@@ -208,8 +193,7 @@ impl fmt::Debug for Node {
                     write!(f, "</")?;
                     write(f, name);
                 }
-            },
-            _ => panic!("unexpected")
+            }
         }
         write!(f, "")
     }
@@ -219,6 +203,8 @@ impl fmt::Debug for Node {
 pub enum Object {
     // workaround
     ForBinding { name: QNameResolved, values: Box<Object> },
+    Range { min: i128, max: i128 },
+
     Error { code: String },
     CharRef { representation: Representation, reference: u32 },
     EntityRef(String),
@@ -227,7 +213,6 @@ pub enum Object {
 
     Empty,
 
-    Range { min: i128, max: i128 },
     Sequence(Vec<Object>),
 
     QName { prefix: String, url: String, local_part: String },
@@ -330,6 +315,7 @@ pub(crate) fn atomization(obj: Object) -> Result<Object, ErrorCode> {
         },
         Object::Array(items) => atomization_of_vec(items),
         Object::Sequence(items) => atomization_of_vec(items),
+        Object::Empty => Ok(obj), // or it can be XPST0005?
         _ => todo!()
     }
 }

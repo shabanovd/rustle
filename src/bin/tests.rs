@@ -339,6 +339,9 @@ mod tests {
 
                                 assert.clear();
                             },
+                            "serialization-matches" => {
+                                // TODO: code it
+                            }
                             _ => {}
                         }
                     },
@@ -394,6 +397,15 @@ mod tests {
                             generated.push_str("\n");
 
                             error_code = None;
+                        } else if assert_flag {
+                            assert_flag = false;
+
+                            generated.push_str(check_result_value(
+                                "check_assert_string_value",
+                                assert.clone(), any_of_flag
+                            ).as_str());
+
+                            assert.clear();
                         }
                     },
                 }
@@ -445,8 +457,9 @@ mod tests {
     fs::create_dir_all(format!("src/xqts/{}", dir))
         .expect("Unable to create folders");
 
-    if !file.contains("fs::") {
-        file.replace("    use std::fs;\n", "");
+    // check use of `use std::fs;`
+    if !generated.contains("fs::") {
+        generated = generated.replace("    use std::fs;\n", "");
     }
 
     fs::write(format!("src/xqts/{}", file), generated)

@@ -5,8 +5,7 @@ use crate::parser::op::Expr;
 
 use nom::{
     branch::alt,
-    bytes::complete::{is_not, tag, take_till, take_until, take_while, take_while1, take_while_m_n},
-    character::complete::{multispace0, multispace1, one_of},
+    bytes::complete::{is_not, tag, take_while1},
     error::Error,
     IResult
 };
@@ -14,8 +13,8 @@ use nom::{
 use crate::parser::op::found_expr;
 use crate::parser::parse_xml::parse_refs;
 use crate::parser::helper::ws;
-use rust_decimal::prelude::FromStr;
-use rust_decimal::Decimal;
+use ordered_float::OrderedFloat;
+use bigdecimal::BigDecimal;
 
 // [129]    	Literal 	   ::=    	NumericLiteral | StringLiteral
 parse_one_of!(parse_literal, Expr,
@@ -70,11 +69,11 @@ pub(crate) fn parse_numeric_literal(input: &str) -> IResult<&str, Expr, CustomEr
         let number = format!("{}.{}e{}{}", b, a, sign, e);
 
         // double
-        match Decimal::from_scientific(number.as_str()) {
+        match number.as_str().parse::<f64>() {
             Ok(number) => {
-                found_expr(input, Expr::Double(number.normalize()))
+                found_expr(input, Expr::Double(OrderedFloat(number)))
             },
-            Err(e) => {
+            Err(..) => {
                 Err(nom::Err::Failure(CustomError::FOAR0002))
             }
         }
@@ -87,18 +86,18 @@ pub(crate) fn parse_numeric_literal(input: &str) -> IResult<&str, Expr, CustomEr
                 Ok(number) => {
                     found_expr(input, Expr::Integer(number))
                 },
-                Err(e) => {
+                Err(..) => {
                     Err(nom::Err::Failure(CustomError::FOAR0002))
                 }
             }
         } else {
             let number = format!("{}.{}", b, a);
 
-            match number.parse::<Decimal>() {
+            match number.parse::<BigDecimal>() {
                 Ok(number) => {
-                    found_expr(input, Expr::Decimal(number.normalize()))
+                    found_expr(input, Expr::Decimal(number.normalized()))
                 },
-                Err(e) => {
+                Err(..) => {
                     Err(nom::Err::Failure(CustomError::FOAR0002))
                 }
             }

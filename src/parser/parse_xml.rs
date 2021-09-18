@@ -6,15 +6,15 @@ use crate::parser::parse_literal::{is_digits, is_0_9a_f};
 
 use nom::{
     branch::alt,
-    bytes::complete::{is_not, tag, take_till, take_until, take_while, take_while1, take_while_m_n},
-    character::complete::{multispace0, multispace1, one_of},
+    bytes::complete::{is_not, tag, take_until, take_while1},
+    character::complete::multispace1,
     error::Error,
     IResult
 };
 
 use crate::parser::helper::{ws, ws_tag_ws};
-use crate::parser::parse_names::{parse_qname, parse_eqname, parse_ncname, parse_qname_expr};
-use crate::parser::parse_expr::{parse_enclosed_expr, parse_expr_single, parse_expr};
+use crate::parser::parse_names::{parse_ncname, parse_qname_expr};
+use crate::parser::parse_expr::{parse_enclosed_expr, parse_expr};
 use nom::error::ParseError;
 
 const DEBUG: bool = false;
@@ -141,7 +141,7 @@ pub(crate) fn parse_direct_constructor(input: &str) -> IResult<&str, Expr, Custo
 
     Ok((
         current_input,
-        Expr::Node { name: Box::new(tag_name), attributes, children }
+        Expr::NodeElement { name: Box::new(tag_name), attributes, children }
     ))
 }
 
@@ -171,7 +171,7 @@ pub(crate) fn parse_attribute_list(input: &str) -> IResult<&str, Vec<Expr>, Cust
             let (input, value) = parse_dir_attribute_value(input)?;
             current_input = input;
 
-            attributes.push(Expr::Attribute { name: Box::new(name), value: Box::new(value) })
+            attributes.push(Expr::NodeAttribute { name: Box::new(name), value: Box::new(value) })
         } else {
             break;
         }
@@ -321,7 +321,10 @@ pub(crate) fn parse_computed_constructor(input: &str) -> IResult<&str, Expr, Cus
 
             let (input, expr) = parse_enclosed_expr(input)?;
 
-            (input, Expr::Node { name: Box::new(expr), attributes: vec![], children: vec![] })
+            let mut children = Vec::with_capacity(1);
+            children.push(expr);
+
+            (input, Expr::NodeElement { name: Box::new(name), attributes: vec![], children })
         }
         "attribute" => {
             let check = parse_qname_expr(input);
@@ -339,7 +342,7 @@ pub(crate) fn parse_computed_constructor(input: &str) -> IResult<&str, Expr, Cus
 
             let (input, expr) = parse_enclosed_expr(input)?;
 
-            (input, Expr::Attribute { name: Box::new(name), value: Box::new(expr) })
+            (input, Expr::NodeAttribute { name: Box::new(name), value: Box::new(expr) })
         }
         "namespace" => {
             // "namespace" (Prefix | EnclosedPrefixExpr) EnclosedURIExpr

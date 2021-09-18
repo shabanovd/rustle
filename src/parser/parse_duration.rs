@@ -1,10 +1,14 @@
-use nom::{branch::alt, bytes::complete::{is_not, tag, take_till, take_until, take_while, take_while1, take_while_m_n}, character::complete::{multispace0, multispace1, one_of}, error::Error, IResult, InputTakeAtPosition};
+use nom::{
+    branch::alt,
+    bytes::complete::{tag, take_while, take_while_m_n},
+    character::complete::{one_of},
+    error::Error, IResult
+};
 
 use nom::sequence::{terminated, preceded, tuple};
-use nom::combinator::{opt, map_res, map};
+use nom::combinator::{opt, map};
 
 use crate::eval::Type;
-use crate::parser::CustomError;
 use crate::parser::parse_literal::is_digits;
 
 pub fn string_to_date(input: &str) -> Result<Type, String> {

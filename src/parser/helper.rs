@@ -1,6 +1,5 @@
-use nom::{branch::alt, bytes::complete::{is_not, tag, take_till, take_until, take_while1, take_while_m_n}, character::complete::{multispace0, multispace1}, IResult, InputTakeAtPosition, AsChar};
+use nom::{bytes::complete::tag, IResult};
 use crate::parser::errors::CustomError;
-use nom::error::{ParseError, Error, ErrorKind};
 use nom::bytes::complete::take;
 
 pub(crate) fn ws(input: &str) -> Result<(&str, &str), nom::Err<CustomError<&str>>> {
@@ -13,6 +12,23 @@ pub(crate) fn ws(input: &str) -> Result<(&str, &str), nom::Err<CustomError<&str>
             }
         },
         None => take(0 as usize)(input)
+    }
+}
+
+pub(crate) fn ws1(input: &str) -> Result<(&str, &str), nom::Err<CustomError<&str>>> {
+    match find_ws_end(input) {
+        Some((pos, err)) => {
+            if err {
+                Err(nom::Err::Failure(CustomError::XPST0003))
+            } else {
+                if pos > 0 {
+                    take(pos as usize)(input)
+                } else {
+                    Err(nom::Err::Error(CustomError::XPST0003))
+                }
+            }
+        },
+        None => Err(nom::Err::Error(CustomError::XPST0003))
     }
 }
 
@@ -63,4 +79,15 @@ pub(crate) fn ws_tag_ws<'a>(token: &str, input: &'a str) -> IResult<&'a str, &'a
     let (input, _) = ws(input)?;
     let (input, _) = tag(token)(input)?;
     ws(input)
+}
+
+pub(crate) fn tag_ws1<'a>(token: &str, input: &'a str) -> IResult<&'a str, &'a str, CustomError<&'a str>> {
+    let (input, _) = tag(token)(input)?;
+    ws1(input)
+}
+
+pub(crate) fn ws1_tag_ws1<'a>(token: &str, input: &'a str) -> IResult<&'a str, &'a str, CustomError<&'a str>> {
+    let (input, _) = ws1(input)?;
+    let (input, _) = tag(token)(input)?;
+    ws1(input)
 }

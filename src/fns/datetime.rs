@@ -1,6 +1,6 @@
 use crate::eval::{Environment, Object, Type, EvalResult};
 
-pub fn fn_day_from_date<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn fn_day_from_date<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Empty] => {
             Ok((env, Object::Empty))
@@ -12,7 +12,7 @@ pub fn fn_day_from_date<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, c
     }
 }
 
-pub fn fn_month_from_date<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn fn_month_from_date<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Empty] => {
             Ok((env, Object::Empty))
@@ -24,7 +24,7 @@ pub fn fn_month_from_date<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>,
     }
 }
 
-pub fn fn_days_from_duration<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn fn_days_from_duration<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Empty] => {
             Ok((env, Object::Empty))

@@ -2,17 +2,10 @@ use nom::IResult;
 use crate::parser::errors::CustomError;
 use crate::value::QName;
 use crate::fns::Param;
-use rust_decimal::Decimal;
+use ordered_float::OrderedFloat;
+use bigdecimal::BigDecimal;
 
 const DEBUG: bool = false;
-
-pub(crate) fn found_statements(input: &str, program: Vec<Statement>) -> IResult<&str, Vec<Statement>, CustomError<&str>> {
-    Ok((input, program))
-}
-
-pub(crate) fn found_statement(input: &str, statement: Statement) -> IResult<&str, Statement, CustomError<&str>> {
-    Ok((input, statement))
-}
 
 pub(crate) fn found_exprs(input: &str, exprs: Vec<Expr>) -> IResult<&str, Vec<Expr>, CustomError<&str>> {
     Ok((input, exprs))
@@ -90,8 +83,8 @@ pub enum Expr {
 
     Boolean(bool),
     Integer(i128),
-    Decimal(Decimal),
-    Double(Decimal),
+    Decimal(BigDecimal),
+    Double(OrderedFloat<f64>),
     StringComplex(Vec<Expr>),
     String(String),
 
@@ -106,15 +99,18 @@ pub enum Expr {
     Predicate(Box<Expr>),
 //    Predicates(Vec<Statement>), // TODO: can it be covered by Sequence(Predicate)?
 
-    TreatExpr { expr: Box<Expr>, st: Box<Expr> },
-    CastableExpr { expr: Box<Expr>, st: Box<Expr> },
-    CastExpr { expr: Box<Expr>, st: Box<Expr> },
+    Treat { expr: Box<Expr>, st: Box<Expr> },
+    Castable { expr: Box<Expr>, st: Box<Expr> },
+    Cast { expr: Box<Expr>, st: Box<Expr> },
 
     Postfix { primary: Box<Expr>, suffix: Vec<Expr> },
 
+    Union(Vec<Expr>),
+    IntersectExcept { left: Box<Expr>, is_intersect: bool, right: Box<Expr> },
+
     NodeDocument(Box<Expr>),
-    Node { name: Box<Expr>, attributes: Vec<Expr>, children: Vec<Expr> },
-    Attribute { name: Box<Expr>, value: Box<Expr> },
+    NodeElement { name: Box<Expr>, attributes: Vec<Expr>, children: Vec<Expr> },
+    NodeAttribute { name: Box<Expr>, value: Box<Expr> },
     NodeText(Box<Expr>),
     NodeComment(Box<Expr>),
     NodePI { target: Box<Expr>, content: Box<Expr> },
@@ -122,14 +118,14 @@ pub enum Expr {
     Map { entries: Vec<Expr> }, // Expr because can't use MapEntry here
     MapEntry { key: Box<Expr>, value: Box<Expr> },
 
-    SquareArrayConstructor { items: Vec<Expr> },
+    SquareArrayConstructor(Vec<Expr>),
     CurlyArrayConstructor(Box<Expr>),
 
     QName { local_part: String, url: String, prefix: String },
 
-    Negative(Box<Expr>),
-    Binary { left: Box<Expr>, operator: Operator, right: Box<Expr> },
-    Comparison { left: Box<Expr>, operator: Operator, right: Box<Expr> },
+    Unary { expr: Box<Expr>, sign_is_positive: bool },
+    Binary { left: Box<Expr>, operator: OperatorArithmetic, right: Box<Expr> },
+    Comparison { left: Box<Expr>, operator: OperatorComparison, right: Box<Expr> },
 
     If { condition: Box<Expr>, consequence: Box<Expr>, alternative: Box<Expr> },
 
@@ -160,17 +156,17 @@ pub enum Expr {
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
-pub enum Operator {
-    Unknown,
-
+pub enum OperatorArithmetic {
     Plus,
     Minus,
     Multiply,
     Divide,
     IDivide,
-
     Mod,
+}
 
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub enum OperatorComparison {
     GeneralEquals,
     GeneralNotEquals,
     GeneralLessThan,

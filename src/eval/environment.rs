@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use crate::value::{QName, QNameResolved};
-use crate::eval::{Object};
+use crate::value::QNameResolved;
+use crate::eval::Object;
 use crate::fns::FunctionsRegister;
 use crate::namespaces::*;
 

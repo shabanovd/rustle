@@ -4,10 +4,7 @@ use crate::parser::errors::CustomError;
 use crate::value::QName;
 
 use nom::{
-    branch::alt,
-    bytes::complete::{is_not, tag, take_till, take_until, take_while, take_while1, take_while_m_n},
-    character::complete::{multispace0, multispace1, one_of},
-    error::Error,
+    bytes::complete::{tag, take_while, take_while_m_n},
     IResult
 };
 

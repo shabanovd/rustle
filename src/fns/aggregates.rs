@@ -1,7 +1,7 @@
-use crate::eval::{Environment, Object, Type, NumberCase, EvalResult};
-use rust_decimal::{Decimal, prelude::FromPrimitive};
+use crate::eval::{Environment, Object, Type, EvalResult};
+use bigdecimal::{BigDecimal, FromPrimitive};
 
-pub fn fn_count<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn fn_count<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Empty] => {
             Ok((env, Object::Atomic(Type::Integer(0))))
@@ -13,7 +13,7 @@ pub fn fn_count<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_i
     }
 }
 
-pub fn fn_avg<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn fn_avg<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
 
     match arguments.as_slice() {
         [Object::Empty] => {
@@ -23,7 +23,7 @@ pub fn fn_avg<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_ite
             // xs:untypedAtomic => xs:double
             // xs:double, xs:float, xs:decimal, xs:yearMonthDuration, xs:dayTimeDuration
             let mut sum = 0;
-            let mut count = 0;
+            let mut count: usize = 0;
             for item in items {
                 match item {
                     Object::Atomic(Type::Integer(num)) => {
@@ -33,12 +33,13 @@ pub fn fn_avg<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_ite
                     _ => panic!("error")
                 }
             }
-            let result = sum as f32 / count as f32;
-            if let Some(number) = Decimal::from_f32(result) {
-                Ok((env, Object::Atomic(Type::Decimal { number: Some(number), case: NumberCase::Normal })))
-            } else {
-                panic!("error")
-            }
+
+            let sum = BigDecimal::from_i128(sum).unwrap(); // TODO code it
+            let count = BigDecimal::from_usize(count).unwrap(); // TODO code it
+
+            let number = sum / count;
+
+            Ok((env, Object::Atomic(Type::Decimal(number))))
         },
         _ => panic!("error")
     }

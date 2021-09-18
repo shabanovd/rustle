@@ -1,10 +1,8 @@
-use crate::eval::{Object, Type, eval_expr, EvalResult};
+use crate::eval::{Object, Type, EvalResult};
 use crate::eval::Environment;
 use crate::serialization::object_to_string;
 
 pub fn fn_string<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
-
-    let mut current_env = env;
 
     let item = if arguments.len() == 0 {
         context_item
@@ -14,10 +12,10 @@ pub fn fn_string<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_
 
     let str = object_to_string(item);
 
-    Ok((current_env, Object::Atomic(Type::String(str))))
+    Ok((env, Object::Atomic(Type::String(str))))
 }
 
-pub fn fn_concat<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn fn_concat<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     let str = arguments.iter()
         .map(|item| object_to_string(item))
         .collect();
@@ -25,23 +23,19 @@ pub fn fn_concat<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_
     Ok((env, Object::Atomic(Type::String(str))))
 }
 
-pub fn fn_string_join<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub fn fn_string_join<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
 
     if arguments.len() != 1 {
         panic!("got {:?} arguments, but expected 1", arguments.len(), )
     }
     let item = arguments.get(0).unwrap();
 
-    let mut current_env = env;
-
     let str = object_to_string(item);
 
-    Ok((current_env, Object::Atomic(Type::String(str))))
+    Ok((env, Object::Atomic(Type::String(str))))
 }
 
-pub fn fn_string_to_codepoints<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
-
-    let mut current_env = env;
+pub fn fn_string_to_codepoints<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
 
     let result = match arguments.as_slice() {
         [Object::Empty] => Object::Empty,
@@ -57,7 +51,7 @@ pub fn fn_string_to_codepoints<'a>(env: Box<Environment<'a>>, arguments: Vec<Obj
         _ => panic!("error")
     };
 
-    Ok((current_env, result))
+    Ok((env, result))
 }
 
 

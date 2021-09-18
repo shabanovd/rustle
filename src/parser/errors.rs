@@ -193,7 +193,7 @@ impl<I> ParseError<I> for CustomError<I> {
 impl<I> From<nom::Err<CustomError<I>>> for CustomError<I> {
     fn from(error: Err<CustomError<I>>) -> Self {
         match error {
-            Err::Incomplete(e) => todo!(),
+            Err::Incomplete(..) => todo!(),
             Err::Error(e) => e,
             Err::Failure(e) => e,
         }
