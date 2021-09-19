@@ -1,31 +1,27 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
-use crate::value::{QName, QNameResolved};
+use crate::values::{QName, QNameResolved};
 use crate::fns::Param;
 use crate::parser::op::{Expr, Representation};
 use crate::parser::errors::ErrorCode;
 use ordered_float::OrderedFloat;
 use bigdecimal::BigDecimal;
 use crate::eval::helpers::sort_and_dedup;
-
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone, Hash)]
-pub enum NumberCase {
-    Normal,
-    NaN,
-    PlusInfinity,
-    MinusInfinity,
-}
+use chrono::{NaiveTime, TimeZone, DateTime, Date, FixedOffset, Local, Utc, Timelike};
+use num_integer::div_mod_floor;
+use chrono::format::{DelayedFormat, StrftimeItems, Item};
+use std::borrow::Borrow;
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone, Hash)]
 pub enum Type {
     Untyped(String),
 
-    dateTime(),
+    DateTime(DateTime<FixedOffset>),
     dateTimeStamp(),
 
-    Date { y: u32, m: u32, d: u32, tz_h: i32, tz_m: i32 },
-    Time { h: u32, m: u32, s: u32, ms: u32, tz_h: i32, tz_m: i32},
+    Date(Date<FixedOffset>),
+    Time(Time<FixedOffset>),
 
     Duration { positive: bool, years: u32, months: u32, days: u32, hours: u32, minutes: u32, seconds: u32, microseconds: u32 },
     YearMonthDuration  { positive: bool, years: u32, months: u32 },
@@ -73,8 +69,64 @@ pub enum Type {
     base64Binary(),
     hexBinary(),
     AnyURI(String),
-    QName(),
+    QName { url: Option<String>, prefix: Option<String>, local_part: String },
     NOTATION(),
+}
+
+impl PartialOrd for Time<FixedOffset> {
+    fn partial_cmp(&self, other: &Time<FixedOffset>) -> Option<Ordering> {
+        self.time.partial_cmp(&other.time)
+    }
+}
+
+impl Ord for Time<FixedOffset> {
+    fn cmp(&self, other: &Time<FixedOffset>) -> Ordering {
+        self.time.cmp(&other.time)
+    }
+}
+
+#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+pub struct Time<Tz: TimeZone> {
+    time: NaiveTime,
+    offset: Tz::Offset,
+}
+
+impl Time<FixedOffset> {
+    #[inline]
+    pub fn now() -> Time<FixedOffset> {
+        let now = Local::now();
+        Time { time: now.time(), offset: TimeZone::from_offset(now.offset()) }
+    }
+
+    #[inline]
+    pub fn from(dt: DateTime<Local>) -> Time<FixedOffset> {
+        Time { time: dt.time(), offset: TimeZone::from_offset(dt.offset()) }
+    }
+
+    #[inline]
+    pub fn from_utc(time: NaiveTime) -> Time<FixedOffset> {
+        Time { time, offset: FixedOffset::east(0) }
+    }
+
+    pub fn hms(&self) -> (u32, u32, u32, u32) {
+        let (mins, sec) = div_mod_floor(self.time.num_seconds_from_midnight(), 60);
+        let (hour, min) = div_mod_floor(mins, 60);
+        (hour, min, sec, 0)
+    }
+
+    #[inline]
+    pub fn format<'a>(&self, fmt: &'a str) -> DelayedFormat<StrftimeItems<'a>> {
+        self.format_with_items(StrftimeItems::new(fmt))
+    }
+
+    #[inline]
+    pub fn format_with_items<'a, I, B>(&self, items: I) -> DelayedFormat<I>
+        where
+            I: Iterator<Item = B> + Clone,
+            B: Borrow<Item<'a>>,
+    {
+        DelayedFormat::new_with_offset(None, Some(self.time), &self.offset, items)
+    }
 }
 
 pub(crate) fn type_to_int(t: Type) -> i128 {
@@ -84,12 +136,13 @@ pub(crate) fn type_to_int(t: Type) -> i128 {
     }
 }
 
-// fn object_to_qname(t: Object) -> QName {
-//     match t {
-//         Object::QName { prefix, url, local_part } => QName { prefix, url, local_part },
-//         _ => panic!("can't convert to QName {:?}", t)
-//     }
-// }
+pub(crate) fn object_to_qname(t: Object) -> QName {
+    match t {
+        Object::Atomic(Type::QName { prefix, url, local_part }) =>
+                       QName { prefix, url, local_part },
+        _ => panic!("can't convert to QName {:?}", t)
+    }
+}
 
 pub fn string_to_double(string: &String) -> Result<Object, ErrorCode> {
     match string.trim().parse() {
@@ -141,8 +194,8 @@ impl PartialOrd<Self> for Node {
 impl fmt::Debug for Node {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let write = |f: &mut fmt::Formatter, qname: &QName| {
-            if !qname.prefix.is_empty() {
-                write!(f, "{}:", qname.prefix).unwrap();
+            if let Some(prefix) = &qname.prefix {
+                write!(f, "{}:", prefix).unwrap();
             }
             write!(f, "{}", qname.local_part).unwrap();
         };
@@ -214,8 +267,6 @@ pub enum Object {
     Empty,
 
     Sequence(Vec<Object>),
-
-    QName { prefix: String, url: String, local_part: String },
 
     Atomic(Type),
     Node(Node),

@@ -15,6 +15,26 @@ pub fn fn_string<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_
     Ok((env, Object::Atomic(Type::String(str))))
 }
 
+pub fn fn_upper_case<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+
+    // TODO empty sequence return empty string
+    let item = arguments.get(0).unwrap();
+
+    let str = object_to_string(item);
+
+    Ok((env, Object::Atomic(Type::String(str.to_uppercase()))))
+}
+
+pub fn fn_lower_case<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+
+    // TODO empty sequence return empty string
+    let item = arguments.get(0).unwrap();
+
+    let str = object_to_string(item);
+
+    Ok((env, Object::Atomic(Type::String(str.to_lowercase()))))
+}
+
 pub fn fn_concat<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     let str = arguments.iter()
         .map(|item| object_to_string(item))

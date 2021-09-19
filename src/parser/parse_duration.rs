@@ -6,10 +6,13 @@ use nom::{
 };
 
 use nom::sequence::{terminated, preceded, tuple};
-use nom::combinator::{opt, map};
+use nom::combinator::{opt, map, map_res};
 
-use crate::eval::Type;
+use crate::eval::{Type, Time};
 use crate::parser::parse_literal::is_digits;
+use chrono::{Date, NaiveDate, FixedOffset, NaiveTime};
+use crate::parser::errors::CustomError;
+use nom::error::{ParseError, ErrorKind};
 
 pub fn string_to_date(input: &str) -> Result<Type, String> {
     match parse_date(input) {
@@ -71,7 +74,7 @@ pub fn string_to_dt_duration(input: &str) -> Result<Type, String> {
 }
 
 pub fn parse_date(input: &str) -> IResult<&str, Type> {
-    map(
+    map_res(
         tuple((
             parse_year,
             tag("-"),
@@ -82,7 +85,16 @@ pub fn parse_date(input: &str) -> IResult<&str, Type> {
         )),
         |(y, _, m, _, d, z)| {
             let (tz_h, tz_m) = z.unwrap_or((0, 0));
-            Type::Date { y, m, d, tz_h, tz_m }
+            if let Some(date) = NaiveDate::from_ymd_opt(y as i32, m, d) {
+                let offset = if tz_h > 0 {
+                    FixedOffset::east(((tz_h * 60) + tz_m) * 60)
+                } else {
+                    FixedOffset::west(((tz_h * 60) + tz_m) * 60)
+                };
+                Ok(Type::Date(Date::from_utc(date, offset)))
+            } else {
+                Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
+            }
         }
     )(input)
 }
@@ -134,8 +146,8 @@ fn parse_duration(input: &str) -> IResult<&str, Type> {
             let days = d.unwrap_or(0);
 
             let (hours, minutes, seconds, microseconds) = match time {
-                Some(Type::Time { h, m, s, ms, ..}) => {
-                    (h, m, s, ms)
+                Some(Type::Time(time)) => {
+                    time.hms() // (h, m, s, ms)
                 }
                 _ => (0,0,0,0)
             };
@@ -197,8 +209,8 @@ pub fn parse_day_time_duration(input: &str) -> IResult<&str, Type> {
             let days = d.unwrap_or(0);
 
             let (hours, minutes, seconds, microseconds) = match time {
-                Some(Type::Time { h, m, s, ms, ..}) => {
-                    (h, m, s, ms)
+                Some(Type::Time(time)) => {
+                    time.hms() // (h, m, s, ms)
                 }
                 _ => (0,0,0,0)
             };
@@ -216,7 +228,7 @@ pub fn parse_day_time_duration(input: &str) -> IResult<&str, Type> {
 }
 
 fn parse_duration_time(input: &str) -> IResult<&str, Type> {
-    map(
+    map_res(
         tuple((
             opt(terminated(duration_hour, tag("H"))),
             opt(terminated(duration_minute, tag("M"))),
@@ -228,7 +240,11 @@ fn parse_duration_time(input: &str) -> IResult<&str, Type> {
 
             let (s, ms) = s.unwrap_or((0,0));
 
-            Type::Time { h, m, s, ms, tz_h: 0, tz_m: 0 }
+            if let Some(time) = NaiveTime::from_hms_milli_opt(h, m, s, ms) {
+                Ok(Type::Time(Time::from_utc(time)))
+            } else {
+                Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
+            }
         }
     )(input)
 }

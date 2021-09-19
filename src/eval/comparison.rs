@@ -7,6 +7,7 @@ use crate::parser::op::OperatorComparison;
 use crate::eval::arithmetic::object_to_items;
 use ordered_float::OrderedFloat;
 use crate::parser::errors::ErrorCode;
+use crate::values::QName;
 
 // TODO: join with eval_arithmetic
 pub fn eval_comparison(env: Box<Environment>, operator: OperatorComparison, left: Object, right: Object) -> EvalResult {
@@ -73,138 +74,183 @@ pub fn eval_comparison_item(env: Box<Environment>, operator: OperatorComparison,
     }
 }
 
-pub(crate) fn cmp(left: &Object, right: &Object) -> (Option<Ordering>, bool) {
-    let lnt = object_to_number_type(left);
-    let rnt = object_to_number_type(right);
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub(crate) enum ValueOrdering {
+    Less,
+    Equal,
+    QNameEqual,
+    QNameNotEqual,
+    AlwaysNotEqual,
+    Greater,
+}
 
-    if left == right
-        && (lnt.is_none() && rnt.is_none()) // workaround for NaN
-    {
-        (Some(Ordering::Equal), false)
-    } else {
-        // xs:string or xs:anyURI => xs:string
-        if let Some(l_str) = object_to_string_if_string(left) {
-            if let Some(r_str) = object_to_string_if_string(right) {
-                return (Some(l_str.cmp(&r_str)), false);
-            } else {
-                return (None, false);
-            }
+impl ValueOrdering {
+    fn from(v: Ordering) -> Option<Self> {
+        match v {
+            Ordering::Less => Some(ValueOrdering::Less),
+            Ordering::Equal => Some(ValueOrdering::Equal),
+            Ordering::Greater => Some(ValueOrdering::Greater),
         }
+    }
+}
 
-        // xs:integer, xs:decimal or xs:float => xs:float
-        // xs:integer, xs:decimal, xs:float, or xs:double => xs:double
-        if let Some(lnt) = lnt {
-            if let Some(rnt) = rnt {
-                let nt = if lnt > rnt { lnt } else { rnt };
-                return match nt {
-                    NT::Integer => {
-                        if let Some(left_num) = object_to_i128(left) {
-                            if let Some(right_num) = object_to_i128(right) {
-                                println!("Integer cmp: {:?} {:?}", left_num, right_num);
-                                (Some(left_num.cmp(&right_num)), false)
-                            } else {
-                                (None, false)
-                            }
-                        } else {
-                            (None, false)
-                        }
-                    },
-                    NT::Decimal => {
-                        if let Some(left_num) = object_to_decimal(left) {
-                            if let Some(right_num) = object_to_decimal(right) {
-                                println!("Decimal cmp: {:?} {:?}", left_num, right_num);
-                                (Some(left_num.cmp(&right_num)), false)
-                            } else {
-                                (None, false)
-                            }
-                        } else {
-                            (None, false)
-                        }
-                    },
-                    NT::Float => {
-                        if let Some(left_num) = object_to_float(left) {
-                            if let Some(right_num) = object_to_float(right) {
-                                println!("Float cmp: {:?} {:?}", left_num, right_num);
-                                if left_num.is_nan() || right_num.is_nan() {
-                                    (None, true)
-                                } else {
-                                    (Some(left_num.cmp(&right_num)), false)
-                                }
-                            } else {
-                                (None, false)
-                            }
-                        } else {
-                            (None, false)
-                        }
-                    },
-                    NT::Double => {
-                        if let Some(left_num) = object_to_double(left) {
-                            if let Some(right_num) = object_to_double(right) {
-                                println!("Double cmp: {:?} {:?}", left_num, right_num);
-                                if left_num.is_nan() || right_num.is_nan() {
-                                    (None, true)
-                                } else {
-                                    (Some(left_num.cmp(&right_num)), false)
-                                }
-                            } else {
-                                (None, false)
-                            }
-                        } else {
-                            (None, false)
-                        }
-                    },
+fn cmp(left: &Object, right: &Object) -> Option<ValueOrdering> {
+    match left {
+        Object::Atomic(Type::Untyped(..)) |
+        Object::Atomic(Type::AnyURI(..)) |
+        Object::Atomic(Type::String(..)) |
+        Object::Atomic(Type::NormalizedString(..)) |
+        Object::CharRef {..} |
+        Object::EntityRef(..) => {
+            if left == right {
+                return Some(ValueOrdering::Equal);
+            }
+            // xs:string or xs:anyURI => xs:string
+            if let Some(l_str) = object_to_string_if_string(left) {
+                if let Some(r_str) = object_to_string_if_string(right) {
+                    return ValueOrdering::from(l_str.cmp(&r_str));
                 }
             }
+            None
         }
-        (None, false)
+        Object::Atomic(Type::QName {..}) => {
+            if left == right {
+                return Some(ValueOrdering::QNameEqual);
+            }
+            if let Some(l_qname) = object_to_qname_if_qname(left) {
+                if let Some(r_qname) = object_to_qname_if_qname(right) {
+                    return match l_qname.partial_cmp(&r_qname) {
+                        Some(Ordering::Equal) => Some(ValueOrdering::QNameEqual),
+                        _ => Some(ValueOrdering::QNameNotEqual),
+                    }
+                }
+            }
+            None
+        },
+        Object::Atomic(Type::Integer(..)) |
+        Object::Atomic(Type::Decimal(..)) |
+        Object::Atomic(Type::Float(..)) |
+        Object::Atomic(Type::Double(..)) => {
+            let lnt = object_to_number_type(left);
+            let rnt = object_to_number_type(right);
+
+            // xs:integer, xs:decimal or xs:float => xs:float
+            // xs:integer, xs:decimal, xs:float, or xs:double => xs:double
+            if let Some(lnt) = lnt {
+                if let Some(rnt) = rnt {
+                    let nt = if lnt > rnt { lnt } else { rnt };
+                    match nt {
+                        NT::Integer => {
+                            if let Some(left_num) = object_to_i128(left) {
+                                if let Some(right_num) = object_to_i128(right) {
+                                    println!("Integer cmp: {:?} {:?}", left_num, right_num);
+                                    return ValueOrdering::from(left_num.cmp(&right_num));
+                                }
+                            }
+                            return None;
+                        },
+                        NT::Decimal => {
+                            if let Some(left_num) = object_to_decimal(left) {
+                                if let Some(right_num) = object_to_decimal(right) {
+                                    println!("Decimal cmp: {:?} {:?}", left_num, right_num);
+                                    return ValueOrdering::from(left_num.cmp(&right_num));
+                                }
+                            }
+                            return None;
+                        },
+                        NT::Float => {
+                            if let Some(left_num) = object_to_float(left) {
+                                if let Some(right_num) = object_to_float(right) {
+                                    println!("Float cmp: {:?} {:?}", left_num, right_num);
+                                    return if left_num.is_nan() || right_num.is_nan() {
+                                        Some(ValueOrdering::AlwaysNotEqual)
+                                    } else {
+                                        ValueOrdering::from(left_num.cmp(&right_num))
+                                    };
+                                }
+                            }
+                            return None;
+                        },
+                        NT::Double => {
+                            if let Some(left_num) = object_to_double(left) {
+                                if let Some(right_num) = object_to_double(right) {
+                                    println!("Double cmp: {:?} {:?}", left_num, right_num);
+                                    return if left_num.is_nan() || right_num.is_nan() {
+                                        Some(ValueOrdering::AlwaysNotEqual)
+                                    } else {
+                                        ValueOrdering::from(left_num.cmp(&right_num))
+                                    };
+                                }
+                            }
+                            return None;
+                        },
+                    }
+                }
+            }
+            None
+        },
+        _ => None
     }
 }
 
 pub(crate) fn eq(left: &Object, right: &Object) -> Result<bool, ErrorCode> {
     match cmp(left, right) {
-        (Some(v), ..)=> Ok(v == Ordering::Equal),
-        (None, true) => Ok(false),
-        (None, false) => Err(ErrorCode::XPTY0004)
+        Some(ValueOrdering::Equal) |
+        Some(ValueOrdering::QNameEqual) => Ok(true),
+        Some(..) => Ok(false),
+        None => Err(ErrorCode::XPTY0004)
     }
 }
 
 pub(crate) fn ne(left: &Object, right: &Object) -> Result<bool, ErrorCode> {
     match cmp(left, right) {
-        (Some(v), ..) => Ok(v != Ordering::Equal),
-        (None, true) => Ok(true),
-        (None, false) => Err(ErrorCode::XPTY0004)
+        Some(ValueOrdering::Less) |
+        Some(ValueOrdering::Greater) |
+        Some(ValueOrdering::AlwaysNotEqual) |
+        Some(ValueOrdering::QNameNotEqual) => Ok(true),
+        Some(..) => Ok(false),
+        None => Err(ErrorCode::XPTY0004)
     }
 }
 
 pub(crate) fn ls_or_eq(left: &Object, right: &Object) -> Result<bool, ErrorCode> {
     match cmp(left, right) {
-        (Some(v), ..) => Ok(v == Ordering::Equal || v == Ordering::Less),
-        (None, true) => Ok(false),
-        (None, false) => Err(ErrorCode::XPTY0004)
+        Some(ValueOrdering::QNameEqual) |
+        Some(ValueOrdering::QNameNotEqual) |
+        None => Err(ErrorCode::XPTY0004),
+        Some(ValueOrdering::Equal) |
+        Some(ValueOrdering::Less) => Ok(true),
+        Some(..) => Ok(false),
     }
 }
 
 pub(crate) fn ls(left: &Object, right: &Object) -> Result<bool, ErrorCode> {
     match cmp(left, right) {
-        (Some(v), ..) => Ok(v == Ordering::Less),
-        (None, true) => Ok(false),
-        (None, false) => Err(ErrorCode::XPTY0004)
+        Some(ValueOrdering::QNameEqual) |
+        Some(ValueOrdering::QNameNotEqual) |
+        None => Err(ErrorCode::XPTY0004),
+        Some(ValueOrdering::Less) => Ok(true),
+        Some(..) => Ok(false),
     }
 }
 
 pub(crate) fn gr_or_eq(left: &Object, right: &Object) -> Result<bool, ErrorCode> {
     match cmp(left, right) {
-        (Some(v), ..) => Ok(v == Ordering::Equal || v == Ordering::Greater),
-        (None, true) => Ok(false),
-        (None, false) => Err(ErrorCode::XPTY0004)
+        Some(ValueOrdering::QNameEqual) |
+        Some(ValueOrdering::QNameNotEqual) |
+        None => Err(ErrorCode::XPTY0004),
+        Some(ValueOrdering::Equal) |
+        Some(ValueOrdering::Greater) => Ok(true),
+        Some(..) => Ok(false),
     }
 }
 
 pub(crate) fn gr(left: &Object, right: &Object) -> Result<bool, ErrorCode> {
     match cmp(left, right) {
-        (Some(v), ..) => Ok(v == Ordering::Greater),
-        (None, true) => Ok(false),
-        (None, false) => Err(ErrorCode::XPTY0004)
+        Some(ValueOrdering::QNameEqual) |
+        Some(ValueOrdering::QNameNotEqual) |
+        None => Err(ErrorCode::XPTY0004),
+        Some(v) => Ok(v == ValueOrdering::Greater),
     }
 }
 
@@ -340,9 +386,9 @@ pub enum NT {
 fn object_to_number_type(obj: &Object) -> Option<NT> {
     match obj {
         Object::Atomic(Type::Integer(..)) => Some(NT::Integer),
-        Object::Atomic(Type::Decimal { .. }) => Some(NT::Decimal),
-        Object::Atomic(Type::Float { .. }) => Some(NT::Float),
-        Object::Atomic(Type::Double { .. }) => Some(NT::Double),
+        Object::Atomic(Type::Decimal(..)) => Some(NT::Decimal),
+        Object::Atomic(Type::Float(..)) => Some(NT::Float),
+        Object::Atomic(Type::Double(..)) => Some(NT::Double),
         _ => None
     }
 }
@@ -416,11 +462,22 @@ fn object_to_double(obj: &Object) -> Option<OrderedFloat<f64>> {
 
 fn object_to_string_if_string(obj: &Object) -> Option<String> {
     match obj {
+        Object::Atomic(Type::Untyped(..)) |
+        Object::Atomic(Type::AnyURI(..)) |
         Object::Atomic(Type::String(..)) |
         Object::Atomic(Type::NormalizedString(..)) |
         Object::CharRef {..} |
         Object::EntityRef(..) => {
             Some(object_to_string(obj))
+        }
+        _ => None
+    }
+}
+
+fn object_to_qname_if_qname(obj: &Object) -> Option<QName> {
+    match obj {
+        Object::Atomic(Type::QName { url, prefix, local_part }) => {
+            Some(QName { url: url.clone(), prefix: prefix.clone(), local_part: local_part.clone() })
         }
         _ => None
     }

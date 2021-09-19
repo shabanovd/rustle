@@ -793,7 +793,7 @@ pub fn eval_unary(env: Box<Environment>, object: Object, sign_is_positive: bool)
     }
 }
 
-fn into_type(obj: Object) -> Result<Box<Operand>, ErrorCode> {
+fn into_type(obj: Object) -> Result<Box<dyn Operand>, ErrorCode> {
     match obj {
         Object::Atomic(t) => {
             match t {

@@ -1,7 +1,7 @@
 use crate::eval::{Object, eval_expr, object_to_iterator, EvalResult};
 use crate::eval::Environment;
 
-use crate::value::resolve_element_qname;
+use crate::values::resolve_element_qname;
 use crate::fns::call;
 use crate::fns::strings::object_to_array;
 use crate::parser::errors::ErrorCode;

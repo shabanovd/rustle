@@ -4,17 +4,22 @@ use crate::parser::parse_duration::{string_to_dt_duration, string_to_ym_duration
 use crate::parser::errors::ErrorCode;
 use ordered_float::OrderedFloat;
 use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
+use crate::serialization::object_to_string;
 
 pub fn xs_untyped_atomic_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
-    match arguments.as_slice() {
-        [Object::Atomic(Type::String(string))] => {
-            Ok((env, Object::Atomic(Type::Untyped(string.clone()))))
-        },
-        [Object::Atomic(Type::Integer(num))] => {
-            Ok((env, Object::Atomic(Type::Untyped(num.to_string()))))
-        },
-        _ => todo!()
-    }
+    let item = arguments.get(0).unwrap();
+
+    let str = object_to_string(item);
+
+    Ok((env, Object::Atomic(Type::Untyped(str))))
+}
+
+pub fn xs_string_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+    let item = arguments.get(0).unwrap();
+
+    let str = object_to_string(item);
+
+    Ok((env, Object::Atomic(Type::String(str))))
 }
 
 pub fn xs_ncname_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {

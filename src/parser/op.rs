@@ -1,6 +1,6 @@
 use nom::IResult;
 use crate::parser::errors::CustomError;
-use crate::value::QName;
+use crate::values::QName;
 use crate::fns::Param;
 use ordered_float::OrderedFloat;
 use bigdecimal::BigDecimal;
@@ -121,7 +121,7 @@ pub enum Expr {
     SquareArrayConstructor(Vec<Expr>),
     CurlyArrayConstructor(Box<Expr>),
 
-    QName { local_part: String, url: String, prefix: String },
+    QName { local_part: String, url: Option<String>, prefix: Option<String> },
 
     Unary { expr: Box<Expr>, sign_is_positive: bool },
     Binary { left: Box<Expr>, operator: OperatorArithmetic, right: Box<Expr> },

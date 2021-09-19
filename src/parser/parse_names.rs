@@ -1,7 +1,7 @@
 use crate::parser::op::{found_qname, Expr};
 use crate::namespaces::*;
 use crate::parser::errors::CustomError;
-use crate::value::QName;
+use crate::values::QName;
 
 use nom::{
     bytes::complete::{tag, take_while, take_while_m_n},
@@ -40,37 +40,36 @@ pub(crate) fn parse_eqname(input: &str) -> IResult<&str, QName, CustomError<&str
 
         let (input, name2) = parse_ncname(input)?;
 
-        // TODO: resolve url from environment
         let url = if name1 == String::from(XML.prefix) {
-            XML.url
+            Some(String::from(XML.url))
         } else if name1 == String::from(SCHEMA.prefix) {
-            SCHEMA.url
+            Some(String::from(SCHEMA.url))
         } else if name1 == String::from(SCHEMA_INSTANCE.prefix) {
-            SCHEMA_INSTANCE.url
+            Some(String::from(SCHEMA_INSTANCE.url))
         } else if name1 == String::from(XPATH_FUNCTIONS.prefix) {
-            XPATH_FUNCTIONS.url
+            Some(String::from(XPATH_FUNCTIONS.url))
         } else if name1 == String::from(XPATH_MAP.prefix) {
-            XPATH_MAP.url
+            Some(String::from(XPATH_MAP.url))
         } else if name1 == String::from(XPATH_ARRAY.prefix) {
-            XPATH_ARRAY.url
+            Some(String::from(XPATH_ARRAY.url))
         } else if name1 == String::from(XPATH_MATH.prefix) {
-            XPATH_MATH.url
+            Some(String::from(XPATH_MATH.url))
         } else if name1 == String::from(XQUERY_LOCAL.prefix) {
-            XQUERY_LOCAL.url
+            Some(String::from(XQUERY_LOCAL.url))
         } else if name1 == String::from(XQT_ERROR.prefix) {
-            XQT_ERROR.url
+            Some(String::from(XQT_ERROR.url))
         } else {
-            ""
+            None
         };
 
         found_qname(
             input,
-            QName { local_part: name2, url: String::from(url), prefix: name1 }
+            QName { local_part: name2, url, prefix: Some(name1) }
         )
     } else {
         found_qname(
             input,
-            QName { local_part: name1, url: String::from(""), prefix: String::from("") } // TODO: resolve namespace
+            QName { local_part: name1, url: None, prefix: None }
         )
     }
 }

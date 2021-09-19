@@ -3,10 +3,11 @@ use crate::eval::{Object, Type, eval_expr, EvalResult};
 use crate::eval::Environment;
 use crate::namespaces::*;
 use crate::parser::op::Expr;
-use crate::value::{QName, QNameResolved, resolve_element_qname};
+use crate::values::{QName, QNameResolved, resolve_element_qname};
 
 mod fun;
 mod sequences;
+mod qname;
 mod boolean;
 mod strings;
 mod types;
@@ -57,6 +58,7 @@ impl<'a> FunctionsRegister<'a> {
         };
 
         instance.register(SCHEMA.url, "untypedAtomic", 1, types::xs_untyped_atomic_eval);
+        instance.register(SCHEMA.url, "string", 1, types::xs_string_eval);
         instance.register(SCHEMA.url, "NCName", 1, types::xs_ncname_eval);
         instance.register(SCHEMA.url, "anyURI", 1, types::xs_anyuri_eval);
         instance.register(SCHEMA.url, "date", 1, types::xs_date_eval);
@@ -81,6 +83,9 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(SCHEMA.url, "unsignedShort", 1, types::xs_unsigned_short_eval);
         instance.register(SCHEMA.url, "unsignedByte", 1, types::xs_unsigned_byte_eval);
         instance.register(SCHEMA.url, "positiveInteger", 1, types::xs_positive_integer_eval);
+
+        instance.register(XPATH_FUNCTIONS.url, "resolve-QName", 2, qname::fn_resolve_qname);
+        instance.register(XPATH_FUNCTIONS.url, "QName", 2, qname::fn_qname);
 
 //        instance.register("op", "same-key", 2, map::map_merge);
         instance.register(XPATH_MAP.url, "merge", 1, map::map_merge);
@@ -116,6 +121,7 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(XPATH_ARRAY.url, "sort", 3, array::sort);
         instance.register(XPATH_ARRAY.url, "flatten", 1, array::flatten);
 
+        instance.register(XPATH_FUNCTIONS.url, "current-time", 0, datetime::fn_current_time);
         instance.register(XPATH_FUNCTIONS.url, "month-from-date", 1, datetime::fn_month_from_date);
         instance.register(XPATH_FUNCTIONS.url, "day-from-date", 1, datetime::fn_day_from_date);
         instance.register(XPATH_FUNCTIONS.url, "days-from-duration", 1, datetime::fn_days_from_duration);
@@ -154,6 +160,8 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(XPATH_FUNCTIONS.url, "concat", 3, strings::fn_concat);
         instance.register(XPATH_FUNCTIONS.url, "string-join", 1, strings::fn_string_join);
         instance.register(XPATH_FUNCTIONS.url, "string-join", 2, strings::fn_string_join);
+        instance.register(XPATH_FUNCTIONS.url, "upper-case", 1, strings::fn_upper_case);
+        instance.register(XPATH_FUNCTIONS.url, "lower-case", 1, strings::fn_lower_case);
         instance.register(XPATH_FUNCTIONS.url, "string-to-codepoints", 1, strings::fn_string_to_codepoints);
 
         instance.register(XPATH_FUNCTIONS.url, "data", 0, sequences::fn_data);

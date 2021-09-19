@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::eval::Object::Empty;
 use crate::fns::call;
 use crate::parser::op::{Statement, Expr, ItemType, OccurrenceIndicator, OperatorComparison};
-use crate::value::{QName, resolve_element_qname, resolve_function_qname};
+use crate::values::{QName, resolve_element_qname, resolve_function_qname};
 
 pub use self::environment::Environment;
 use crate::fns::object_to_bool;
@@ -16,6 +16,8 @@ mod environment;
 pub(crate) mod comparison;
 mod value;
 pub(crate) use value::*;
+
+use crate::values::*;
 
 mod arithmetic;
 use arithmetic::eval_arithmetic;
@@ -98,6 +100,17 @@ fn eval_prolog_expr(expression: Expr, env: Box<Environment>) -> Box<Environment>
             current_env
         },
         Expr::VarDecl { name, type_declaration, external, value } => {
+            let name = resolve_element_qname(name, &current_env);
+
+            if let Some(expr) = *value {
+                println!("expr {:?}", expr);
+                match eval_expr(expr, current_env.clone(), &Object::Nothing) {
+                    Ok((new_env, obj)) => {
+                        current_env.set(name, obj);
+                    },
+                    Err((code, msg)) => panic!("Error {:?} {:?}", code, msg),
+                }
+            }
 
             current_env
         },
@@ -170,7 +183,7 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
         },
 
         Expr::QName { local_part, url, prefix } => {
-            Ok((current_env, Object::QName { local_part, url, prefix }))
+            Ok((current_env, Object::Atomic( Type::QName { local_part, url, prefix } ) ))
         },
 
         Expr::Body(exprs) => {
@@ -243,13 +256,7 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
             let (new_env, evaluated_name) = eval_expr(*name, current_env, context_item)?;
             current_env = new_env;
 
-            let evaluated_name = match evaluated_name {
-                Object::QName { local_part, url, prefix } => {
-                    QName { local_part, url, prefix }
-                }
-                _ => panic!("unexpected object") //TODO: better error
-            };
-
+            let evaluated_name = object_to_qname(evaluated_name);
             let mut evaluated_attributes = vec![];
             for attribute in attributes {
                 let (new_env, evaluated_attribute) = eval_expr(attribute, current_env, context_item)?;
@@ -326,12 +333,7 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
             let (new_env, evaluated_name) = eval_expr(*name, current_env, context_item)?;
             current_env = new_env;
 
-            let evaluated_name = match evaluated_name {
-                Object::QName { prefix, url, local_part } => { // TODO: avoid copy!
-                    QName { prefix, url, local_part }
-                }
-                _ => panic!("unexpected object") //TODO: better error
-            };
+            let evaluated_name = object_to_qname(evaluated_name);
 
             let (new_env, evaluated_value) = eval_expr(*value, current_env, context_item)?;
             current_env = new_env;
@@ -372,12 +374,7 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
             let (new_env, evaluated_target) = eval_expr(*target, current_env, context_item)?;
             current_env = new_env;
 
-            let target = match evaluated_target {
-                Object::QName { prefix, url, local_part } => { // TODO: avoid copy!
-                    QName { prefix, url, local_part }
-                }
-                _ => panic!("unexpected object") //TODO: better error
-            };
+            let target = object_to_qname(evaluated_target);
 
             let (new_env, evaluated) = eval_expr(*content, current_env, context_item)?;
             current_env = new_env;
@@ -784,24 +781,12 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
                             occurrence_indicator == OccurrenceIndicator::ZeroOrMore
                             || occurrence_indicator == OccurrenceIndicator::ZeroOrOne
                         },
-                        Object::Atomic(Type::String(..)) => {
-                            name.local_part == "string" && name.prefix == "xs" && name.url == SCHEMA.url
-                        },
-                        Object::Atomic(Type::NormalizedString(..)) => {
-                            name.local_part == "string" && name.prefix == "xs" && name.url == SCHEMA.url
-                        },
-                        Object::Atomic(Type::Integer(..)) => {
-                            name.local_part == "integer" && name.prefix == "xs" && name.url == SCHEMA.url
-                        },
-                        Object::Atomic(Type::Decimal{..}) => {
-                            name.local_part == "decimal" && name.prefix == "xs" && name.url == SCHEMA.url
-                        },
-                        Object::Atomic(Type::Float{..}) => {
-                            name.local_part == "float" && name.prefix == "xs" && name.url == SCHEMA.url
-                        },
-                        Object::Atomic(Type::Double{..}) => {
-                            name.local_part == "double" && name.prefix == "xs" && name.url == SCHEMA.url
-                        },
+                        Object::Atomic(Type::String(..)) => name == *XS_STRING,
+                        Object::Atomic(Type::NormalizedString(..)) => name == *XS_STRING,
+                        Object::Atomic(Type::Integer(..)) => name == *XS_INTEGER,
+                        Object::Atomic(Type::Decimal{..}) => name == *XS_DECIMAL,
+                        Object::Atomic(Type::Float{..}) => name == *XS_FLOAT,
+                        Object::Atomic(Type::Double{..}) => name == *XS_DOUBLE,
                         _ => panic!("TODO: {:?}", object)
                     }
                 },
@@ -809,7 +794,16 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
             };
 
             Ok((current_env, Object::Atomic(Type::Boolean(result))))
-        }
+        },
+
+        Expr::Castable { expr, st } => {
+            let (new_env, object) = eval_expr(*expr, current_env, context_item)?;
+            current_env = new_env;
+
+            println!("st {:?}", st);
+
+            Ok((current_env, object))
+        },
 
         _ => panic!("TODO {:?}", expression)
     }

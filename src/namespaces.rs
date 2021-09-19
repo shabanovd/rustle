@@ -21,8 +21,8 @@ pub const XQT_ERROR: Namespace = Namespace { prefix: "err", url: "http://www.w3.
 #[derive(Clone)]
 pub struct Namespaces<'a> {
     prefixes: HashMap<&'a str, Namespace<'a>>,
-    default_for_element: &'a str,
-    default_for_function: &'a str,
+    pub default_for_element: &'a str,
+    pub default_for_function: &'a str,
 }
 
 impl<'a> Namespaces<'a> {

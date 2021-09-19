@@ -1,12 +1,13 @@
-use crate::eval::{Environment, Object, Type, EvalResult};
+use crate::eval::{Environment, Object, Type, EvalResult, Time};
+use chrono::Datelike;
 
 pub fn fn_day_from_date<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Empty] => {
             Ok((env, Object::Empty))
         }
-        [Object::Atomic(Type::Date { d, .. })] => {
-            Ok((env, Object::Atomic(Type::Integer(*d as i128))))
+        [Object::Atomic(Type::Date(date))] => {
+            Ok((env, Object::Atomic(Type::Integer(date.day() as i128))))
         },
         _ => panic!("error")
     }
@@ -17,8 +18,8 @@ pub fn fn_month_from_date<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>,
         [Object::Empty] => {
             Ok((env, Object::Empty))
         }
-        [Object::Atomic(Type::Date { m, .. })] => {
-            Ok((env, Object::Atomic(Type::Integer(*m as i128))))
+        [Object::Atomic(Type::Date(date))] => {
+            Ok((env, Object::Atomic(Type::Integer(date.month() as i128))))
         },
         _ => panic!("error")
     }
@@ -42,4 +43,10 @@ pub fn fn_days_from_duration<'a>(env: Box<Environment<'a>>, arguments: Vec<Objec
         },
         _ => panic!("error")
     }
+}
+
+
+pub fn fn_current_time<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+    // TODO  deterministic
+    Ok((env, Object::Atomic(Type::Time(Time::now()))))
 }

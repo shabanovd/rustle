@@ -49,6 +49,8 @@ fn _object_to_string(object: &Object, ref_resolving: bool) -> String {
                 _ => panic!("unexpected {:?}", reference)
             }
         },
+        Object::Atomic(Type::Untyped(str)) => str.clone(),
+        Object::Atomic(Type::AnyURI(str)) => str.clone(),
         Object::Atomic(Type::String(str)) => str.clone(),
         Object::Atomic(Type::Integer(number)) => number.to_string(),
         Object::Atomic(Type::Decimal(number)) => number.to_string(),
@@ -78,6 +80,15 @@ fn _object_to_string(object: &Object, ref_resolving: bool) -> String {
                 number.to_string()
             }
         },
+        Object::Atomic(Type::DateTime(dt)) => {
+            dt.to_rfc3339()
+        }
+        Object::Atomic(Type::Date(date)) => {
+            date.format("%Y-%m-%d").to_string()
+        }
+        Object::Atomic(Type::Time(time)) => {
+            time.format("%H:%M:%S").to_string()
+        }
         Object::Sequence(items) => {
             let mut buf = String::new();
             for item in items {

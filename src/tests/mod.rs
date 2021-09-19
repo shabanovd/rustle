@@ -1,6 +1,6 @@
 use crate::eval::{Object, Environment, Type, eval_statements, object_to_iterator, comparison};
 use crate::parser::parse;
-use crate::value::{resolve_element_qname, QName};
+use crate::values::{resolve_element_qname, QName};
 use crate::serialization::object_to_string;
 use crate::fns::object_to_bool;
 
