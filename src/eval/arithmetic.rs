@@ -43,6 +43,9 @@ trait Operand {
     fn div(&self, rhs: &dyn Operand) -> OperandReturn;
     fn rev_div(&self, rhs: &dyn Operand) -> OperandReturn;
 
+    fn idiv(&self, rhs: &dyn Operand) -> OperandReturn;
+    fn rev_idiv(&self, rhs: &dyn Operand) -> OperandReturn;
+
     fn remainder(&self, rhs: &dyn Operand) -> OperandReturn;
     fn rev_remainder(&self, rhs: &dyn Operand) -> OperandReturn;
 
@@ -156,6 +159,30 @@ impl Operand for VDouble {
             let number = other / self.number;
 
             Ok(Box::new(VDouble { number }))
+        } else {
+            Err(ErrorCode::FOAR0002)
+        }
+    }
+
+    fn idiv(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_double();
+
+            let number = (self.number / other) as i128;
+
+            Ok(Box::new(VInteger { number }))
+        } else {
+            rhs.rev_idiv(self)
+        }
+    }
+
+    fn rev_idiv(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_double();
+
+            let number = (other / self.number) as i128;
+
+            Ok(Box::new(VInteger { number }))
         } else {
             Err(ErrorCode::FOAR0002)
         }
@@ -302,6 +329,30 @@ impl Operand for VFloat {
             let number = other / self.number;
 
             Ok(Box::new(VFloat { number }))
+        } else {
+            Err(ErrorCode::FOAR0002)
+        }
+    }
+
+    fn idiv(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_float();
+
+            let number = (self.number / other) as i128;
+
+            Ok(Box::new(VInteger { number }))
+        } else {
+            rhs.rev_idiv(self)
+        }
+    }
+
+    fn rev_idiv(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            let other = rhs.to_float();
+
+            let number = (other / self.number) as i128;
+
+            Ok(Box::new(VInteger { number }))
         } else {
             Err(ErrorCode::FOAR0002)
         }
@@ -455,6 +506,38 @@ impl Operand for VDecimal {
                 let number = other / &self.number;
 
                 Ok(Box::new(VDecimal { number }))
+            }
+        } else {
+            Err(ErrorCode::FOAR0002)
+        }
+    }
+
+    fn idiv(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            if rhs.is_zero() {
+                Err(ErrorCode::FOAR0001)
+            } else {
+                let other = rhs.to_decimal()?;
+
+                let number = (&self.number / other).round(0).to_i128().unwrap();
+
+                Ok(Box::new(VInteger { number }))
+            }
+        } else {
+            rhs.rev_idiv(self)
+        }
+    }
+
+    fn rev_idiv(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            if self.is_zero() {
+                Err(ErrorCode::FOAR0001)
+            } else {
+                let other = rhs.to_decimal()?;
+
+                let number = (other / &self.number).round(0).to_i128().unwrap();
+
+                Ok(Box::new(VInteger { number }))
             }
         } else {
             Err(ErrorCode::FOAR0002)
@@ -631,6 +714,40 @@ impl Operand for VInteger {
         }
     }
 
+    fn idiv(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            if rhs.is_zero() {
+                Err(ErrorCode::FOAR0001)
+            } else {
+                let self_number = self.to_decimal()?;
+                let other = rhs.to_decimal()?;
+
+                let number = (self_number / other).round(0).to_i128().unwrap();
+
+                Ok(Box::new(VInteger { number }))
+            }
+        } else {
+            rhs.rev_idiv(self)
+        }
+    }
+
+    fn rev_idiv(&self, rhs: &dyn Operand) -> OperandReturn {
+        if self.level() >= rhs.level() {
+            if rhs.is_zero() {
+                Err(ErrorCode::FOAR0001)
+            } else {
+                let self_number = self.to_decimal()?;
+                let other = rhs.to_decimal()?;
+
+                let number = (other / self_number).round(0).to_i128().unwrap();
+
+                Ok(Box::new(VInteger { number }))
+            }
+        } else {
+            Err(ErrorCode::FOAR0002)
+        }
+    }
+
     fn remainder(&self, rhs: &dyn Operand) -> OperandReturn {
         if self.level() >= rhs.level() {
             if rhs.is_zero() {
@@ -747,14 +864,12 @@ pub fn eval_arithmetic_item(env: Box<Environment>, operator: OperatorArithmetic,
     };
 
     let result = match operator {
-        // Operator::Unknown => {}
         OperatorArithmetic::Plus => left_value.add(&*right_value),
         OperatorArithmetic::Minus => left_value.sub(&*right_value),
         OperatorArithmetic::Multiply => left_value.mul(&*right_value),
         OperatorArithmetic::Divide => left_value.div(&*right_value),
-        // OperatorArithmetic::IDivide => left_value.idiv(&*right_value),
+        OperatorArithmetic::IDivide => left_value.idiv(&*right_value),
         OperatorArithmetic::Mod => left_value.remainder(&*right_value),
-        _ => panic!("internal error")
     };
 
     match result {

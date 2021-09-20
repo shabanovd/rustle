@@ -22,6 +22,14 @@ pub fn fn_not<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_it
     Ok((env, Object::Atomic(Type::Boolean(result))))
 }
 
+pub fn fn_boolean<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+    let item = arguments.get(0).unwrap();
+
+    let flag = object_to_bool(item);
+
+    Ok((env, Object::Atomic(Type::Boolean(flag))))
+}
+
 pub fn object_to_bool(object: &Object) -> bool {
     match object {
         Object::Empty => false,
@@ -47,7 +55,8 @@ pub fn object_to_bool(object: &Object) -> bool {
                 false
             }
         },
-        Object::Atomic(..) => true,
+        Object::Node(..) |
+            Object::Atomic(..) => true,
         _ => panic!("TODO object_to_bool {:?}", object)
     }
 }

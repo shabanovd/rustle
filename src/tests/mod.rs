@@ -114,12 +114,14 @@ pub(crate) fn bool_check_assert_count(result: &Result<Object, String>, check: &s
 
 pub(crate) fn check_assert_deep_eq(result: &Result<Object, String>, check: &str) {
     let expected = eval(check).unwrap();
-    assert_eq!(expected, result.as_ref().unwrap().clone());
+    if comparison::deep_eq(&expected, result.as_ref().unwrap()).unwrap() {
+        assert_eq!(expected, result.as_ref().unwrap().clone());
+    }
 }
 
 pub(crate) fn bool_check_assert_deep_eq(result: &Result<Object, String>, check: &str) -> bool {
     let expected = eval(check).unwrap();
-    expected == result.as_ref().unwrap().clone()
+    comparison::deep_eq(&expected, result.as_ref().unwrap()).unwrap()
 }
 
 pub(crate) fn check_assert_permutation(result: &Result<Object, String>, check: &str) {

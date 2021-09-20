@@ -58,6 +58,7 @@ impl<'a> FunctionsRegister<'a> {
         };
 
         instance.register(SCHEMA.url, "untypedAtomic", 1, types::xs_untyped_atomic_eval);
+        instance.register(SCHEMA.url, "boolean", 1, boolean::fn_boolean);
         instance.register(SCHEMA.url, "string", 1, types::xs_string_eval);
         instance.register(SCHEMA.url, "NCName", 1, types::xs_ncname_eval);
         instance.register(SCHEMA.url, "anyURI", 1, types::xs_anyuri_eval);
@@ -149,7 +150,7 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(XPATH_FUNCTIONS.url, "round", 1, math::fn_round);
         instance.register(XPATH_FUNCTIONS.url, "round-half-to-even", 1, math::fn_round_half_to_even);
 
-
+        instance.register(XPATH_FUNCTIONS.url, "boolean", 1, boolean::fn_boolean);
         instance.register(XPATH_FUNCTIONS.url, "true", 0, boolean::fn_true);
         instance.register(XPATH_FUNCTIONS.url, "false", 0, boolean::fn_false);
         instance.register(XPATH_FUNCTIONS.url, "not", 1, boolean::fn_not);
@@ -160,6 +161,8 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(XPATH_FUNCTIONS.url, "concat", 3, strings::fn_concat);
         instance.register(XPATH_FUNCTIONS.url, "string-join", 1, strings::fn_string_join);
         instance.register(XPATH_FUNCTIONS.url, "string-join", 2, strings::fn_string_join);
+        instance.register(XPATH_FUNCTIONS.url, "string-length", 0, strings::fn_string_length);
+        instance.register(XPATH_FUNCTIONS.url, "string-length", 1, strings::fn_string_length);
         instance.register(XPATH_FUNCTIONS.url, "upper-case", 1, strings::fn_upper_case);
         instance.register(XPATH_FUNCTIONS.url, "lower-case", 1, strings::fn_lower_case);
         instance.register(XPATH_FUNCTIONS.url, "string-to-codepoints", 1, strings::fn_string_to_codepoints);

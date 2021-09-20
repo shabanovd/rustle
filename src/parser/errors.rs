@@ -2,6 +2,7 @@ use strum_macros::AsRefStr;
 use nom::error::{ErrorKind, ParseError};
 use nom::{IResult, Err};
 
+#[allow(dead_code)]
 #[derive(Debug, PartialEq, AsRefStr)]
 pub enum ErrorCode {
     TODO,

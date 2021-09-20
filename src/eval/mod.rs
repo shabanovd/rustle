@@ -3,13 +3,12 @@ use std::collections::HashMap;
 use crate::eval::Object::Empty;
 use crate::fns::call;
 use crate::parser::op::{Statement, Expr, ItemType, OccurrenceIndicator, OperatorComparison};
-use crate::values::{QName, resolve_element_qname, resolve_function_qname};
+use crate::values::{resolve_element_qname, resolve_function_qname};
 
 pub use self::environment::Environment;
 use crate::fns::object_to_bool;
 use crate::serialization::object_to_string;
 use crate::serialization::to_string::object_to_string_xml;
-use crate::namespaces::SCHEMA;
 use crate::parser::errors::ErrorCode;
 
 mod environment;
@@ -412,9 +411,10 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
 
         Expr::SimpleMap(exprs)  => {
             let mut result = Object::Empty;
-            for (i, expr) in exprs.iter().enumerate() {
+            let mut i = 0;
+            for expr in exprs {
                 if i == 0 {
-                    let (new_env, evaluated) = eval_expr(expr.clone(), current_env, context_item)?;
+                    let (new_env, evaluated) = eval_expr(expr, current_env, context_item)?;
                     current_env = new_env;
 
                     result = evaluated;
@@ -426,11 +426,13 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
                         let (new_env, evaluated) = eval_expr(expr.clone(), current_env, &item)?;
                         current_env = new_env;
 
-                        sequence.push(evaluated);
+                        let items = object_owned_to_sequence(evaluated);
+                        relax_sequences(&mut sequence, items);
                     }
-
+                    sort_and_dedup(&mut sequence);
                     result = Object::Sequence(sequence);
                 }
+                i += 1;
             }
             Ok((current_env, result))
         },
@@ -569,7 +571,10 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
             let (new_env, value) = eval_expr(*expr, current_env, context_item)?;
             current_env = new_env;
 
-            Ok((current_env, value))
+            let mut items = object_owned_to_sequence(value);
+            let mut result= Vec::with_capacity(items.len());
+            relax_sequences(&mut result, items);
+            relax(current_env, result)
         },
 
         Expr::Or(exprs) => {
@@ -638,7 +643,7 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
                 }
 
                 if sequence.len() == 0 {
-                    Ok((current_env, Object::Empty))
+                    Ok((current_env, Object::Atomic(Type::String(String::new()))))
                 } else if sequence.len() == 1 {
                     let object = sequence.remove(0);
                     Ok((current_env, object))
@@ -809,6 +814,7 @@ pub fn eval_expr<'a>(expression: Expr, env: Box<Environment<'a>>, context_item: 
     }
 }
 
+#[allow(dead_code)]
 enum Axis {
     ForwardChild,
     ForwardDescendant,

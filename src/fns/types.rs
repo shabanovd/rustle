@@ -5,6 +5,7 @@ use crate::parser::errors::ErrorCode;
 use ordered_float::OrderedFloat;
 use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use crate::serialization::object_to_string;
+use crate::fns::object_to_bool;
 
 pub fn xs_untyped_atomic_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
     let item = arguments.get(0).unwrap();
@@ -92,7 +93,7 @@ pub fn xs_year_month_duration_eval<'a>(env: Box<Environment<'a>>, arguments: Vec
         [Object::Atomic(Type::String(string))] => {
             match string_to_ym_duration(string) {
                 Ok(dt) => Ok((env, Object::Atomic(dt))),
-                Err(e) => todo!()
+                Err(..) => todo!()
             }
         },
         _ => todo!()

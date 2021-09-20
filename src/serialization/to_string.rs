@@ -12,6 +12,7 @@ pub fn object_to_string(object: &Object) -> String {
 
 fn _object_to_string(object: &Object, ref_resolving: bool) -> String {
     match object {
+        Object::Empty => String::new(),
         Object::ForBinding { values, .. } => {
             _object_to_string(values, ref_resolving)
         },
@@ -90,12 +91,12 @@ fn _object_to_string(object: &Object, ref_resolving: bool) -> String {
             time.format("%H:%M:%S").to_string()
         }
         Object::Sequence(items) => {
-            let mut buf = String::new();
+            let mut buf = Vec::with_capacity(items.len());
             for item in items {
                 let str = _object_to_string(item, ref_resolving);
-                buf.push_str(str.as_str());
+                buf.push(str);
             }
-            buf
+            buf.join(" ")
         },
         Object::Node(node) => {
             node_to_string(node)

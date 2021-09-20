@@ -55,6 +55,21 @@ pub fn fn_string_join<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _co
     Ok((env, Object::Atomic(Type::String(str))))
 }
 
+pub fn fn_string_length<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+
+    let item = if arguments.len() == 0 {
+        context_item
+    } else {
+        arguments.get(0).unwrap()
+    };
+
+    let str = object_to_string(item);
+
+    println!("{:?} {:?}", str, str.len());
+
+    Ok((env, Object::Atomic(Type::Integer(str.len() as i128))))
+}
+
 pub fn fn_string_to_codepoints<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
 
     let result = match arguments.as_slice() {

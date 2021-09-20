@@ -274,7 +274,7 @@ pub(crate) fn general_eq(left: &Object, right: &Object) -> Result<bool, ErrorCod
                         Type::Integer(..) |
                         Type::Decimal {..} |
                         Type::Float {..} |
-                        Type::Decimal {..} => {
+                        Type::Double {..} => {
                             if let Ok(number) = rs.parse() {
                                 let rv = Object::Atomic(Type::Double(number));
                                 eq(left, &rv)

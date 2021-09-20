@@ -51,8 +51,6 @@ pub fn fold_left<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_
 }
 
 pub fn fold_right<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
-    let mut current_env = env;
-
     println!("arguments {:?}", arguments);
 
     match arguments.as_slice() {
@@ -64,8 +62,6 @@ pub fn fold_right<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _contex
 }
 
 pub fn for_each_pair<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
-    let mut current_env = env;
-
     println!("arguments {:?}", arguments);
 
     match arguments.as_slice() {
@@ -77,8 +73,6 @@ pub fn for_each_pair<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _con
 }
 
 pub fn sort<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
-    let mut current_env = env;
-
     println!("arguments {:?}", arguments);
 
     match arguments.as_slice() {

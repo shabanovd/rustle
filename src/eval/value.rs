@@ -8,11 +8,12 @@ use crate::parser::errors::ErrorCode;
 use ordered_float::OrderedFloat;
 use bigdecimal::BigDecimal;
 use crate::eval::helpers::sort_and_dedup;
-use chrono::{NaiveTime, TimeZone, DateTime, Date, FixedOffset, Local, Utc, Timelike};
+use chrono::{NaiveTime, TimeZone, DateTime, Date, FixedOffset, Local, Timelike};
 use num_integer::div_mod_floor;
 use chrono::format::{DelayedFormat, StrftimeItems, Item};
 use std::borrow::Borrow;
 
+#[allow(dead_code)]
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone, Hash)]
 pub enum Type {
     Untyped(String),
@@ -47,17 +48,17 @@ pub enum Type {
 
     // positiveInteger(),
 
-    gYearMonth(),
-    gYear(),
-    gMonthDay(),
-    gDay(),
-    gMonth(),
+    GYearMonth(),
+    GYear(),
+    GMonthDay(),
+    GDay(),
+    GMonth(),
 
     // TODO CharRef { representation: Representation, reference: u32 }, ?
     String(String),
     NormalizedString(String),
     Token(String),
-    language(String),
+    Language(String),
     NMTOKEN(String),
     Name(String),
     NCName(String),
@@ -66,8 +67,8 @@ pub enum Type {
     ENTITY(String),
 
     Boolean(bool),
-    base64Binary(),
-    hexBinary(),
+    Base64Binary(),
+    HexBinary(),
     AnyURI(String),
     QName { url: Option<String>, prefix: Option<String>, local_part: String },
     NOTATION(),

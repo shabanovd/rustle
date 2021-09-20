@@ -600,7 +600,7 @@ fn parse_union_expr(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
 
     let mut current_input = input;
     loop {
-        let check = preceded(ws1, alt((tag("union"), tag("|"))))(current_input);
+        let check = delimited(ws1, alt((tag("union"), tag("|"))), ws1)(current_input);
         if check.is_err() {
             break
         } else {

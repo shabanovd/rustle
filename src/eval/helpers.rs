@@ -47,6 +47,22 @@ pub(crate) fn join_sequences(result: &mut Vec<Object>, seq: Vec<Object>) {
     }
 }
 
+pub(crate) fn relax_sequences(result: &mut Vec<Object>, seq: Vec<Object>) {
+    // space allocation
+    result.reserve(seq.len());
+
+    for item in seq {
+        match item {
+            Object::Nothing |
+            Object::Empty => {},
+            Object::Sequence(items) => {
+                relax_sequences(result, items)
+            },
+            _ => result.push(item)
+        }
+    }
+}
+
 pub fn sort_and_dedup(seq: &mut Vec<Object>) {
     seq.sort();
     seq.dedup();

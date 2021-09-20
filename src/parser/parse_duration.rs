@@ -11,7 +11,6 @@ use nom::combinator::{opt, map, map_res};
 use crate::eval::{Type, Time};
 use crate::parser::parse_literal::is_digits;
 use chrono::{Date, NaiveDate, FixedOffset, NaiveTime};
-use crate::parser::errors::CustomError;
 use nom::error::{ParseError, ErrorKind};
 
 pub fn string_to_date(input: &str) -> Result<Type, String> {
