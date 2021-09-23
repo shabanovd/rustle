@@ -17,23 +17,23 @@ pub struct QNameResolved {
     pub local_part: String,
 }
 
-pub fn resolve_element_qname(qname: QName, env: &Box<Environment>) -> QNameResolved {
+pub fn resolve_element_qname(qname: &QName, env: &Box<Environment>) -> QNameResolved {
     resolve_qname(qname, env, env.namespaces.default_for_element)
 }
 
-pub fn resolve_function_qname(qname: QName, env: &Box<Environment>) -> QNameResolved {
+pub fn resolve_function_qname(qname: &QName, env: &Box<Environment>) -> QNameResolved {
     resolve_qname(qname, env, env.namespaces.default_for_function)
 }
 
-fn resolve_qname(qname: QName, env: &Box<Environment>, default: &str) -> QNameResolved {
-    if let Some(url) = qname.url {
-        QNameResolved { url, local_part: qname.local_part }
+fn resolve_qname(qname: &QName, env: &Box<Environment>, default: &str) -> QNameResolved {
+    if let Some(url) = &qname.url {
+        QNameResolved { url: url.clone(), local_part: qname.local_part.clone() }
     } else {
-        if let Some(prefix) = qname.prefix {
+        if let Some(prefix) = &qname.prefix {
             if let Some(ns) = env.namespaces.by_prefix(prefix) {
                 QNameResolved {
                     url: String::from(ns.url),
-                    local_part: qname.local_part,
+                    local_part: qname.local_part.clone(),
                 }
             } else {
                 todo!("error?")
@@ -41,7 +41,7 @@ fn resolve_qname(qname: QName, env: &Box<Environment>, default: &str) -> QNameRe
         } else {
             QNameResolved {
                 url: String::from(default),
-                local_part: qname.local_part,
+                local_part: qname.local_part.clone(),
             }
         }
     }

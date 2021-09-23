@@ -32,12 +32,6 @@ pub fn eval_comparison(env: Box<Environment>, operator: OperatorComparison, left
 }
 
 pub fn eval_comparison_item(env: Box<Environment>, operator: OperatorComparison, left: Object, right: Object) -> EvalResult {
-    // if DEBUG {
-    println!("before atomization");
-    println!("left_result {:?}", left);
-    println!("right_result {:?}", right);
-    // }
-
     let left = match atomization(left) {
         Ok(v) => v,
         Err(e) => return Err((e, String::from("TODO")))
@@ -47,7 +41,7 @@ pub fn eval_comparison_item(env: Box<Environment>, operator: OperatorComparison,
         Err(e) => return Err((e, String::from("TODO")))
     };
 
-    println!("after atomization");
+    println!("after eval_comparison_item");
     println!("left_result {:?}", left);
     println!("right_result {:?}", right);
 
@@ -65,8 +59,6 @@ pub fn eval_comparison_item(env: Box<Environment>, operator: OperatorComparison,
         OperatorComparison::ValueGreaterThan => gr(&left, &right),
         OperatorComparison::ValueGreaterOrEquals => gr_or_eq(&left, &right),
     };
-
-    println!("result: {:?}", result);
 
     match result {
         Ok(v) => Ok((env, Object::Atomic(Type::Boolean(v)))),
@@ -340,8 +332,22 @@ pub(crate) fn deep_eq(left: &Object, right: &Object) -> Result<bool, ErrorCode> 
                     _ => Ok(false)
                 }
             }
+            Object::Range { min: left_min, max: left_max } => {
+                match right {
+                    Object::Range { min: right_min, max: right_max } => {
+                        Ok(left_min == right_min && left_max == right_max)
+                    },
+                    Object::Sequence(right_items) => {
+                        deep_eq_sequence_and_range(right_items, *left_min, *left_max)
+                    }
+                    _ => panic!("TODO {:?}", right)
+                }
+            },
             Object::Sequence(left_items) => {
                 match right {
+                    Object::Range { min, max } => {
+                        deep_eq_sequence_and_range(left_items, *min, *max)
+                    },
                     Object::Sequence(right_items) => {
                         if left_items.len() != right_items.len() {
                             Ok(false)
@@ -371,6 +377,29 @@ pub(crate) fn deep_eq(left: &Object, right: &Object) -> Result<bool, ErrorCode> 
                 }
             },
             _ => panic!("TODO {:?}", left)
+        }
+    }
+}
+
+pub(crate) fn deep_eq_sequence_and_range(left_items: &Vec<Object>, min: i128, max: i128) -> Result<bool, ErrorCode> {
+    if left_items.len() != (max - min).max(0) as usize {
+        Ok(false)
+    } else {
+        let mut left_it = left_items.iter();
+
+        let mut right_item = min;
+        let step = 1;
+
+        loop {
+            if let Some(left_item) = left_it.next() {
+                if deep_eq(left_item, &Object::Atomic(Type::Integer(right_item)))? {
+                    return Ok(false);
+                }
+
+                right_item += step;
+            } else {
+                return Ok(false);
+            }
         }
     }
 }

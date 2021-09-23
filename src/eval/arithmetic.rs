@@ -874,9 +874,7 @@ pub fn eval_arithmetic_item(env: Box<Environment>, operator: OperatorArithmetic,
 
     match result {
         Ok(number) => {
-            let obj = number.to_atomic();
-            println!("result {:?}", obj);
-            Ok((env, obj))
+            Ok((env, number.to_atomic()))
         },
         Err(code) => Err((code, String::from("TODO")))
     }
@@ -899,9 +897,7 @@ pub fn eval_unary(env: Box<Environment>, object: Object, sign_is_positive: bool)
     } else {
         match value.negative() {
             Ok(number) => {
-                let obj = number.to_atomic();
-                println!("result {:?}", obj);
-                Ok((env, obj))
+                Ok((env, number.to_atomic()))
             },
             Err(code) => Err((code, String::from("TODO")))
         }

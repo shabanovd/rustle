@@ -1,7 +1,7 @@
-use crate::eval::{Object, Type, EvalResult, comparison};
+use crate::eval::{Object, Type, EvalResult, comparison, DynamicContext};
 use crate::eval::Environment;
 
-pub fn fn_deep_equal<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn fn_deep_equal<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
 
     let result = match arguments.as_slice() {
         [o1, o2] => {

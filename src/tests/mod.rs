@@ -70,7 +70,7 @@ fn eval_assert(result: &Result<Object, String>, check: &str) -> Object {
 
         let mut env = Box::new(Environment::new());
 
-        let name = resolve_element_qname(QName::local_part("result"), &env);
+        let name = resolve_element_qname(&QName::local_part("result"), &env);
         env.set(name, result.as_ref().unwrap().clone());
 
         match eval_statements(program, env) {

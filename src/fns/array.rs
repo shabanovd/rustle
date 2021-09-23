@@ -1,7 +1,7 @@
-use crate::eval::{Object, Type, EvalResult};
+use crate::eval::{Object, Type, EvalResult, DynamicContext};
 use crate::eval::Environment;
 
-pub fn size<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn size<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array)] => {
             let size = array.len();
@@ -11,7 +11,7 @@ pub fn size<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item
     }
 }
 
-pub fn get<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn get<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -21,7 +21,7 @@ pub fn get<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item:
     }
 }
 
-pub fn put<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn put<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -31,7 +31,7 @@ pub fn put<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item:
     }
 }
 
-pub fn append<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn append<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             let mut result = array.clone();
@@ -44,7 +44,7 @@ pub fn append<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_it
     }
 }
 
-pub fn subarray<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn subarray<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -54,7 +54,7 @@ pub fn subarray<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_
     }
 }
 
-pub fn remove<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn remove<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -64,7 +64,7 @@ pub fn remove<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_it
     }
 }
 
-pub fn insert_before<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn insert_before<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -74,7 +74,7 @@ pub fn insert_before<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _con
     }
 }
 
-pub fn head<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn head<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -84,7 +84,7 @@ pub fn head<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item
     }
 }
 
-pub fn tail<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn tail<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -94,7 +94,7 @@ pub fn tail<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item
     }
 }
 
-pub fn reverse<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn reverse<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -104,7 +104,7 @@ pub fn reverse<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_i
     }
 }
 
-pub fn join<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn join<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -114,7 +114,7 @@ pub fn join<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item
     }
 }
 
-pub fn for_each<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn for_each<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -124,7 +124,7 @@ pub fn for_each<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_
     }
 }
 
-pub fn filter<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn filter<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -134,7 +134,7 @@ pub fn filter<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_it
     }
 }
 
-pub fn fold_left<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn fold_left<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -144,7 +144,7 @@ pub fn fold_left<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context
     }
 }
 
-pub fn fold_right<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn fold_right<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -154,7 +154,7 @@ pub fn fold_right<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _contex
     }
 }
 
-pub fn for_each_pair<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn for_each_pair<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -164,7 +164,7 @@ pub fn for_each_pair<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _con
     }
 }
 
-pub fn sort<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn sort<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()
@@ -174,7 +174,7 @@ pub fn sort<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item
     }
 }
 
-pub fn flatten<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn flatten<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Array(array), item] => {
             todo!()

@@ -1,17 +1,17 @@
-use crate::eval::{Object, Type, EvalResult};
+use crate::eval::{Object, Type, EvalResult, DynamicContext};
 use crate::eval::Environment;
 
 use bigdecimal::Zero;
 
-pub fn fn_true<'a>(env: Box<Environment<'a>>, _arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn fn_true<'a>(env: Box<Environment<'a>>, _arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     Ok((env, Object::Atomic(Type::Boolean(true))))
 }
 
-pub fn fn_false<'a>(env: Box<Environment<'a>>, _arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn fn_false<'a>(env: Box<Environment<'a>>, _arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     Ok((env, Object::Atomic(Type::Boolean(false))))
 }
 
-pub fn fn_not<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn fn_not<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     let result = match arguments.as_slice() {
         [object] => {
             !object_to_bool(object)
@@ -22,7 +22,7 @@ pub fn fn_not<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_it
     Ok((env, Object::Atomic(Type::Boolean(result))))
 }
 
-pub fn fn_boolean<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn fn_boolean<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     let item = arguments.get(0).unwrap();
 
     let flag = object_to_bool(item);

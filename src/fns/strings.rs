@@ -1,11 +1,11 @@
-use crate::eval::{Object, Type, EvalResult};
+use crate::eval::{Object, Type, EvalResult, DynamicContext};
 use crate::eval::Environment;
 use crate::serialization::object_to_string;
 
-pub fn fn_string<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn fn_string<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
 
     let item = if arguments.len() == 0 {
-        context_item
+        &context.item
     } else {
         arguments.get(0).unwrap()
     };
@@ -15,7 +15,7 @@ pub fn fn_string<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_
     Ok((env, Object::Atomic(Type::String(str))))
 }
 
-pub fn fn_upper_case<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn fn_upper_case<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
 
     // TODO empty sequence return empty string
     let item = arguments.get(0).unwrap();
@@ -25,7 +25,7 @@ pub fn fn_upper_case<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _con
     Ok((env, Object::Atomic(Type::String(str.to_uppercase()))))
 }
 
-pub fn fn_lower_case<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn fn_lower_case<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
 
     // TODO empty sequence return empty string
     let item = arguments.get(0).unwrap();
@@ -35,7 +35,7 @@ pub fn fn_lower_case<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _con
     Ok((env, Object::Atomic(Type::String(str.to_lowercase()))))
 }
 
-pub fn fn_concat<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn fn_concat<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     let str = arguments.iter()
         .map(|item| object_to_string(item))
         .collect();
@@ -43,7 +43,7 @@ pub fn fn_concat<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context
     Ok((env, Object::Atomic(Type::String(str))))
 }
 
-pub fn fn_string_join<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn fn_string_join<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
 
     if arguments.len() != 1 {
         panic!("got {:?} arguments, but expected 1", arguments.len(), )
@@ -55,10 +55,10 @@ pub fn fn_string_join<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _co
     Ok((env, Object::Atomic(Type::String(str))))
 }
 
-pub fn fn_string_length<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn fn_string_length<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
 
     let item = if arguments.len() == 0 {
-        context_item
+        &context.item
     } else {
         arguments.get(0).unwrap()
     };
@@ -70,7 +70,7 @@ pub fn fn_string_length<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, c
     Ok((env, Object::Atomic(Type::Integer(str.len() as i128))))
 }
 
-pub fn fn_string_to_codepoints<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn fn_string_to_codepoints<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
 
     let result = match arguments.as_slice() {
         [Object::Empty] => Object::Empty,
@@ -90,7 +90,7 @@ pub fn fn_string_to_codepoints<'a>(env: Box<Environment<'a>>, arguments: Vec<Obj
 }
 
 
-pub fn object_to_array(object: Object) -> Vec<Object> {
+pub(crate) fn object_to_array(object: Object) -> Vec<Object> {
     match object {
         Object::Array(array) => array,
         _ => panic!("TODO object_to_array {:?}", object)

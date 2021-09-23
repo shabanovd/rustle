@@ -57,7 +57,7 @@ impl<'a> Namespaces<'a> {
         self.prefixes.insert(&ns.prefix, ns);
     }
 
-    pub fn by_prefix(&self, prefix: String) -> Option<&Namespace> {
-        self.prefixes.get(prefix.as_str())
+    pub fn by_prefix(&self, prefix: &str) -> Option<&Namespace> {
+        self.prefixes.get(prefix)
     }
 }

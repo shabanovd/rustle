@@ -1,14 +1,14 @@
-use crate::eval::{Object, Type, EvalResult};
+use crate::eval::{Object, Type, EvalResult, DynamicContext};
 use crate::eval::Environment;
 
 use crate::serialization::object_to_string;
 use crate::parser::errors::ErrorCode;
 
-pub fn fn_resolve_qname<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn fn_resolve_qname<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     todo!()
 }
 
-pub fn fn_qname<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn fn_qname<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     let url = arguments.get(0).unwrap();
     let qname = arguments.get(1).unwrap();
 

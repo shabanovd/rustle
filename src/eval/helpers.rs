@@ -47,6 +47,33 @@ pub(crate) fn join_sequences(result: &mut Vec<Object>, seq: Vec<Object>) {
     }
 }
 
+pub(crate) fn insert_vec_into_sequences(result: &mut Vec<Object>, seq: Vec<Object>) {
+    // space allocation
+    result.reserve(seq.len());
+
+    for item in seq {
+        match item {
+            Object::Nothing |
+            Object::Empty => {},
+            Object::Sequence(items) => {
+                insert_vec_into_sequences(result, items)
+            },
+            _ => result.push(item)
+        }
+    }
+}
+
+pub(crate) fn insert_into_sequences(result: &mut Vec<Object>, item: Object) {
+    match item {
+        Object::Nothing |
+        Object::Empty => {},
+        Object::Sequence(items) => {
+            insert_vec_into_sequences(result, items)
+        },
+        _ => result.push(item)
+    }
+}
+
 pub(crate) fn relax_sequences(result: &mut Vec<Object>, seq: Vec<Object>) {
     // space allocation
     result.reserve(seq.len());
@@ -64,6 +91,8 @@ pub(crate) fn relax_sequences(result: &mut Vec<Object>, seq: Vec<Object>) {
 }
 
 pub fn sort_and_dedup(seq: &mut Vec<Object>) {
+    println!("sort_and_dedup before {:?}", seq);
     seq.sort();
     seq.dedup();
+    println!("sort_and_dedup after {:?}", seq);
 }

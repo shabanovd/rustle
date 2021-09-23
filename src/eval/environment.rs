@@ -28,11 +28,11 @@ impl<'a> Environment<'a> {
         self.sequence as isize
     }
 
-    pub fn set(&mut self, key: QNameResolved, value: Object) {
-        self.vars.insert(key, value);
+    pub fn set(&mut self, name: QNameResolved, value: Object) {
+        self.vars.insert(name, value);
     }
 
-    pub fn get(&self, key: &QNameResolved) -> Option<Object> {
-        self.vars.get(key).map(|val| val.clone())
+    pub fn get(&self, name: &QNameResolved) -> Option<Object> {
+        self.vars.get(name).map(|val| val.clone())
     }
 }

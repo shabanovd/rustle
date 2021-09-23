@@ -1,9 +1,11 @@
-use crate::eval::{Object, Type, EvalResult};
+use crate::eval::{Object, Type, EvalResult, DynamicContext};
 use crate::eval::Environment;
 use math::round::half_to_even;
 use bigdecimal::num_traits::float::FloatCore;
+use bigdecimal::{BigDecimal, Signed};
+use bigdecimal::num_bigint::BigInt;
 
-pub fn fn_abs<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn fn_abs<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
 
     match arguments.as_slice() {
         [Object::Atomic(Type::Integer(number))] => {
@@ -22,7 +24,7 @@ pub fn fn_abs<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_it
     }
 }
 
-pub fn fn_floor<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn fn_floor<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Atomic(Type::Integer(number))] => {
             Ok((env, Object::Atomic(Type::Integer(*number))))
@@ -40,7 +42,7 @@ pub fn fn_floor<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_
     }
 }
 
-pub fn fn_round<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn fn_round<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Atomic(Type::Integer(number))] => {
             Ok((env, Object::Atomic(Type::Integer(*number))))
@@ -58,7 +60,7 @@ pub fn fn_round<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_
     }
 }
 
-pub fn fn_round_half_to_even<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn fn_round_half_to_even<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
 
     println!("arguments: {:?}", arguments);
     // TODO precision parameter
@@ -79,8 +81,8 @@ pub fn fn_round_half_to_even<'a>(env: Box<Environment<'a>>, arguments: Vec<Objec
             Ok((env, Object::Atomic(Type::Integer(*number))))
         },
         [Object::Atomic(Type::Decimal(number)), Object::Atomic(Type::Integer(precision))] => {
-            println!("{:?} {:?}", precision, number.round(*precision as i64));
-            Ok((env, Object::Atomic(Type::Decimal(number.round(*precision as i64)))))
+            println!("{:?} {:?}", precision, round(number, *precision as i64));
+            Ok((env, Object::Atomic(Type::Decimal(round(number,*precision as i64)))))
         },
         [Object::Atomic(Type::Float(number)), Object::Atomic(Type::Integer(precision))] => {
             Ok((env, Object::Atomic(Type::Float(
@@ -93,5 +95,30 @@ pub fn fn_round_half_to_even<'a>(env: Box<Environment<'a>>, arguments: Vec<Objec
             ))))
         },
         _ => panic!("error")
+    }
+}
+
+pub fn round(this: &BigDecimal, round_digits: i64) -> BigDecimal {
+    let (bigint, decimal_part_digits) = this.as_bigint_and_exponent();
+    let need_to_round_digits = decimal_part_digits - round_digits;
+    if round_digits >= 0 && need_to_round_digits <= 0 {
+        return this.clone();
+    }
+
+    let mut number = bigint.clone(); //.to_i128().unwrap();
+    if number < BigInt::from(0) {
+        number = -number;
+    }
+    for _ in 0..(need_to_round_digits - 1) {
+        number /= 10;
+    }
+    let digit = number % 10;
+
+    if digit <= BigInt::from(4) {
+        this.with_scale(round_digits)
+    } else if bigint.is_negative() {
+        this.with_scale(round_digits) - BigDecimal::new(BigInt::from(1), round_digits)
+    } else {
+        this.with_scale(round_digits) + BigDecimal::new(BigInt::from(1), round_digits)
     }
 }

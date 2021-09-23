@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::eval::{Object, Type, eval_expr, EvalResult};
+use crate::eval::{Object, Type, eval_expr, EvalResult, DynamicContext};
 use crate::eval::Environment;
 use crate::namespaces::*;
 use crate::parser::op::Expr;
@@ -22,7 +22,7 @@ pub use crate::fns::boolean::object_to_bool;
 
 use crate::parser::errors::ErrorCode;
 
-pub type FUNCTION<'a> = fn(Box<Environment<'a>>, Vec<Object>, &Object) -> EvalResult<'a>;
+pub type FUNCTION<'a> = fn(Box<Environment<'a>>, Vec<Object>, &DynamicContext) -> EvalResult<'a>;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Function {
@@ -51,7 +51,7 @@ pub struct FunctionsRegister<'a> {
 }
 
 impl<'a> FunctionsRegister<'a> {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let mut instance = FunctionsRegister {
             functions: HashMap::new(),
             declared: HashMap::new(),
@@ -127,6 +127,8 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(XPATH_FUNCTIONS.url, "day-from-date", 1, datetime::fn_day_from_date);
         instance.register(XPATH_FUNCTIONS.url, "days-from-duration", 1, datetime::fn_days_from_duration);
 
+        instance.register(XPATH_FUNCTIONS.url, "timezone-from-time", 1, datetime::fn_timezone_from_time);
+
         instance.register(XPATH_FUNCTIONS.url, "for-each", 2, fun::for_each);
         instance.register(XPATH_FUNCTIONS.url, "filter", 2, fun::filter);
         instance.register(XPATH_FUNCTIONS.url, "fold-left", 3, fun::fold_left);
@@ -149,6 +151,7 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(XPATH_FUNCTIONS.url, "floor", 1, math::fn_floor);
         instance.register(XPATH_FUNCTIONS.url, "round", 1, math::fn_round);
         instance.register(XPATH_FUNCTIONS.url, "round-half-to-even", 1, math::fn_round_half_to_even);
+        instance.register(XPATH_FUNCTIONS.url, "round-half-to-even", 2, math::fn_round_half_to_even);
 
         instance.register(XPATH_FUNCTIONS.url, "boolean", 1, boolean::fn_boolean);
         instance.register(XPATH_FUNCTIONS.url, "true", 0, boolean::fn_true);
@@ -167,9 +170,13 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(XPATH_FUNCTIONS.url, "lower-case", 1, strings::fn_lower_case);
         instance.register(XPATH_FUNCTIONS.url, "string-to-codepoints", 1, strings::fn_string_to_codepoints);
 
+        instance.register(XPATH_FUNCTIONS.url, "position", 0, sequences::fn_position);
+        instance.register(XPATH_FUNCTIONS.url, "last", 0, sequences::fn_last);
+
         instance.register(XPATH_FUNCTIONS.url, "data", 0, sequences::fn_data);
         instance.register(XPATH_FUNCTIONS.url, "data", 1, sequences::fn_data);
         instance.register(XPATH_FUNCTIONS.url, "empty", 1, sequences::fn_empty);
+        instance.register(XPATH_FUNCTIONS.url, "remove", 2, sequences::fn_remove);
         instance.register(XPATH_FUNCTIONS.url, "reverse", 1, sequences::fn_reverse);
         instance.register(XPATH_FUNCTIONS.url, "subsequence", 2, sequences::fn_subsequence);
         instance.register(XPATH_FUNCTIONS.url, "subsequence", 3, sequences::fn_subsequence);
@@ -179,19 +186,19 @@ impl<'a> FunctionsRegister<'a> {
         instance
     }
 
-    pub fn register(&mut self, url: &str, local_part: &str, arity: usize, fun: FUNCTION<'a>) {
+    pub(crate) fn register(&mut self, url: &str, local_part: &str, arity: usize, fun: FUNCTION<'a>) {
         self.functions.entry(QNameResolved { url: String::from(url), local_part: String::from(local_part) })
             .or_insert_with(HashMap::new)
             .insert(arity,fun);
     }
 
-    pub fn put(&mut self, name: QNameResolved, parameters: Vec<Param>, body: Box<Expr>) {
+    pub(crate) fn put(&mut self, name: QNameResolved, parameters: Vec<Param>, body: Box<Expr>) {
         self.declared.entry(name.clone())
             .or_insert_with(HashMap::new)
             .insert(parameters.len(), Function { name, parameters, body: *body });
     }
 
-    pub fn get(&self, qname: &QNameResolved, arity: usize) -> Option<FUNCTION<'a>> {
+    pub(crate) fn get(&self, qname: &QNameResolved, arity: usize) -> Option<FUNCTION<'a>> {
         if let Some(list) = self.functions.get(qname) {
             if let Some(rf) = list.get(&arity) {
                 Some(*rf)
@@ -203,7 +210,7 @@ impl<'a> FunctionsRegister<'a> {
         }
     }
 
-    pub fn declared(&self, qname: &QNameResolved, arity: usize) -> Option<Function> {
+    pub(crate) fn declared(&self, qname: &QNameResolved, arity: usize) -> Option<Function> {
         // println!("function get {:?} {:?} {:?}", uri, local_part, arity);
         if let Some(list) = self.declared.get(qname) {
             // println!("function list {:?}", list.len());
@@ -217,7 +224,7 @@ impl<'a> FunctionsRegister<'a> {
     }
 }
 
-pub fn expr_to_params(expr: Expr) -> Vec<Param> {
+pub(crate) fn expr_to_params(expr: Expr) -> Vec<Param> {
     match expr {
         Expr::ParamList(exprs) => {
             let mut params = Vec::with_capacity(exprs.len());
@@ -239,7 +246,7 @@ pub fn expr_to_params(expr: Expr) -> Vec<Param> {
     }
 }
 
-pub fn call<'a>(env: Box<Environment<'a>>, name: QNameResolved, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn call<'a>(env: Box<Environment<'a>>, name: QNameResolved, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
     // println!("call: {:?} {:?}", name, arguments);
 
     let fun = env.functions.declared(&name, arguments.len());
@@ -251,10 +258,10 @@ pub fn call<'a>(env: Box<Environment<'a>>, name: QNameResolved, arguments: Vec<O
             .zip(arguments.into_iter())
             .for_each(
                 |(parameter, argument)|
-                    fn_env.set(resolve_element_qname(parameter.name, &env), argument.clone())
+                    fn_env.set(resolve_element_qname(&parameter.name, &env), argument.clone())
             );
 
-        let (_, result) = eval_expr(fun.body.clone(), Box::new(fn_env), context_item)?;
+        let (_, result) = eval_expr(fun.body.clone(), Box::new(fn_env), context)?;
 
         Ok((env, result))
 
@@ -262,7 +269,7 @@ pub fn call<'a>(env: Box<Environment<'a>>, name: QNameResolved, arguments: Vec<O
         let fun: Option<FUNCTION> = env.functions.get(&name, arguments.len());
 
         if fun.is_some() {
-            fun.unwrap()(env, arguments, context_item)
+            fun.unwrap()(env, arguments, context)
         } else {
             Err((ErrorCode::XPST0017, format!("no function {:?}#{:?}", name, arguments.len())))
         }

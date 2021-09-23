@@ -14,13 +14,19 @@ use crate::parser::parse_xml::parse_node_constructor;
 use crate::parser::parse_names::{parse_eqname, parse_ncname};
 use crate::parser::op::{Expr, found_expr, Statement, found_exprs, ItemType, OccurrenceIndicator, OperatorComparison, OperatorArithmetic};
 use nom::sequence::{preceded, delimited};
+use crate::parser::op::OccurrenceIndicator::ZeroOrOne;
 
 const DEBUG: bool = false;
+
+enum Binding {
+    For,
+    Let,
+}
 
 // TODO [2]    	VersionDecl 	   ::=    	"xquery" (("encoding" StringLiteral) | ("version" StringLiteral ("encoding" StringLiteral)?)) Separator
 
 // [3]    	MainModule 	   ::=    	Prolog QueryBody
-pub fn parse_main_module(input: &str) -> IResult<&str, Vec<Statement>, CustomError<&str>> {
+pub(crate) fn parse_main_module(input: &str) -> IResult<&str, Vec<Statement>, CustomError<&str>> {
     let (input, _) = ws(input)?;
     let (input, prolog) = parse_prolog(input)?;
 
@@ -34,7 +40,7 @@ pub fn parse_main_module(input: &str) -> IResult<&str, Vec<Statement>, CustomErr
 // TODO: ((DefaultNamespaceDecl | Setter | NamespaceDecl | Import) Separator)*
 // TODO: ((ContextItemDecl | AnnotatedDecl | OptionDecl) Separator)*
 // [7]    	Separator 	   ::=    	";"
-pub fn parse_prolog(input: &str) -> IResult<&str, Vec<Expr>, CustomError<&str>> {
+pub(crate) fn parse_prolog(input: &str) -> IResult<&str, Vec<Expr>, CustomError<&str>> {
 
     let mut prolog = vec![];
 
@@ -56,7 +62,7 @@ pub fn parse_prolog(input: &str) -> IResult<&str, Vec<Expr>, CustomError<&str>> 
 }
 
 // [26]    	AnnotatedDecl 	   ::=    	"declare" Annotation* (VarDecl | FunctionDecl)
-pub fn parse_annotated_decl(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
+pub(crate) fn parse_annotated_decl(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
 
     let (input, _) = ws_tag("declare", input)?;
     let mut current_input = input;
@@ -89,7 +95,7 @@ pub fn parse_annotated_decl(input: &str) -> IResult<&str, Expr, CustomError<&str
 }
 
 // [27]    	Annotation 	   ::=    	"%" EQName ("(" Literal ("," Literal)* ")")?
-pub fn parse_annotation(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
+pub(crate) fn parse_annotation(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
 
     let (input, _) = ws_tag("%", input)?;
 
@@ -108,7 +114,7 @@ parse_surroundings!(parse_annotation_value, "(", ",", ")", parse_literal, Litera
 
 // [28]    	VarDecl 	   ::=    	"variable" "$" VarName TypeDeclaration? ((":=" VarValue) | ("external" (":=" VarDefaultValue)?))
 // [132]    	VarName 	   ::=    	EQName
-pub fn parse_var_decl(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
+pub(crate) fn parse_var_decl(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
     let (input, _) = ws_tag("variable", input)?;
 
     let (input, _) = ws_tag("$", input)?;
@@ -1290,12 +1296,15 @@ fn parse_single_type(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
     let (input, name) = parse_eqname(input)?;
 
     let check = tag("?")(input);
-    if check.is_ok() {
+    let (input, oi) = if check.is_ok() {
         let (input, _) = check?;
 
-        todo!()
-    }
-    todo!()
+        (input, OccurrenceIndicator::ZeroOrOne)
+    } else {
+        (input, OccurrenceIndicator::ExactlyOne)
+    };
+
+    Ok((input, Expr::SequenceType { item_type: ItemType::AtomicOrUnionType(name), occurrence_indicator: oi }))
 }
 
 // [183]    	TypeDeclaration 	   ::=    	"as" SequenceType

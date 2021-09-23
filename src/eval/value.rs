@@ -19,7 +19,7 @@ pub enum Type {
     Untyped(String),
 
     DateTime(DateTime<FixedOffset>),
-    dateTimeStamp(),
+    DateTimeStamp(),
 
     Date(Date<FixedOffset>),
     Time(Time<FixedOffset>),
@@ -88,8 +88,8 @@ impl Ord for Time<FixedOffset> {
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub struct Time<Tz: TimeZone> {
-    time: NaiveTime,
-    offset: Tz::Offset,
+    pub time: NaiveTime,
+    pub offset: Tz::Offset,
 }
 
 impl Time<FixedOffset> {
@@ -133,6 +133,12 @@ impl Time<FixedOffset> {
 pub(crate) fn type_to_int(t: Type) -> i128 {
     match t {
         Type::Integer(num) => num,
+        Type::Untyped(num) => {
+            match num.parse() {
+                Ok(v) => v,
+                Err(..) => panic!("can't convert to int {:?}", num)
+            }
+        },
         _ => panic!("can't convert to int {:?}", t)
     }
 }
@@ -256,7 +262,7 @@ impl fmt::Debug for Node {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Object {
     // workaround
-    ForBinding { name: QNameResolved, values: Box<Object> },
+    ForBinding { name: QNameResolved, values: Box<Object>, body: Box<Expr> },
     Range { min: i128, max: i128 },
 
     Error { code: String },

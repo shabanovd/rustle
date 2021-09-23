@@ -1,4 +1,4 @@
-use crate::eval::{Object, eval_expr, object_to_iterator, EvalResult};
+use crate::eval::{Object, eval_expr, object_to_iterator, EvalResult, DynamicContext};
 use crate::eval::Environment;
 
 use crate::values::resolve_element_qname;
@@ -6,7 +6,7 @@ use crate::fns::call;
 use crate::fns::strings::object_to_array;
 use crate::parser::errors::ErrorCode;
 
-pub fn for_each<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn for_each<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Function { parameters, body }, Object::Array(arguments)] => {
             todo!()
@@ -15,7 +15,7 @@ pub fn for_each<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_
     }
 }
 
-pub fn filter<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn filter<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Function { parameters, body }, Object::Array(arguments)] => {
             todo!()
@@ -24,7 +24,7 @@ pub fn filter<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_it
     }
 }
 
-pub fn fold_left<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn fold_left<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
     match arguments.as_slice() {
         [seq, Object::Array(array), Object::FunctionRef { name, arity }] => {
             let mut result = array.clone();
@@ -34,7 +34,7 @@ pub fn fold_left<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_
             let it = object_to_iterator(seq);
             for item in it {
                 let arguments = vec![Object::Array(result), item.clone()];
-                let (new_env, obj) = call(current_env, name.clone(), arguments, context_item)?;
+                let (new_env, obj) = call(current_env, name.clone(), arguments, context)?;
                 current_env = new_env;
 
                 result = object_to_array(obj);
@@ -50,9 +50,7 @@ pub fn fold_left<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_
     }
 }
 
-pub fn fold_right<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
-    println!("arguments {:?}", arguments);
-
+pub(crate) fn fold_right<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Function { parameters, body }, Object::Array(arguments)] => {
             todo!()
@@ -61,9 +59,7 @@ pub fn fold_right<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _contex
     }
 }
 
-pub fn for_each_pair<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
-    println!("arguments {:?}", arguments);
-
+pub(crate) fn for_each_pair<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Function { parameters, body }, Object::Array(arguments)] => {
             todo!()
@@ -72,9 +68,7 @@ pub fn for_each_pair<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _con
     }
 }
 
-pub fn sort<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
-    println!("arguments {:?}", arguments);
-
+pub(crate) fn sort<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     match arguments.as_slice() {
         [Object::Function { parameters, body }, Object::Array(arguments)] => {
             todo!()
@@ -83,7 +77,7 @@ pub fn sort<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item
     }
 }
 
-pub fn apply<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn apply<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
 
     let mut current_env = env;
 
@@ -95,12 +89,12 @@ pub fn apply<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item
             let mut function_environment = Environment::new();
             for (parameter, argument) in parameters.into_iter().zip(arguments.into_iter()) {
 
-                let name = resolve_element_qname(parameter.name.clone(), &current_env);
+                let name = resolve_element_qname(&parameter.name, &current_env);
 
                 function_environment.set(name, argument.clone());
             }
 
-            let (_, result) = eval_expr(*body.clone(), Box::new(function_environment), &Object::Nothing)?;
+            let (_, result) = eval_expr(*body.clone(), Box::new(function_environment), &DynamicContext::nothing())?;
 
             Ok((current_env, result))
         },
@@ -108,7 +102,7 @@ pub fn apply<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item
             let fun = current_env.functions.get(&name, *arity);
 
             return if fun.is_some() {
-                fun.unwrap()(current_env, arguments.clone(), context_item)
+                fun.unwrap()(current_env, arguments.clone(), context)
             } else {
                 panic!("no function {:?}#{:?}", name, arity)
             }
@@ -117,7 +111,7 @@ pub fn apply<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context_item
     }
 }
 
-pub fn error<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context_item: &Object) -> EvalResult<'a> {
+pub(crate) fn error<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     match arguments.as_slice() {
         [] => {
             Err((ErrorCode::FOER0000, String::new()))
