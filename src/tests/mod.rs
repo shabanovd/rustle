@@ -21,7 +21,7 @@ pub(crate) fn eval(input: &str) -> Result<Object, String> {
     if parsed.is_ok() {
         let program = parsed.unwrap();
 
-        println!("{:#?}", program);
+        // println!("{:#?}", program);
 
         let env = Environment::new();
         let check = eval_statements(program, Box::new(env));
@@ -33,14 +33,14 @@ pub(crate) fn eval(input: &str) -> Result<Object, String> {
             }
         }
     } else {
-        println!("error: {:#?}", parsed);
+        // println!("error: {:#?}", parsed);
 
         let msg = match parsed {
             Err(error) => {
                 let code = error.as_ref();
                 String::from(code)
             }
-            _ => format!("error {:?}", parsed)
+            _ => "err".to_string() // format!("error {:?}", parsed)
         };
         Err(msg)
     }
@@ -80,7 +80,8 @@ fn eval_assert(result: &Result<Object, String>, check: &str) -> Object {
             }
         }
     } else {
-        panic!("error {:?}", parsed);
+        //panic!("error {:?}", parsed);
+        panic!("error")
     }
 }
 

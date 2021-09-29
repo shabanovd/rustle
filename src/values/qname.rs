@@ -1,7 +1,8 @@
 use core::fmt;
-use crate::eval::Environment;
+use crate::eval::{Environment, DynamicContext, EvalResult, Object, Type};
 use crate::namespaces::SCHEMA;
 use std::cmp::Ordering;
+use crate::eval::expression::Expression;
 
 lazy_static! {
     pub static ref XS_STRING: QName = QName::full("xs", "string", SCHEMA.url);
@@ -108,6 +109,16 @@ impl QName {
         }
         str.push_str(self.local_part.as_str());
         str
+    }
+}
+
+impl Expression for QName {
+    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+        Ok((env, Object::Atomic( Type::QName { local_part: self.local_part.clone(), url: self.url.clone(), prefix: self.prefix.clone() } ) ))
+    }
+
+    fn debug(&self) -> String {
+        todo!()
     }
 }
 

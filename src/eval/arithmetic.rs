@@ -814,16 +814,17 @@ struct VDateTime {
 struct VDuration {
 }
 
+// TODO: delete
 pub fn object_to_items(object: &Object) -> Vec<Object> {
     match object {
-        Object::ForBinding { values, ..} => {
-            object_to_iterator(values)
-        },
+        // Object::ForBinding { values, ..} => {
+        //     object_to_iterator(values)
+        // },
         _ => vec![object.clone()]
     }
 }
 
-pub fn eval_arithmetic(env: Box<Environment>, operator: OperatorArithmetic, left: Object, right: Object) -> EvalResult {
+pub fn eval_arithmetic<'a>(env: Box<Environment<'a>>, operator: OperatorArithmetic, left: Object, right: Object) -> EvalResult<'a> {
 
     let mut current_env = env;
     let mut result = vec![];
@@ -834,7 +835,7 @@ pub fn eval_arithmetic(env: Box<Environment>, operator: OperatorArithmetic, left
         let it_right = object_to_items(&right);
         for r in it_right {
 
-            let (new_env, value) = eval_arithmetic_item(current_env, operator.clone(), l.clone(), r.clone())?;
+            let (new_env, value) = eval_arithmetic_item(current_env, operator.clone(), l.clone(), r)?;
             current_env = new_env;
 
             result.push(value);
@@ -844,7 +845,7 @@ pub fn eval_arithmetic(env: Box<Environment>, operator: OperatorArithmetic, left
     relax(current_env, result)
 }
 
-pub fn eval_arithmetic_item(env: Box<Environment>, operator: OperatorArithmetic, left: Object, right: Object) -> EvalResult {
+pub fn eval_arithmetic_item<'a>(env: Box<Environment<'a>>, operator: OperatorArithmetic, left: Object, right: Object) -> EvalResult<'a> {
     let left = match atomization(left) {
         Ok(v) => v,
         Err(e) => return Err((e, String::from("TODO")))

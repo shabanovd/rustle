@@ -1,4 +1,4 @@
-use crate::eval::{Object, Type, EvalResult, typed_value_of_node, DynamicContext};
+use crate::eval::{Object, Type, typed_value_of_node, DynamicContext, EvalResult};
 use crate::eval::Environment;
 
 use crate::eval::helpers::relax;

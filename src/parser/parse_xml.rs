@@ -1,6 +1,6 @@
 use crate::parse_one_of;
 
-use crate::parser::op::{Expr, Representation, found_expr};
+use crate::parser::op::{Representation, found_expr, found_exprs};
 use crate::parser::errors::{CustomError, IResultExt};
 use crate::parser::parse_literal::{is_digits, is_0_9a_f};
 
@@ -13,14 +13,16 @@ use nom::{
 };
 
 use crate::parser::helper::{ws, ws_tag_ws};
-use crate::parser::parse_names::{parse_ncname, parse_qname_expr};
+use crate::parser::parse_names::{parse_ncname, parse_qname, parse_qname_expr};
 use crate::parser::parse_expr::{parse_enclosed_expr, parse_expr};
 use nom::error::ParseError;
+use crate::eval::prolog::*;
+use crate::eval::expression::Expression;
 
 const DEBUG: bool = false;
 
 // [140]    	NodeConstructor 	   ::=    	DirectConstructor | ComputedConstructor
-parse_one_of!(parse_node_constructor, Expr,
+parse_one_of!(parse_node_constructor,
     parse_direct_constructor, parse_computed_constructor,
 );
 
@@ -31,7 +33,7 @@ parse_one_of!(parse_node_constructor, Expr,
 // [150]    	DirCommentContents 	   ::=    	((Char - '-') | ('-' (Char - '-')))* // ws: explicit
 // [151]    	DirPIConstructor 	   ::=    	"<?" PITarget (S DirPIContents)? "?>" // ws: explicit
 // [152]    	DirPIContents 	   ::=    	(Char* - (Char* '?>' Char*)) // ws: explicit
-pub(crate) fn parse_direct_constructor(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
+pub(crate) fn parse_direct_constructor(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
     if DEBUG {
         println!("parse_direct_constructor {:?}", input);
     }
@@ -48,10 +50,10 @@ pub(crate) fn parse_direct_constructor(input: &str) -> IResult<&str, Expr, Custo
 
         //TODO: raise error if content end by '-'
 
-        return Ok((
+        return found_expr(
             input,
-            Expr::NodeComment(Box::new(Expr::String(String::from(content))))
-        ))
+            Box::new(NodeComment::from(content))
+        );
     }
 
     // DirPIConstructor
@@ -67,12 +69,9 @@ pub(crate) fn parse_direct_constructor(input: &str) -> IResult<&str, Expr, Custo
 
         let input = tag("?>")(input)?.0;
 
-        let content = Expr::String(String::from(content));
+        let content = Box::new(StringExpr::from(content));
 
-        return Ok((
-            input,
-            Expr::NodePI { target: Box::new(target), content: Box::new(content) }
-        ))
+        return found_expr(input, Box::new(NodePI { target, content }))
     }
 
     // DirElemConstructor
@@ -94,10 +93,6 @@ pub(crate) fn parse_direct_constructor(input: &str) -> IResult<&str, Expr, Custo
     } else {
         current_input = tag(">")(current_input)?.0;
         loop {
-            if DEBUG {
-                println!("parse_direct_constructor check_for_close {:?} {:?}", tag_name, current_input);
-            }
-
             let check_for_close = tag("</")(current_input);
             if check_for_close.is_ok() {
                 let (_,_) = check_for_close?;
@@ -118,10 +113,6 @@ pub(crate) fn parse_direct_constructor(input: &str) -> IResult<&str, Expr, Custo
                 _ => break
             }
         }
-        if DEBUG {
-            println!("parse_direct_constructor close tag {:?} {:?}", tag_name, current_input);
-        }
-
         current_input = tag("</")(current_input)?.0;
 
         let (input, close_tag_name) = parse_qname_expr(current_input)?;
@@ -129,29 +120,14 @@ pub(crate) fn parse_direct_constructor(input: &str) -> IResult<&str, Expr, Custo
         current_input = ws(input)?.0;
 
         current_input = tag(">")(current_input)?.0;
-
-        if tag_name != close_tag_name {
-            panic!("close tag '{:?}' do not match open one '{:?}'", close_tag_name, tag_name); // TODO: better error
-        }
     };
 
-    if DEBUG {
-        println!("parse_direct_constructor return {:?}", current_input);
-    }
-
-    Ok((
-        current_input,
-        Expr::NodeElement { name: Box::new(tag_name), attributes, children }
-    ))
+    found_expr(current_input, Box::new(NodeElement { name: tag_name, attributes, children }))
 }
 
 // [143]    	DirAttributeList 	   ::=    	(S (QName S? "=" S? DirAttributeValue)?)* // ws: explicit
-pub(crate) fn parse_attribute_list(input: &str) -> IResult<&str, Vec<Expr>, CustomError<&str>> {
-    if DEBUG {
-        println!("parse_attribute_list {:?}", input);
-    }
-
-    let mut attributes = Vec::new();
+pub(crate) fn parse_attribute_list(input: &str) -> IResult<&str, Vec<Box<dyn Expression>>, CustomError<&str>> {
+    let mut attributes: Vec<Box<dyn Expression>> = Vec::new();
 
     let mut current_input = input;
 
@@ -171,16 +147,13 @@ pub(crate) fn parse_attribute_list(input: &str) -> IResult<&str, Vec<Expr>, Cust
             let (input, value) = parse_dir_attribute_value(input)?;
             current_input = input;
 
-            attributes.push(Expr::NodeAttribute { name: Box::new(name), value: Box::new(value) })
+            attributes.push(Box::new(NodeAttribute { name, value }));
         } else {
             break;
         }
     }
 
-    Ok((
-        current_input,
-        attributes
-    ))
+    found_exprs(current_input, attributes)
 }
 
 // [144]    	DirAttributeValue 	   ::=    	('"' (EscapeQuot | QuotAttrValueContent)* '"') | ("'" (EscapeApos | AposAttrValueContent)* "'") // ws: explicit
@@ -188,11 +161,11 @@ pub(crate) fn parse_attribute_list(input: &str) -> IResult<&str, Vec<Expr>, Cust
 // [146]    	AposAttrValueContent 	   ::=    	AposAttrContentChar | CommonContent
 // [229]    	QuotAttrContentChar 	   ::=    	(Char - ["{}<&])
 // [230]    	AposAttrContentChar 	   ::=    	(Char - ['{}<&])
-pub(crate) fn parse_dir_attribute_value(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
+pub(crate) fn parse_dir_attribute_value(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
     let (input, open) = alt((tag("\""), tag("'")))(input)?;
     let except = if open == "'" { "'{}<&" } else { "\"{}<&" };
 
-    let mut data = vec![];
+    let mut data: Vec<Box<dyn Expression>> = vec![];
     let mut current_input = input;
 
     loop {
@@ -201,7 +174,7 @@ pub(crate) fn parse_dir_attribute_value(input: &str) -> IResult<&str, Expr, Cust
         current_input = input;
 
         if string.len() > 0 {
-            data.push(Expr::String(String::from(string)));
+            data.push(Box::new(StringExpr::from(string)));
         }
 
         let check = parse_common_content(input);
@@ -221,18 +194,18 @@ pub(crate) fn parse_dir_attribute_value(input: &str) -> IResult<&str, Expr, Cust
                 current_input = input;
 
                 if open == "'" {
-                    data.push(Expr::EscapeApos);
+                    data.push(Box::new(EscapeApos{}));
                 } else {
-                    data.push(Expr::EscapeQuot);
+                    data.push(Box::new(EscapeQuot{}));
                 }
             } else {
                 return if data.len() == 0 {
-                    Ok((current_input, Expr::String(String::new())))
+                    found_expr(current_input, StringExpr::empty())
                 } else if data.len() == 1 {
                     let expr = data.remove(0);
                     Ok((current_input, expr))
                 } else {
-                    Ok((current_input, Expr::StringComplex(data)))
+                    found_expr(current_input, StringComplex::new(data))
                 }
             }
         }
@@ -240,31 +213,31 @@ pub(crate) fn parse_dir_attribute_value(input: &str) -> IResult<&str, Expr, Cust
 }
 
 // [147]    	DirElemContent 	   ::=    	DirectConstructor | CDataSection | CommonContent | ElementContentChar
-parse_one_of!(parse_dir_elem_content, Expr,
+parse_one_of!(parse_dir_elem_content,
     parse_direct_constructor, parse_cdata_section, parse_common_content, parse_element_content_char,
 );
 
 // [148]    	CommonContent 	   ::=    	PredefinedEntityRef | CharRef | "{{" | "}}" | EnclosedExpr
-parse_one_of!(parse_common_content, Expr,
+parse_one_of!(parse_common_content,
     parse_predefined_entity_ref, parse_char_ref, parse_curly_brackets, parse_enclosed_expr,
 );
 
-pub(crate) fn parse_curly_brackets(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
+pub(crate) fn parse_curly_brackets(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
     let (input, char) = alt((tag("{{"), tag("}}")))(input)?;
 
-    found_expr(input, Expr::String(String::from(char)))
+    found_expr(input, Box::new(StringExpr::from(char)))
 }
 
 // [153]    	CDataSection 	   ::=    	"<![CDATA[" CDataSectionContents "]]>" // ws: explicit
 // [154]    	CDataSectionContents 	   ::=    	(Char* - (Char* ']]>' Char*)) // ws: explicit
-pub(crate) fn parse_cdata_section(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
+pub(crate) fn parse_cdata_section(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
     let (input, _) = tag("<![CDATA[")(input)?;
 
     let (input, content) = take_until("]]>")(input)?;
 
     let (input, _) = tag("]]>")(input)?;
 
-    found_expr(input, Expr::NodeComment(Box::new(Expr::String(String::from(content)))))
+    found_expr(input, Box::new(NodeComment::from(content)))
 }
 
 // [155]    	ComputedConstructor 	   ::=    	CompDocConstructor
@@ -285,7 +258,7 @@ pub(crate) fn parse_cdata_section(input: &str) -> IResult<&str, Expr, CustomErro
 // [164]    	CompTextConstructor 	   ::=    	"text" EnclosedExpr
 // [165]    	CompCommentConstructor 	   ::=    	"comment" EnclosedExpr
 // [166]    	CompPIConstructor 	   ::=    	"processing-instruction" (NCName | ("{" Expr "}")) EnclosedExpr
-pub(crate) fn parse_computed_constructor(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
+pub(crate) fn parse_computed_constructor(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
     let input = ws(input)?.0;
 
     let (input, name) = alt(
@@ -295,15 +268,15 @@ pub(crate) fn parse_computed_constructor(input: &str) -> IResult<&str, Expr, Cus
     let (input, expr) = match name {
         "document" => {
             let (input, expr) = parse_enclosed_expr(input)?;
-            (input, Expr::NodeDocument(Box::new(expr)))
+            (input, NodeDocument::new(expr))
         }
         "text" => {
             let (input, expr) = parse_enclosed_expr(input)?;
-            (input, Expr::NodeText(Box::new(expr)))
+            (input, NodeText::new(expr))
         }
         "comment" => {
             let (input, expr) = parse_enclosed_expr(input)?;
-            (input, Expr::NodeComment(Box::new(expr)))
+            (input, NodeComment::new(expr))
         }
         "element" => {
             let check = parse_qname_expr(input);
@@ -324,7 +297,7 @@ pub(crate) fn parse_computed_constructor(input: &str) -> IResult<&str, Expr, Cus
             let mut children = Vec::with_capacity(1);
             children.push(expr);
 
-            (input, Expr::NodeElement { name: Box::new(name), attributes: vec![], children })
+            (input, NodeElement::new(name, vec![], children))
         }
         "attribute" => {
             let check = parse_qname_expr(input);
@@ -340,9 +313,9 @@ pub(crate) fn parse_computed_constructor(input: &str) -> IResult<&str, Expr, Cus
                 (input, expr)
             };
 
-            let (input, expr) = parse_enclosed_expr(input)?;
+            let (input, value) = parse_enclosed_expr(input)?;
 
-            (input, Expr::NodeAttribute { name: Box::new(name), value: Box::new(expr) })
+            (input, NodeAttribute::new(name, value))
         }
         "namespace" => {
             // "namespace" (Prefix | EnclosedPrefixExpr) EnclosedURIExpr
@@ -351,10 +324,10 @@ pub(crate) fn parse_computed_constructor(input: &str) -> IResult<&str, Expr, Cus
         "processing-instruction" => {
             // "processing-instruction" (NCName | ("{" Expr "}")) EnclosedExpr
             let check = parse_ncname(input);
-            let (input, name) = if check.is_ok() {
+            let (input, target) = if check.is_ok() {
                 let (input, name) = check?;
 
-                (input, Expr::String(name))
+                (input, StringExpr::new(name))
             } else {
                 let (input, _) = tag("{")(input).or_failure(CustomError::XPST0003)?;
 
@@ -365,9 +338,9 @@ pub(crate) fn parse_computed_constructor(input: &str) -> IResult<&str, Expr, Cus
                 (input, expr)
             };
 
-            let (input, expr) = parse_enclosed_expr(input)?;
+            let (input, content) = parse_enclosed_expr(input)?;
 
-            (input, Expr::NodePI { target: Box::new(name), content: Box::new(expr) })
+            (input, NodePI::new(target, content))
         }
         _ => panic!("internal error")
     };
@@ -376,7 +349,7 @@ pub(crate) fn parse_computed_constructor(input: &str) -> IResult<&str, Expr, Cus
 }
 
 // raise error if "nothing" after '&'
-pub(crate) fn parse_refs(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
+pub(crate) fn parse_refs(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
     let must_have: Result<(&str, &str), nom::Err<Error<&str>>> = tag("&")(input);
 
     let check = parse_predefined_entity_ref(input);
@@ -413,7 +386,7 @@ pub(crate) fn parse_refs(input: &str) -> IResult<&str, Expr, CustomError<&str>> 
 // https://www.w3.org/TR/xml/#NT-Char
 // [2]   	Char	   ::=   	#x9 | #xA | #xD | [#x20-#xD7FF] | [#xE000-#xFFFD] | [#x10000-#x10FFFF]
 // /* any Unicode character, excluding the surrogate blocks, FFFE, and FFFF. */
-pub(crate) fn parse_char_ref(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
+pub(crate) fn parse_char_ref(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
     let (input, _) = tag("&#")(input)?;
 
     let check = tag("x")(input);
@@ -443,10 +416,7 @@ pub(crate) fn parse_char_ref(input: &str) -> IResult<&str, Expr, CustomError<&st
             || (reference >= 0xE000 && reference <= 0xFFFD)
             || (reference >= 0x10000 && reference <= 0x10FFFF)
         {
-            Ok((
-                input,
-                Expr::CharRef { representation, reference }
-            ))
+            found_expr(input, Box::new(CharRef { representation, reference }))
         } else {
             Err(nom::Err::Failure(CustomError::XQST0090))
         }
@@ -456,7 +426,7 @@ pub(crate) fn parse_char_ref(input: &str) -> IResult<&str, Expr, CustomError<&st
 }
 
 // [225]    	PredefinedEntityRef 	   ::=    	"&" ("lt" | "gt" | "amp" | "quot" | "apos") ";"
-pub(crate) fn parse_predefined_entity_ref(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
+pub(crate) fn parse_predefined_entity_ref(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
     let (input, _) = tag("&")(input)?;
 
     let (input, name) = alt((
@@ -469,12 +439,12 @@ pub(crate) fn parse_predefined_entity_ref(input: &str) -> IResult<&str, Expr, Cu
 
     let (input, _) = tag(";")(input).or_failure(CustomError::XPST0003)?;
 
-    Ok((input, Expr::EntityRef(String::from(name))))
+    found_expr(input, Box::new(EntityRef::from(name)))
 }
 
 // [228]    	ElementContentChar 	   ::=    	(Char - [{}<&])
-pub(crate) fn parse_element_content_char(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
+pub(crate) fn parse_element_content_char(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
     let (input, content) = is_not("{}<&")(input)?;
 
-    found_expr(input, Expr::NodeText(Box::new(Expr::String(String::from(content)))))
+    found_expr(input, NodeText::new(Box::new(StringExpr::from(content))))
 }

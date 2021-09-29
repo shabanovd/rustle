@@ -1,4 +1,4 @@
-use crate::eval::{Object, Type, EvalResult, DynamicContext};
+use crate::eval::{Object, Type, DynamicContext, EvalResult};
 use crate::eval::Environment;
 
 use bigdecimal::Zero;

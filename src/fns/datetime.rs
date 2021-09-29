@@ -1,4 +1,4 @@
-use crate::eval::{Environment, Object, Type, EvalResult, Time, DynamicContext};
+use crate::eval::{Environment, Object, Type, Time, DynamicContext, EvalResult};
 use chrono::Datelike;
 
 pub(crate) fn fn_day_from_date<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {

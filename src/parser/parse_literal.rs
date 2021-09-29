@@ -1,7 +1,6 @@
 use crate::parse_one_of;
 
 use crate::parser::errors::{CustomError, IResultExt};
-use crate::parser::op::Expr;
 
 use nom::{
     branch::alt,
@@ -15,16 +14,18 @@ use crate::parser::parse_xml::parse_refs;
 use crate::parser::helper::ws;
 use ordered_float::OrderedFloat;
 use bigdecimal::BigDecimal;
+use crate::eval::expression::Expression;
+use crate::eval::prolog::*;
 
 // [129]    	Literal 	   ::=    	NumericLiteral | StringLiteral
-parse_one_of!(parse_literal, Expr,
+parse_one_of!(parse_literal,
     parse_numeric_literal, parse_string_literal,
 );
 
 // [130]    	NumericLiteral 	   ::=    	IntegerLiteral TODO: | DecimalLiteral | DoubleLiteral
 // [220]    	DecimalLiteral 	   ::=    	("." Digits) | (Digits "." [0-9]*)
 // [221]    	DoubleLiteral 	   ::=    	(("." Digits) | (Digits ("." [0-9]*)?)) [eE] [+-]? Digits
-pub(crate) fn parse_numeric_literal(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
+pub(crate) fn parse_numeric_literal(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
     let check = tag(".")(input);
     let (input, b, a) = if check.is_ok() {
         let (input, _) = check?;
@@ -71,7 +72,7 @@ pub(crate) fn parse_numeric_literal(input: &str) -> IResult<&str, Expr, CustomEr
         // double
         match number.as_str().parse::<f64>() {
             Ok(number) => {
-                found_expr(input, Expr::Double(OrderedFloat(number)))
+                found_expr(input, Box::new(Double { number: OrderedFloat(number) }))
             },
             Err(..) => {
                 Err(nom::Err::Failure(CustomError::FOAR0002))
@@ -84,7 +85,7 @@ pub(crate) fn parse_numeric_literal(input: &str) -> IResult<&str, Expr, CustomEr
 
             match number.parse::<i128>() {
                 Ok(number) => {
-                    found_expr(input, Expr::Integer(number))
+                    found_expr(input, Box::new(Integer { number }))
                 },
                 Err(..) => {
                     Err(nom::Err::Failure(CustomError::FOAR0002))
@@ -95,7 +96,7 @@ pub(crate) fn parse_numeric_literal(input: &str) -> IResult<&str, Expr, CustomEr
 
             match number.parse::<BigDecimal>() {
                 Ok(number) => {
-                    found_expr(input, Expr::Decimal(number.normalized()))
+                    found_expr(input, Box::new(Decimal { number: number.normalized() }))
                 },
                 Err(..) => {
                     Err(nom::Err::Failure(CustomError::FOAR0002))
@@ -106,17 +107,14 @@ pub(crate) fn parse_numeric_literal(input: &str) -> IResult<&str, Expr, CustomEr
 }
 
 // [219]    	IntegerLiteral 	   ::=    	Digits
-pub(crate) fn parse_integer_literal(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
+pub(crate) fn parse_integer_literal(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
     let (input, number) = take_while1(is_digits)(input)?;
 
-    Ok((
-        input,
-        Expr::Integer(number.parse::<i128>().unwrap())
-    ))
+    found_expr(input, Box::new(Integer { number: number.parse::<i128>().unwrap() }))
 }
 
 // [222]    	StringLiteral 	   ::=    	('"' (PredefinedEntityRef | CharRef | EscapeQuot | [^"&])* '"') | ("'" (PredefinedEntityRef | CharRef | EscapeApos | [^'&])* "'")
-pub(crate) fn parse_string_literal(input: &str) -> IResult<&str, Expr, CustomError<&str>> {
+pub(crate) fn parse_string_literal(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
     let (input, _) = ws(input)?;
     let (input, open) = alt((tag("\""), tag("'")))(input)?;
     let except = if open == "'" { "'&" } else { "\"&" };
@@ -142,7 +140,7 @@ pub(crate) fn parse_string_literal(input: &str) -> IResult<&str, Expr, CustomErr
         let check = is_not(except)(current_input);
         current_input = if check.is_ok() {
             let (input, content) = check?;
-            data.push(Expr::String(String::from(content)));
+            data.push(Box::new(StringExpr::from(content)));
 
             input
         } else {
@@ -162,18 +160,18 @@ pub(crate) fn parse_string_literal(input: &str) -> IResult<&str, Expr, CustomErr
                 current_input = input;
 
                 if open == "'" {
-                    data.push(Expr::EscapeApos);
+                    data.push(Box::new(EscapeApos{}));
                 } else {
-                    data.push(Expr::EscapeQuot);
+                    data.push(Box::new(EscapeQuot{}));
                 }
             } else {
                 return if data.len() == 0 {
-                    Ok((current_input, Expr::String(String::new())))
+                    found_expr(current_input, Box::new(StringExpr::from("")))
                 } else if data.len() == 1 {
                     let expr = data.remove(0);
                     Ok((current_input, expr))
                 } else {
-                    Ok((current_input, Expr::StringComplex(data)))
+                    found_expr(current_input, Box::new(StringComplex { exprs: data }))
                 }
             }
         }

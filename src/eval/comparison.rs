@@ -9,7 +9,7 @@ use ordered_float::OrderedFloat;
 use crate::parser::errors::ErrorCode;
 use crate::values::QName;
 
-// TODO: join with eval_arithmetic
+// TODO: join with eval_arithmetic ?
 pub fn eval_comparison(env: Box<Environment>, operator: OperatorComparison, left: Object, right: Object) -> EvalResult {
 
     let mut current_env = env;
@@ -31,7 +31,7 @@ pub fn eval_comparison(env: Box<Environment>, operator: OperatorComparison, left
     relax(current_env, result)
 }
 
-pub fn eval_comparison_item(env: Box<Environment>, operator: OperatorComparison, left: Object, right: Object) -> EvalResult {
+pub fn eval_comparison_item<'a>(env: Box<Environment<'a>>, operator: OperatorComparison, left: Object, right: Object) -> EvalResult<'a> {
     let left = match atomization(left) {
         Ok(v) => v,
         Err(e) => return Err((e, String::from("TODO")))

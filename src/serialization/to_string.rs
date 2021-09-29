@@ -13,9 +13,6 @@ pub fn object_to_string(object: &Object) -> String {
 fn _object_to_string(object: &Object, ref_resolving: bool) -> String {
     match object {
         Object::Empty => String::new(),
-        Object::ForBinding { values, .. } => {
-            _object_to_string(values, ref_resolving)
-        },
         Object::Range { min, max } => {
             let (it, count) = RangeIterator::create(*min, *max);
 

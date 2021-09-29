@@ -1,8 +1,7 @@
 use std::collections::HashMap;
-use crate::eval::{Object, Type, eval_expr, EvalResult, DynamicContext};
+use crate::eval::{Object, Type, DynamicContext, EvalResult};
 use crate::eval::Environment;
 use crate::namespaces::*;
-use crate::parser::op::Expr;
 use crate::values::{QName, QNameResolved, resolve_element_qname};
 
 mod fun;
@@ -21,20 +20,22 @@ mod aggregates;
 pub use crate::fns::boolean::object_to_bool;
 
 use crate::parser::errors::ErrorCode;
+use crate::eval::expression::Expression;
+use crate::eval::prolog::SequenceType;
 
 pub type FUNCTION<'a> = fn(Box<Environment<'a>>, Vec<Object>, &DynamicContext) -> EvalResult<'a>;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Clone)]
 pub struct Function {
     name: QNameResolved,
     parameters: Vec<Param>,
-    body: Expr,
+    body: Box<dyn Expression>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Param {
     pub name: QName,
-    pub sequence_type: Option<Type> // TODO: new type?
+    pub sequence_type: Option<SequenceType> // TODO: new type?
 }
 
 pub enum Occurrence {
@@ -192,10 +193,10 @@ impl<'a> FunctionsRegister<'a> {
             .insert(arity,fun);
     }
 
-    pub(crate) fn put(&mut self, name: QNameResolved, parameters: Vec<Param>, body: Box<Expr>) {
+    pub(crate) fn put(&mut self, name: QNameResolved, parameters: Vec<Param>, body: Box<dyn Expression>) {
         self.declared.entry(name.clone())
             .or_insert_with(HashMap::new)
-            .insert(parameters.len(), Function { name, parameters, body: *body });
+            .insert(parameters.len(), Function { name, parameters, body });
     }
 
     pub(crate) fn get(&self, qname: &QNameResolved, arity: usize) -> Option<FUNCTION<'a>> {
@@ -210,39 +211,17 @@ impl<'a> FunctionsRegister<'a> {
         }
     }
 
-    pub(crate) fn declared(&self, qname: &QNameResolved, arity: usize) -> Option<Function> {
+    pub(crate) fn declared(&self, qname: &QNameResolved, arity: usize) -> Option<&Function> {
         // println!("function get {:?} {:?} {:?}", uri, local_part, arity);
         if let Some(list) = self.declared.get(qname) {
             // println!("function list {:?}", list.len());
             //TODO: fix it!
             let rf = list.get(&arity).unwrap();
-            Some(rf.clone())
+            Some(rf)
         } else {
             // println!("function list NONE");
             None
         }
-    }
-}
-
-pub(crate) fn expr_to_params(expr: Expr) -> Vec<Param> {
-    match expr {
-        Expr::ParamList(exprs) => {
-            let mut params = Vec::with_capacity(exprs.len());
-            for expr in exprs {
-                let param = match expr {
-                    Expr::Param { name, type_declaration } => {
-                        Param { name, sequence_type: None }
-                    }
-                    _ => panic!("expected Param but got {:?}", expr)
-                };
-                params.push(param);
-            }
-            params
-        },
-        Expr::Param { name, type_declaration } => {
-            vec![Param { name, sequence_type: None }]
-        },
-        _ => panic!("expected ParamList but got {:?}", expr)
     }
 }
 
@@ -254,14 +233,14 @@ pub(crate) fn call<'a>(env: Box<Environment<'a>>, name: QNameResolved, arguments
         let fun = fun.unwrap();
 
         let mut fn_env = Environment::new();
-        fun.parameters.into_iter()
+        fun.parameters.clone().into_iter()
             .zip(arguments.into_iter())
             .for_each(
                 |(parameter, argument)|
                     fn_env.set(resolve_element_qname(&parameter.name, &env), argument.clone())
             );
 
-        let (_, result) = eval_expr(fun.body.clone(), Box::new(fn_env), context)?;
+        let (_, result) = fun.body.eval(Box::new(fn_env), context)?;
 
         Ok((env, result))
 

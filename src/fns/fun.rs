@@ -1,4 +1,4 @@
-use crate::eval::{Object, eval_expr, object_to_iterator, EvalResult, DynamicContext};
+use crate::eval::{Object, object_to_iterator, DynamicContext, EvalResult};
 use crate::eval::Environment;
 
 use crate::values::resolve_element_qname;
@@ -79,6 +79,8 @@ pub(crate) fn sort<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _conte
 
 pub(crate) fn apply<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
 
+
+
     let mut current_env = env;
 
     match arguments.as_slice() {
@@ -94,7 +96,7 @@ pub(crate) fn apply<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, conte
                 function_environment.set(name, argument.clone());
             }
 
-            let (_, result) = eval_expr(*body.clone(), Box::new(function_environment), &DynamicContext::nothing())?;
+            let (_, result) = body.eval(Box::new(function_environment), &DynamicContext::nothing())?;
 
             Ok((current_env, result))
         },

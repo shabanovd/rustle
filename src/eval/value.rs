@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::fmt;
 use crate::values::{QName, QNameResolved};
 use crate::fns::Param;
-use crate::parser::op::{Expr, Representation};
+use crate::parser::op::{Representation};
 use crate::parser::errors::ErrorCode;
 use ordered_float::OrderedFloat;
 use bigdecimal::BigDecimal;
@@ -12,6 +12,8 @@ use chrono::{NaiveTime, TimeZone, DateTime, Date, FixedOffset, Local, Timelike};
 use num_integer::div_mod_floor;
 use chrono::format::{DelayedFormat, StrftimeItems, Item};
 use std::borrow::Borrow;
+use crate::eval::expression::Expression;
+use std::fmt::{Debug, Formatter};
 
 #[allow(dead_code)]
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone, Hash)]
@@ -259,10 +261,8 @@ impl fmt::Debug for Node {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone)]
 pub enum Object {
-    // workaround
-    ForBinding { name: QNameResolved, values: Box<Object>, body: Box<Expr> },
     Range { min: i128, max: i128 },
 
     Error { code: String },
@@ -272,7 +272,6 @@ pub enum Object {
     Nothing,
 
     Empty,
-
     Sequence(Vec<Object>),
 
     Atomic(Type),
@@ -281,11 +280,108 @@ pub enum Object {
     Array(Vec<Object>),
     Map(HashMap<Type, Object>),
 
-    Function { parameters: Vec<Param>, body: Box<Expr> },
+    Function { parameters: Vec<Param>, body: Box<dyn Expression> },
     FunctionRef { name: QNameResolved, arity: usize },
 
     Return(Box<Object>),
 }
+
+impl PartialEq<Self> for Object {
+    fn eq(&self, other: &Self) -> bool {
+        match self {
+            Object::Range { min: l_min, max: l_max } => {
+                match other {
+                    Object::Range { min: r_min, max: r_max } => l_min == r_min && l_max == r_max,
+                    _ => false
+                }
+            }
+            Object::Error { code: l_code } => {
+                match other {
+                    Object::Error { code: r_code } => l_code == r_code,
+                    _ => false
+                }
+            }
+            Object::CharRef { representation: l_representation, reference: l_reference } => {
+                match other {
+                    Object::CharRef { representation: r_representation, reference: r_reference } =>
+                        l_representation == r_representation && l_reference == r_reference,
+                    _ => false
+                }
+            }
+            Object::EntityRef(l_ref) => {
+                match other {
+                    Object::EntityRef(r_ref) => l_ref == r_ref,
+                    _ => false
+                }
+            }
+            Object::Nothing => {
+                match other {
+                    Object::Nothing => true,
+                    _ => false
+                }
+            }
+            Object::Empty => {
+                match other {
+                    Object::Empty => true,
+                    _ => false
+                }
+            }
+            Object::Sequence(l_items) => {
+                match other {
+                    Object::Sequence(r_items) => l_items == r_items,
+                    _ => false
+                }
+            }
+            Object::Atomic(l_type) => {
+                match other {
+                    Object::Atomic(r_type) => l_type == r_type,
+                    _ => false
+                }
+            }
+            Object::Node(l_node) => {
+                match other {
+                    Object::Node(r_node) => l_node == r_node,
+                    _ => false
+                }
+            }
+            Object::Array(l_items) => {
+                match other {
+                    Object::Array(r_items) => l_items == r_items,
+                    _ => false
+                }
+            }
+            Object::Map(l_entries) => {
+                match other {
+                    Object::Map(r_entries) => l_entries == r_entries,
+                    _ => false
+                }
+            }
+            Object::Function { .. } => {
+                false
+            }
+            Object::FunctionRef { name: l_name, arity: l_arity } => {
+                match other {
+                    Object::FunctionRef { name: r_name, arity: r_arity } => l_name == r_name && l_arity == r_arity,
+                    _ => false
+                }
+            }
+            Object::Return(l_item) => {
+                match other {
+                    Object::Return(r_item) => l_item == r_item,
+                    _ => false
+                }
+            }
+        }
+    }
+}
+
+impl Debug for Object {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        todo!()
+    }
+}
+
+impl Eq for Object {}
 
 impl Ord for Object {
     fn cmp(&self, other: &Self) -> Ordering {
@@ -311,7 +407,7 @@ impl Ord for Object {
     }
 }
 
-impl PartialOrd for Object {
+impl PartialOrd<Self> for Object {
     fn partial_cmp(&self, other: &Object) -> Option<Ordering> {
         match self {
             Object::Atomic(t1) => {
