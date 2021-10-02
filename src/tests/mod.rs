@@ -7,7 +7,7 @@ use crate::fns::object_to_bool;
 
 pub(crate) fn eval_on_spec(spec: &str, input: &str) -> Result<Object, String> {
     match spec {
-        "XQ10+" | "XP30+ XQ30+" | "XQ31+" | "XP31+ XQ31+" => {
+        "XQ10+" | "XP30+ XQ10+" | "XQ30+" | "XP30+ XQ30+" | "XQ31+" | "XP31+ XQ31+" => {
             eval(input)
         }
         _ => panic!("unsupported spec {}", spec)
@@ -48,18 +48,25 @@ pub(crate) fn eval(input: &str) -> Result<Object, String> {
 
 pub(crate) fn check_assert(result: &Result<Object, String>, check: &str) {
     let check_result = eval_assert(result, check);
-    let check_result = object_to_bool(&check_result);
-
-    if !check_result {
-        assert_eq!(format!("{:?}", result), check);
+    match object_to_bool(&check_result) {
+        Ok(check_result) => {
+            if !check_result {
+                assert_eq!(format!("{:?}", result), check);
+            }
+        },
+        Err((code, msg)) => assert_eq!(format!("error {:?} {}", code, msg), "")
     }
 }
 
 pub(crate) fn bool_check_assert(result: &Result<Object, String>, check: &str) -> bool {
     let check_result = eval_assert(result, check);
-    let check_result = object_to_bool(&check_result);
-
-    !check_result
+    match object_to_bool(&check_result) {
+        Ok(check_result) => !check_result,
+        Err((code, msg)) => {
+            assert_eq!(format!("error {:?} {}", code, msg), "");
+            panic!()
+        }
+    }
 }
 
 fn eval_assert(result: &Result<Object, String>, check: &str) -> Object {

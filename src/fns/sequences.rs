@@ -71,16 +71,51 @@ pub(crate) fn fn_remove<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _
 pub(crate) fn fn_reverse<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
 
     match arguments.as_slice() {
+        [Object::Empty] => Ok((env, Object::Empty)),
         [Object::Range { min, max}] => {
             Ok((env, Object::Range { min: *max, max: *min } ))
         },
-        _ => panic!("error")
+        _ => panic!("error {:?}", arguments)
     }
 }
 
 pub(crate) fn fn_subsequence<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+    println!("arguments {:?}", arguments);
     match arguments.as_slice() {
         [Object::Empty, ..] => Ok((env, Object::Empty)),
+        [Object::Range { min, max }, Object::Atomic(Type::Integer(start)), Object::Atomic(Type::Integer(length))] => {
+            if *start <= 0 || *length <= 0 {
+                Ok((env, Object::Empty))
+            } else {
+                if min < max {
+                    let new_min = min + (start.max(&1) - 1);
+                    if new_min > *max {
+                        Ok((env, Object::Empty))
+                    } else {
+                        let new_max = (new_min + (length - 1)).min(*max);
+
+                        if new_min == new_max {
+                            Ok((env, Object::Atomic(Type::Integer(new_min))))
+                        } else {
+                            Ok((env, Object::Range { min: new_min, max: new_max }))
+                        }
+                    }
+                } else {
+                    let new_min = min - (start.max(&1) - 1);
+                    if new_min < *max {
+                        Ok((env, Object::Empty))
+                    } else {
+                        let new_max = (new_min - (length - 1)).max(*max);
+
+                        if new_min == new_max {
+                            Ok((env, Object::Atomic(Type::Integer(new_min))))
+                        } else {
+                            Ok((env, Object::Range { min: new_min, max: new_max }))
+                        }
+                    }
+                }
+            }
+        },
         [Object::Atomic(t), Object::Atomic(Type::Integer(start)), Object::Atomic(Type::Integer(length))] => {
             if *start == 1 && *length >= 1 {
                 Ok((env, Object::Atomic(t.clone())))
@@ -103,7 +138,7 @@ pub(crate) fn fn_subsequence<'a>(env: Box<Environment<'a>>, arguments: Vec<Objec
             }
             Ok((env, Object::Sequence(result)))
         },
-        _ => panic!("error")
+        _ => panic!("error {:?}", arguments)
     }
 }
 

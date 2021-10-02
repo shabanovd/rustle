@@ -56,6 +56,24 @@ pub(crate) fn fn_round<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _c
         [Object::Atomic(Type::Double(number))] => {
             Ok((env, Object::Atomic(Type::Double(number.round().into()))))
         },
+        [Object::Atomic(Type::Integer(number)), Object::Atomic(Type::Integer(precision))] => {
+            // TODO check precision range
+            let factor = (10 as i128).pow(precision.abs() as u32);
+            let number = (*number / factor) * factor;
+            Ok((env, Object::Atomic(Type::Integer(number))))
+        },
+        [Object::Atomic(Type::Decimal(number)), Object::Atomic(Type::Integer(precision))] => {
+            // TODO check precision range
+            Ok((env, Object::Atomic(Type::Decimal(number.round(*precision as i64)))))
+        },
+        [Object::Atomic(Type::Float(number)), Object::Atomic(Type::Integer(precision))] => {
+            // TODO do proper round with precision
+            Ok((env, Object::Atomic(Type::Float(number.round().into()))))
+        },
+        [Object::Atomic(Type::Double(number)), Object::Atomic(Type::Integer(precision))] => {
+            // TODO check precision range
+            Ok((env, Object::Atomic(Type::Double(number.round().into()))))
+        },
         _ => panic!("error")
     }
 }
@@ -81,7 +99,6 @@ pub(crate) fn fn_round_half_to_even<'a>(env: Box<Environment<'a>>, arguments: Ve
             Ok((env, Object::Atomic(Type::Integer(*number))))
         },
         [Object::Atomic(Type::Decimal(number)), Object::Atomic(Type::Integer(precision))] => {
-            println!("{:?} {:?}", precision, round(number, *precision as i64));
             Ok((env, Object::Atomic(Type::Decimal(round(number,*precision as i64)))))
         },
         [Object::Atomic(Type::Float(number)), Object::Atomic(Type::Integer(precision))] => {

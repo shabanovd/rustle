@@ -102,13 +102,6 @@ fn _object_to_string(object: &Object, ref_resolving: bool) -> String {
     }
 }
 
-fn ref_to_string(representation: Representation, code: u32) -> String {
-     match representation {
-        Representation::Hexadecimal => { format!("&#x{:X};", code) }
-        Representation::Decimal => { format!("&#{};", code) }
-    }
-}
-
 pub(crate) fn ref_to_char(code: u32) -> char {
     char::from_u32(code).unwrap()
 }

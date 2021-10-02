@@ -5,6 +5,7 @@ use crate::parser::errors::ErrorCode;
 use ordered_float::OrderedFloat;
 use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use crate::serialization::object_to_string;
+use crate::fns::boolean::object_casting_bool;
 
 pub(crate) fn xs_untyped_atomic_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     let item = arguments.get(0).unwrap();
@@ -12,6 +13,15 @@ pub(crate) fn xs_untyped_atomic_eval<'a>(env: Box<Environment<'a>>, arguments: V
     let str = object_to_string(item);
 
     Ok((env, Object::Atomic(Type::Untyped(str))))
+}
+
+pub(crate) fn xs_boolean_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+    let item = arguments.get(0).unwrap();
+
+    match object_casting_bool(item, true) {
+        Ok(v) => Ok((env, Object::Atomic(Type::Boolean(v)))),
+        Err(e) => return Err(e)
+    }
 }
 
 pub(crate) fn xs_string_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {

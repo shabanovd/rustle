@@ -117,6 +117,10 @@ impl Expression for QName {
         Ok((env, Object::Atomic( Type::QName { local_part: self.local_part.clone(), url: self.url.clone(), prefix: self.prefix.clone() } ) ))
     }
 
+    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+        todo!()
+    }
+
     fn debug(&self) -> String {
         todo!()
     }

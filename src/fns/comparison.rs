@@ -12,6 +12,6 @@ pub(crate) fn fn_deep_equal<'a>(env: Box<Environment<'a>>, arguments: Vec<Object
 
     match result {
         Ok(v) => Ok((env, Object::Atomic(Type::Boolean(v)))),
-        Err(code) => Err((code, String::from("TODO")))
+        Err(e) => Err(e)
     }
 }

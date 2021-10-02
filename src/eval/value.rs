@@ -132,19 +132,6 @@ impl Time<FixedOffset> {
     }
 }
 
-pub(crate) fn type_to_int(t: Type) -> i128 {
-    match t {
-        Type::Integer(num) => num,
-        Type::Untyped(num) => {
-            match num.parse() {
-                Ok(v) => v,
-                Err(..) => panic!("can't convert to int {:?}", num)
-            }
-        },
-        _ => panic!("can't convert to int {:?}", t)
-    }
-}
-
 pub(crate) fn object_to_qname(t: Object) -> QName {
     match t {
         Object::Atomic(Type::QName { prefix, url, local_part }) =>
@@ -171,20 +158,22 @@ pub fn string_to_decimal(string: &String) -> Result<BigDecimal, ErrorCode> {
 
 #[derive(Eq, PartialEq, Clone, Hash)]
 pub enum Node {
-    Node { sequence: isize, name: QName, attributes: Vec<Node>, children: Vec<Node> },
+    Document { sequence: isize, children: Vec<Node> },
+    Element { sequence: isize, name: QName, attributes: Vec<Node>, children: Vec<Node> },
     Attribute { sequence: isize, name: QName, value: String },
-    NodeText { sequence: isize, content: String },
-    NodeComment { sequence: isize, content: String },
-    NodePI { sequence: isize, target: QName, content: String },
+    Text { sequence: isize, content: String },
+    Comment { sequence: isize, content: String },
+    PI { sequence: isize, target: QName, content: String },
 }
 
 fn node_to_number(node: &Node) -> &isize {
     match node {
-        Node::Node { sequence, .. } => sequence,
+        Node::Document { sequence, .. } => sequence,
+        Node::Element { sequence, .. } => sequence,
         Node::Attribute { sequence, .. } => sequence,
-        Node::NodeText { sequence, .. } => sequence,
-        Node::NodeComment { sequence, .. } => sequence,
-        Node::NodePI { sequence, .. } => sequence,
+        Node::Text { sequence, .. } => sequence,
+        Node::Comment { sequence, .. } => sequence,
+        Node::PI { sequence, .. } => sequence,
     }
 }
 
@@ -210,15 +199,20 @@ impl fmt::Debug for Node {
         };
 
         match self {
-            Node:: NodePI { target, content, .. } => {
+            Node::Document { children, .. } => {
+                for child in children {
+                    write!(f, "{:?}", child)?;
+                }
+            },
+            Node::PI { target, content, .. } => {
                 write!(f, "<?")?;
                 write(f, target);
                 write!(f, "{:?}?>", content)?;
             },
-            Node:: NodeComment { content, ..} => {
+            Node::Comment { content, ..} => {
                 write!(f, "<!--{}-->", content)?;
             },
-            Node:: NodeText { content, ..} => {
+            Node::Text { content, ..} => {
                 write!(f, "{}", content)?;
             },
             Node:: Attribute { name, value, .. } => {
@@ -226,7 +220,7 @@ impl fmt::Debug for Node {
                 write(f, name);
                 write!(f, "={:?}", value)?;
             },
-            Node::Node { name, attributes, children, .. } => {
+            Node::Element { name, attributes, children, .. } => {
                 write!(f, "<")?;
 
                 write(f, name);
@@ -377,7 +371,75 @@ impl PartialEq<Self> for Object {
 
 impl Debug for Object {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        todo!()
+        match self {
+            Object::Range { min, max } => {
+                f.debug_tuple("Range")
+                    .field(min)
+                    .field(max)
+                    .finish()
+            }
+            Object::Error { code } => {
+                f.debug_tuple("Error")
+                    .field(code)
+                    .finish()
+            }
+            Object::CharRef { representation, reference } => {
+                let data = match representation {
+                    Representation::Hexadecimal => { format!("&#x{:X};", reference) }
+                    Representation::Decimal => { format!("&#{};", reference) }
+                };
+
+                f.debug_tuple("CharRef")
+                    .field(&data)
+                    .finish()
+            }
+            Object::EntityRef(code) => {
+                f.debug_tuple("EntityRef")
+                    .field(code)
+                    .finish()
+            }
+            Object::Nothing => f.debug_struct("Nothing").finish(),
+            Object::Empty => f.debug_struct("Empty").finish(),
+            Object::Sequence(items) => {
+                f.debug_tuple("Sequence")
+                    .field(items)
+                    .finish()
+            }
+            Object::Atomic(t) => {
+                f.debug_tuple("Atomic")
+                    .field(t)
+                    .finish()
+            }
+            Object::Node(node) => {
+                f.debug_tuple("Node")
+                    .field(node)
+                    .finish()
+            }
+            Object::Array(items) => {
+                f.debug_tuple("Array")
+                    .field(items)
+                    .finish()
+            }
+            Object::Map(entries) => {
+                f.debug_tuple("Map")
+                    .field(entries)
+                    .finish()
+            }
+            Object::Function { parameters, .. } => {
+                f.debug_tuple("Function")
+                    .field(parameters)
+                    .finish()
+            }
+            Object::FunctionRef { name, arity } => {
+                f.debug_struct("FunctionRef")
+                    .field("name", name)
+                    .field("arity", arity)
+                    .finish_non_exhaustive()
+            }
+            Object::Return(_) => {
+                f.debug_struct("Return").finish_non_exhaustive()
+            }
+        }
     }
 }
 
@@ -463,39 +525,81 @@ pub(crate) fn atomization(obj: Object) -> Result<Object, ErrorCode> {
         Object::Atomic(..) => Ok(obj),
         Object::Node(node) => {
             let mut result = vec![];
-            typed_value_of_node(node, &mut result);
+            let t = typed_value_of_node(node, &mut result);
             let str = result.join("");
             Ok(Object::Atomic(Type::Untyped(str)))
         },
         Object::Array(items) => atomization_of_vec(items),
         Object::Sequence(items) => atomization_of_vec(items),
+        Object::Range { min, max } => {
+            if min == max {
+                Ok(Object::Atomic(Type::Integer(min)))
+            } else {
+                Err(ErrorCode::XPTY0004)
+            }
+        },
         Object::Empty => Ok(obj), // or it can be XPST0005?
         _ => todo!()
     }
 }
 
-pub(crate) fn typed_value_of_node(node: Node, result: &mut Vec<String>) {
+pub(crate) fn sequence_atomization(obj: Object) -> Result<Object, ErrorCode> {
+    match obj {
+        Object::Range { .. } |
+        Object::Array(..) |
+        Object::Sequence(..) |
+        Object::Atomic(..) => Ok(obj),
+        Object::Node(node) => {
+            let mut result = vec![];
+            let t = typed_value_of_node(node, &mut result);
+            let str = result.join("");
+            Ok(Object::Atomic(Type::Untyped(str)))
+        },
+        Object::Empty => Ok(obj), // or it can be XPST0005?
+        _ => todo!()
+    }
+}
+
+pub(crate) enum Value {
+    Typed,
+    String,
+    Absent,
+    UntypedAtomic,
+}
+
+pub(crate) fn typed_value_of_node(node: Node, result: &mut Vec<String>) -> Value {
     match node {
-        Node::Node { children, .. } => {
+        Node::Document { children, .. } => {
             for child in children {
                 typed_value_of_node(child, result);
             }
+            Value::Typed
+        }
+        Node::Element { children, .. } => {
+            for child in children {
+                typed_value_of_node(child, result);
+            }
+            Value::Typed
         }
         Node::Attribute { value, .. } => {
             // Object::Atomic(Type::Untyped(value))
-            result.push(value)
+            result.push(value);
+            Value::Typed
         }
-        Node::NodeText { content, .. } => {
+        Node::Text { content, .. } => {
             // result.push(Object::Atomic(Type::Untyped(content)))
-            result.push(content)
+            result.push(content);
+            Value::UntypedAtomic
         }
-        Node::NodeComment { content, .. } => {
+        Node::Comment { content, .. } => {
             // result.push(Object::Atomic(Type::String(content)))
-            result.push(content)
+            result.push(content);
+            Value::String
         }
-        Node::NodePI { content, .. } => {
+        Node::PI { content, .. } => {
             // result.push(Object::Atomic(Type::String(content)))
-            result.push(content)
+            result.push(content);
+            Value::String
         }
     }
 }

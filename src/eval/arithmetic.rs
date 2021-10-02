@@ -1,4 +1,4 @@
-use crate::eval::{Object, EvalResult, atomization, Type, string_to_double, Environment, object_to_iterator, relax};
+use crate::eval::{Object, EvalResult, atomization, Type, string_to_double, Environment, relax};
 use crate::parser::errors::ErrorCode;
 use ordered_float::OrderedFloat;
 use bigdecimal::{BigDecimal, ToPrimitive, FromPrimitive, Zero};

@@ -1,14 +1,6 @@
-use std::collections::HashMap;
-
-use crate::eval::Object::Empty;
-use crate::fns::call;
-use crate::parser::op::{Statement, ItemType, OccurrenceIndicator, OperatorComparison};
-use crate::values::{resolve_element_qname, resolve_function_qname};
+use crate::parser::op::Statement;
 
 pub use self::environment::Environment;
-use crate::fns::object_to_bool;
-use crate::serialization::object_to_string;
-use crate::serialization::to_string::object_to_string_xml;
 use crate::parser::errors::ErrorCode;
 
 pub mod expression;
@@ -20,28 +12,12 @@ pub(crate) mod comparison;
 mod value;
 pub(crate) use value::*;
 
-use crate::values::*;
-
 mod arithmetic;
-use arithmetic::eval_arithmetic;
-
 mod piping;
-use piping::eval_pipe;
-
-use crate::eval::comparison::eval_comparison;
-use crate::eval::arithmetic::eval_unary;
 
 pub(crate) mod helpers;
 use helpers::*;
-use crate::eval::piping::Pipe;
 use crate::eval::expression::Expression;
-
-const DEBUG: bool = false;
-
-struct Answer {
-    item: Object,
-    context: DynamicContext,
-}
 
 // pub type EvalResult<'a> = Result<(Box<Environment<'a>>, Iter<'a, Answer>), (ErrorCode, String)>;
 // pub type EvalResult<'a> = Result<(Box<Environment<'a>>, Answer), (ErrorCode, String)>;
@@ -102,27 +78,6 @@ pub(crate) fn eval_prolog(exprs: Vec<Box<dyn Expression>>, env: Box<Environment>
     Ok((current_env, Object::Nothing))
 }
 
-pub(crate) fn eval_exprs<'a>(exprs: Vec<Box<dyn Expression>>, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
-
-    let mut result = Object::Empty;
-
-    let mut current_env = env;
-
-    for expr in exprs {
-        let (new_env, new_result) = expr.eval(current_env, context)?;
-        current_env = new_env;
-
-        // TODO: review it
-        result = new_result;
-
-        if let &Object::Return(_) = &result {
-            return Ok((current_env, result));
-        }
-    }
-
-    Ok((current_env, result))
-}
-
 #[allow(dead_code)]
 enum Axis {
     ForwardChild,
@@ -147,7 +102,7 @@ fn step_and_test<'a>(step: Axis, test: NameTest, env: Box<Environment<'a>>, cont
         },
         Object::Node(node) => {
             match node {
-                Node::Node { sequence, name, attributes, children } => {
+                Node::Element { sequence, name, attributes, children } => {
                     match step {
                         Axis::ForwardChild => {
                             let mut result = vec![];
@@ -183,13 +138,13 @@ fn test_node(test: &NameTest, node: &Node) -> bool {
     match test {
         NameTest { name: qname } => {
             match node {
-                Node::Node { sequence, name, attributes, children } => {
+                Node::Element { sequence, name, attributes, children } => {
                     qname.local_part == name.local_part && qname.url == name.url
                 },
                 Node::Attribute { sequence, name, value } => {
                     qname.local_part == name.local_part && qname.url == name.url
                 },
-                Node::NodeText { sequence, content } => false,
+                Node::Text { sequence, content } => false,
                 _ => panic!("error {:?}", node)
             }
         },
@@ -203,90 +158,11 @@ fn eval_predicates<'a>(exprs: &Vec<Predicate>, env: Box<Environment<'a>>, value:
     let mut result = value;
 
     for expr in exprs {
-        todo!()
-        // match expr {
-        //     Predicate { expr: cond } => {
-        //         match cond {
-        //             Integer { number: pos } => {
-        //                 let pos = *pos;
-        //                 if pos <= 0 {
-        //                     result = Object::Empty
-        //                 } else {
-        //                     match result {
-        //                         Object::Range { min, max } => {
-        //                             let len = max - min + 1;
-        //
-        //                             if pos > len {
-        //                                 result = Empty;
-        //                             } else {
-        //                                 let num = min + pos - 1;
-        //                                 result = Object::Atomic(Type::Integer(num));
-        //                             }
-        //                         },
-        //                         Object::Sequence(items) => {
-        //                             result = if let Some(item) = items.get((pos - 1) as usize) {
-        //                                 item.clone()
-        //                             } else {
-        //                                 Object::Empty
-        //                             };
-        //                         },
-        //                         Object::Node(node) => {
-        //                             result = if pos == 1 {
-        //                                 Object::Node(node)
-        //                             } else {
-        //                                 Object::Empty
-        //                             }
-        //                         }
-        //                         _ => panic!("predicate {:?} on {:?}", pos, result)
-        //                     }
-        //                 }
-        //             },
-        //             Comparison { left, operator, right } => {
-        //                 let it = object_to_iterator(&result);
-        //
-        //                 let mut evaluated = vec![];
-        //
-        //                 let last = Some(it.len());
-        //                 let mut position = 0;
-        //                 for item in it {
-        //                     position += 1;
-        //                     let context = DynamicContext {
-        //                         item, position: Some(position), last
-        //                     };
-        //
-        //                     let (_, l_value) = left.eval(current_env.clone(), &context)?;
-        //                     let (_, r_value) = right.eval(current_env.clone(), &context)?;
-        //
-        //                     let check = match operator {
-        //                         OperatorComparison::GeneralEquals => comparison::general_eq(&l_value, &r_value),
-        //                         OperatorComparison::ValueEquals => comparison::eq(&l_value, &r_value),
-        //                         OperatorComparison::ValueNotEquals => comparison::ne(&l_value, &r_value),
-        //                         OperatorComparison::ValueLessThan => comparison::ls(&l_value, &r_value),
-        //                         OperatorComparison::ValueLessOrEquals => comparison::ls_or_eq(&l_value, &r_value),
-        //                         OperatorComparison::ValueGreaterThan => comparison::gr(&l_value, &r_value),
-        //                         OperatorComparison::ValueGreaterOrEquals => comparison::gr_or_eq(&l_value, &r_value),
-        //                         _ => panic!("operator {:?} is not implemented", operator)
-        //                     };
-        //
-        //                     match check {
-        //                         Ok(true) => evaluated.push(context.item),
-        //                         Err(code) => {
-        //                             return Err((code, String::from("TODO")));
-        //                         },
-        //                         _ => {}
-        //                     }
-        //                 }
-        //
-        //                 let (new_env, object) = relax(current_env, evaluated)?;
-        //                 current_env = new_env;
-        //
-        //                 result = object;
-        //             }
-        //             _ => panic!("unknown {:?} {:?}", cond.debug(), result)
-        //         }
-        //     }
-        //     _ => panic!("unknown {:?}", expr)
-        // }
+        let Predicate { expr: cond } = expr;
+
+        let (new_env, new_value) = cond.predicate(current_env, context, result)?;
+        current_env = new_env;
+        result = new_value;
     }
 
     Ok((current_env, result))
@@ -330,10 +206,30 @@ impl Iterator for RangeIterator {
     }
 }
 
-pub(crate) fn object_to_integer(object: Object) -> i128 {
+pub(crate) fn object_to_integer(object: Object) -> Result<i128, (ErrorCode, String)> {
     match object {
-        Object::Atomic(Type::Integer(n)) => n,
-        _ => panic!("TODO object_to_integer {:?}", object)
+        Object::Atomic(t) => {
+            match t {
+                Type::Integer(num) => Ok(num),
+                Type::Untyped(num) => {
+                    match num.parse() {
+                        Ok(v) => Ok(v),
+                        Err(..) => Err((ErrorCode::XPTY0004, format!("can't convert to int {:?}", num)))
+                    }
+                },
+                _ => Err((ErrorCode::XPTY0004, format!("can't convert to int {:?}", t)))
+            }
+        },
+        Object::Node(node) => {
+            let mut result = vec![];
+            typed_value_of_node(node, &mut result);
+            let num = result.join("");
+            match num.parse() {
+                Ok(v) => Ok(v),
+                Err(..) => Err((ErrorCode::XPTY0004, format!("can't convert to int {:?}", num)))
+            }
+        }
+        _ => Err((ErrorCode::XPTY0004, format!("can't convert to int {:?}", object)))
     }
 }
 

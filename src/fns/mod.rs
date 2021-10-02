@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::eval::{Object, Type, DynamicContext, EvalResult};
+use crate::eval::{Object, DynamicContext, EvalResult};
 use crate::eval::Environment;
 use crate::namespaces::*;
 use crate::values::{QName, QNameResolved, resolve_element_qname};
@@ -32,7 +32,7 @@ pub struct Function {
     body: Box<dyn Expression>,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Param {
     pub name: QName,
     pub sequence_type: Option<SequenceType> // TODO: new type?
@@ -59,7 +59,7 @@ impl<'a> FunctionsRegister<'a> {
         };
 
         instance.register(SCHEMA.url, "untypedAtomic", 1, types::xs_untyped_atomic_eval);
-        instance.register(SCHEMA.url, "boolean", 1, boolean::fn_boolean);
+        instance.register(SCHEMA.url, "boolean", 1, types::xs_boolean_eval);
         instance.register(SCHEMA.url, "string", 1, types::xs_string_eval);
         instance.register(SCHEMA.url, "NCName", 1, types::xs_ncname_eval);
         instance.register(SCHEMA.url, "anyURI", 1, types::xs_anyuri_eval);
@@ -123,7 +123,9 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(XPATH_ARRAY.url, "sort", 3, array::sort);
         instance.register(XPATH_ARRAY.url, "flatten", 1, array::flatten);
 
+        instance.register(XPATH_FUNCTIONS.url, "current-date", 0, datetime::fn_current_date);
         instance.register(XPATH_FUNCTIONS.url, "current-time", 0, datetime::fn_current_time);
+        instance.register(XPATH_FUNCTIONS.url, "year-from-date", 1, datetime::fn_year_from_date);
         instance.register(XPATH_FUNCTIONS.url, "month-from-date", 1, datetime::fn_month_from_date);
         instance.register(XPATH_FUNCTIONS.url, "day-from-date", 1, datetime::fn_day_from_date);
         instance.register(XPATH_FUNCTIONS.url, "days-from-duration", 1, datetime::fn_days_from_duration);
@@ -147,10 +149,17 @@ impl<'a> FunctionsRegister<'a> {
 
         instance.register(XPATH_FUNCTIONS.url, "count", 1, aggregates::fn_count);
         instance.register(XPATH_FUNCTIONS.url, "avg", 1, aggregates::fn_avg);
+        instance.register(XPATH_FUNCTIONS.url, "max", 1, aggregates::fn_max);
+        instance.register(XPATH_FUNCTIONS.url, "max", 2, aggregates::fn_max);
+        instance.register(XPATH_FUNCTIONS.url, "min", 1, aggregates::fn_min);
+        instance.register(XPATH_FUNCTIONS.url, "min", 2, aggregates::fn_min);
+        // instance.register(XPATH_FUNCTIONS.url, "sum", 1, aggregates::fn_sum);
+        // instance.register(XPATH_FUNCTIONS.url, "sum", 2, aggregates::fn_sum);
 
         instance.register(XPATH_FUNCTIONS.url, "abs", 1, math::fn_abs);
         instance.register(XPATH_FUNCTIONS.url, "floor", 1, math::fn_floor);
         instance.register(XPATH_FUNCTIONS.url, "round", 1, math::fn_round);
+        instance.register(XPATH_FUNCTIONS.url, "round", 2, math::fn_round);
         instance.register(XPATH_FUNCTIONS.url, "round-half-to-even", 1, math::fn_round_half_to_even);
         instance.register(XPATH_FUNCTIONS.url, "round-half-to-even", 2, math::fn_round_half_to_even);
 
@@ -170,6 +179,11 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(XPATH_FUNCTIONS.url, "upper-case", 1, strings::fn_upper_case);
         instance.register(XPATH_FUNCTIONS.url, "lower-case", 1, strings::fn_lower_case);
         instance.register(XPATH_FUNCTIONS.url, "string-to-codepoints", 1, strings::fn_string_to_codepoints);
+
+        instance.register(XPATH_FUNCTIONS.url, "starts-with", 2, strings::fn_starts_with);
+        instance.register(XPATH_FUNCTIONS.url, "starts-with", 3, strings::fn_starts_with);
+        instance.register(XPATH_FUNCTIONS.url, "ends-with", 2, strings::fn_ends_with);
+        instance.register(XPATH_FUNCTIONS.url, "ends-with", 3, strings::fn_ends_with);
 
         instance.register(XPATH_FUNCTIONS.url, "position", 0, sequences::fn_position);
         instance.register(XPATH_FUNCTIONS.url, "last", 0, sequences::fn_last);

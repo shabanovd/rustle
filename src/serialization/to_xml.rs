@@ -2,65 +2,71 @@ use crate::eval::Node;
 
 pub fn node_to_string(node: &Node) -> String {
     match node {
-        Node::Node { name, attributes, children, .. } => {
-            let mut result = String::new();
-            result.push_str("<");
-            result.push_str(name.string().as_str());
+        Node::Document { children, .. } => {
+            let mut buf = String::new();
+            for child in children {
+                buf.push_str(node_to_string(child).as_str());
+            }
+            buf
+        }
+        Node::Element { name, attributes, children, .. } => {
+            let mut buf = String::new();
+            buf.push_str("<");
+            buf.push_str(name.string().as_str());
 
             for attribute in attributes {
                 match attribute {
                     Node::Attribute { name, value, .. } => {
-                        result.push_str(" ");
-                        result.push_str(name.string().as_str());
-                        result.push_str("=\"");
-                        result.push_str(fix(value).as_str());
-                        result.push_str("\"");
+                        buf.push_str(" ");
+                        buf.push_str(name.string().as_str());
+                        buf.push_str("=\"");
+                        buf.push_str(fix(value).as_str());
+                        buf.push_str("\"");
                     },
                     _ => panic!("error: {:?}", attribute)
                 }
             }
 
             if children.len() == 0 {
-                result.push_str("/>");
+                buf.push_str("/>");
             } else {
-                result.push_str(">");
+                buf.push_str(">");
 
                 for child in children {
-                    result.push_str(node_to_string(child).as_str());
+                    buf.push_str(node_to_string(child).as_str());
                 }
 
-                result.push_str("</");
-                result.push_str(name.string().as_str());
-                result.push_str(">")
+                buf.push_str("</");
+                buf.push_str(name.string().as_str());
+                buf.push_str(">")
             }
-            result
+            buf
         }
         Node::Attribute { .. } => { todo!() }
-        Node::NodeText { content, .. } => { content.clone() }
-        Node::NodeComment { content, .. } => {
-            let mut result = String::new();
+        Node::Text { content, .. } => { content.clone() }
+        Node::Comment { content, .. } => {
+            let mut buf = String::new();
 
-            result.push_str("<!--");
-            result.push_str(content.as_str());
-            result.push_str("-->");
+            buf.push_str("<!--");
+            buf.push_str(content.as_str());
+            buf.push_str("-->");
 
-            result
+            buf
         }
-        Node::NodePI { target, content, .. } => {
-            let mut result = String::new();
+        Node::PI { target, content, .. } => {
+            let mut buf = String::new();
 
-            result.push_str("<?");
-            result.push_str(target.string().as_str());
-            result.push_str(" ");
-            result.push_str(content.as_str());
-            result.push_str("?>");
+            buf.push_str("<?");
+            buf.push_str(target.string().as_str());
+            buf.push_str(" ");
+            buf.push_str(content.as_str());
+            buf.push_str("?>");
 
-            result
+            buf
         }
     }
 }
 
 fn fix(str: &String) -> String {
     str.replace("\"", "&quot;")
-
 }

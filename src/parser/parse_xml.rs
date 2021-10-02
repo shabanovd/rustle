@@ -13,7 +13,7 @@ use nom::{
 };
 
 use crate::parser::helper::{ws, ws_tag_ws};
-use crate::parser::parse_names::{parse_ncname, parse_qname, parse_qname_expr};
+use crate::parser::parse_names::{parse_ncname, parse_qname_expr};
 use crate::parser::parse_expr::{parse_enclosed_expr, parse_expr};
 use nom::error::ParseError;
 use crate::eval::prolog::*;

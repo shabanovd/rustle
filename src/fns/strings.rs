@@ -89,6 +89,31 @@ pub(crate) fn fn_string_to_codepoints<'a>(env: Box<Environment<'a>>, arguments: 
     Ok((env, result))
 }
 
+pub(crate) fn fn_starts_with<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
+
+    let string = arguments.get(0).unwrap();
+    let pattern = arguments.get(1).unwrap();
+
+    let string = object_to_string(string);
+    let pattern = object_to_string(pattern);
+
+    let result = string.starts_with(&pattern);
+
+    Ok((env, Object::Atomic(Type::Boolean(result))))
+}
+
+pub(crate) fn fn_ends_with<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
+
+    let string = arguments.get(0).unwrap();
+    let pattern = arguments.get(1).unwrap();
+
+    let string = object_to_string(string);
+    let pattern = object_to_string(pattern);
+
+    let result = string.ends_with(&pattern);
+
+    Ok((env, Object::Atomic(Type::Boolean(result))))
+}
 
 pub(crate) fn object_to_array(object: Object) -> Vec<Object> {
     match object {

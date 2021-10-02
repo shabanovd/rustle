@@ -1,4 +1,4 @@
-use crate::eval::{Object, Type, Environment, EvalResult, atomization, relax};
+use crate::eval::{Object, Type, Environment, EvalResult, atomization, relax, sequence_atomization};
 use crate::serialization::object_to_string;
 use crate::parser::parse_duration::string_to_dt_duration;
 use std::cmp::Ordering;
@@ -8,6 +8,7 @@ use crate::eval::arithmetic::object_to_items;
 use ordered_float::OrderedFloat;
 use crate::parser::errors::ErrorCode;
 use crate::values::QName;
+use crate::fns::object_to_bool;
 
 // TODO: join with eval_arithmetic ?
 pub fn eval_comparison(env: Box<Environment>, operator: OperatorComparison, left: Object, right: Object) -> EvalResult {
@@ -21,7 +22,7 @@ pub fn eval_comparison(env: Box<Environment>, operator: OperatorComparison, left
         let it_right = object_to_items(&right);
         for r in it_right {
 
-            let (new_env, value) = eval_comparison_item(current_env, operator.clone(), l.clone(), r.clone())?;
+            let (new_env, value) = eval_comparison_item(current_env, operator.clone(), l.clone(), r)?;
             current_env = new_env;
 
             result.push(value);
@@ -31,17 +32,45 @@ pub fn eval_comparison(env: Box<Environment>, operator: OperatorComparison, left
     relax(current_env, result)
 }
 
-pub fn eval_comparison_item<'a>(env: Box<Environment<'a>>, operator: OperatorComparison, left: Object, right: Object) -> EvalResult<'a> {
-    let left = match atomization(left) {
-        Ok(v) => v,
-        Err(e) => return Err((e, String::from("TODO")))
-    };
-    let right = match atomization(right) {
-        Ok(v) => v,
-        Err(e) => return Err((e, String::from("TODO")))
+pub fn eval_comparison_item(env: Box<Environment>, operator: OperatorComparison, left: Object, right: Object) -> EvalResult {
+    let value_checks = match operator {
+        OperatorComparison::GeneralEquals |
+        OperatorComparison::GeneralNotEquals |
+        OperatorComparison::GeneralLessThan |
+        OperatorComparison::GeneralLessOrEquals |
+        OperatorComparison::GeneralGreaterThan |
+        OperatorComparison::GeneralGreaterOrEquals => false,
+        OperatorComparison::ValueEquals |
+        OperatorComparison::ValueNotEquals |
+        OperatorComparison::ValueLessThan |
+        OperatorComparison::ValueLessOrEquals |
+        OperatorComparison::ValueGreaterThan |
+        OperatorComparison::ValueGreaterOrEquals => true
     };
 
-    println!("after eval_comparison_item");
+    let (left, right) = if value_checks {
+        let left = match atomization(left) {
+            Ok(v) => v,
+            Err(e) => return Err((e, String::from("TODO")))
+        };
+        let right = match atomization(right) {
+            Ok(v) => v,
+            Err(e) => return Err((e, String::from("TODO")))
+        };
+        (left, right)
+    } else {
+        let left = match sequence_atomization(left) {
+            Ok(v) => v,
+            Err(e) => return Err((e, String::from("TODO")))
+        };
+        let right = match sequence_atomization(right) {
+            Ok(v) => v,
+            Err(e) => return Err((e, String::from("TODO")))
+        };
+        (left, right)
+    };
+
+    println!("eval_comparison_item");
     println!("left_result {:?}", left);
     println!("right_result {:?}", right);
 
@@ -62,7 +91,7 @@ pub fn eval_comparison_item<'a>(env: Box<Environment<'a>>, operator: OperatorCom
 
     match result {
         Ok(v) => Ok((env, Object::Atomic(Type::Boolean(v)))),
-        Err(code) => Err((code, String::from("TODO")))
+        Err(e) => Err(e)
     }
 }
 
@@ -118,6 +147,15 @@ fn cmp(left: &Object, right: &Object) -> Option<ValueOrdering> {
                 }
             }
             None
+        },
+        Object::Atomic(Type::Boolean(lbt)) => {
+            let rbt = match object_to_bool(right) {
+                Ok(v) => v,
+                Err(e) => {
+                    return None;
+                }
+            };
+            return ValueOrdering::from(lbt.cmp(&rbt));
         },
         Object::Atomic(Type::Integer(..)) |
         Object::Atomic(Type::Decimal(..)) |
@@ -185,68 +223,68 @@ fn cmp(left: &Object, right: &Object) -> Option<ValueOrdering> {
     }
 }
 
-pub(crate) fn eq(left: &Object, right: &Object) -> Result<bool, ErrorCode> {
+pub(crate) fn eq(left: &Object, right: &Object) -> Result<bool, (ErrorCode, String)> {
     match cmp(left, right) {
         Some(ValueOrdering::Equal) |
         Some(ValueOrdering::QNameEqual) => Ok(true),
         Some(..) => Ok(false),
-        None => Err(ErrorCode::XPTY0004)
+        None => Err((ErrorCode::XPTY0004, String::from("TODO")))
     }
 }
 
-pub(crate) fn ne(left: &Object, right: &Object) -> Result<bool, ErrorCode> {
+pub(crate) fn ne(left: &Object, right: &Object) -> Result<bool, (ErrorCode, String)> {
     match cmp(left, right) {
         Some(ValueOrdering::Less) |
         Some(ValueOrdering::Greater) |
         Some(ValueOrdering::AlwaysNotEqual) |
         Some(ValueOrdering::QNameNotEqual) => Ok(true),
         Some(..) => Ok(false),
-        None => Err(ErrorCode::XPTY0004)
+        None => Err((ErrorCode::XPTY0004, String::from("TODO")))
     }
 }
 
-pub(crate) fn ls_or_eq(left: &Object, right: &Object) -> Result<bool, ErrorCode> {
+pub(crate) fn ls_or_eq(left: &Object, right: &Object) -> Result<bool, (ErrorCode, String)> {
     match cmp(left, right) {
         Some(ValueOrdering::QNameEqual) |
         Some(ValueOrdering::QNameNotEqual) |
-        None => Err(ErrorCode::XPTY0004),
+        None => Err((ErrorCode::XPTY0004, String::from("TODO"))),
         Some(ValueOrdering::Equal) |
         Some(ValueOrdering::Less) => Ok(true),
         Some(..) => Ok(false),
     }
 }
 
-pub(crate) fn ls(left: &Object, right: &Object) -> Result<bool, ErrorCode> {
+pub(crate) fn ls(left: &Object, right: &Object) -> Result<bool, (ErrorCode, String)> {
     match cmp(left, right) {
         Some(ValueOrdering::QNameEqual) |
         Some(ValueOrdering::QNameNotEqual) |
-        None => Err(ErrorCode::XPTY0004),
+        None => Err((ErrorCode::XPTY0004, String::from("TODO"))),
         Some(ValueOrdering::Less) => Ok(true),
         Some(..) => Ok(false),
     }
 }
 
-pub(crate) fn gr_or_eq(left: &Object, right: &Object) -> Result<bool, ErrorCode> {
+pub(crate) fn gr_or_eq(left: &Object, right: &Object) -> Result<bool, (ErrorCode, String)> {
     match cmp(left, right) {
         Some(ValueOrdering::QNameEqual) |
         Some(ValueOrdering::QNameNotEqual) |
-        None => Err(ErrorCode::XPTY0004),
+        None => Err((ErrorCode::XPTY0004, String::from("TODO"))),
         Some(ValueOrdering::Equal) |
         Some(ValueOrdering::Greater) => Ok(true),
         Some(..) => Ok(false),
     }
 }
 
-pub(crate) fn gr(left: &Object, right: &Object) -> Result<bool, ErrorCode> {
+pub(crate) fn gr(left: &Object, right: &Object) -> Result<bool, (ErrorCode, String)> {
     match cmp(left, right) {
         Some(ValueOrdering::QNameEqual) |
         Some(ValueOrdering::QNameNotEqual) |
-        None => Err(ErrorCode::XPTY0004),
+        None => Err((ErrorCode::XPTY0004, String::from("TODO"))),
         Some(v) => Ok(v == ValueOrdering::Greater),
     }
 }
 
-pub(crate) fn general_eq(left: &Object, right: &Object) -> Result<bool, ErrorCode> {
+pub(crate) fn general_eq(left: &Object, right: &Object) -> Result<bool, (ErrorCode, String)> {
     match left {
         Object::Empty => Ok(false),
         Object::Atomic(lt) => {
@@ -260,7 +298,7 @@ pub(crate) fn general_eq(left: &Object, right: &Object) -> Result<bool, ErrorCod
                         Type::DayTimeDuration { .. } => {
                             match string_to_dt_duration(rs) {
                                 Ok(rd) => Ok(lt == &rd),
-                                Err(..) => Err(ErrorCode::XPTY0004)
+                                Err(..) => Err((ErrorCode::XPTY0004, String::from("TODO")))
                             }
                         }
                         Type::Integer(..) |
@@ -271,15 +309,27 @@ pub(crate) fn general_eq(left: &Object, right: &Object) -> Result<bool, ErrorCod
                                 let rv = Object::Atomic(Type::Double(number));
                                 eq(left, &rv)
                             } else {
-                                Err(ErrorCode::XPTY0004)
+                                Err((ErrorCode::XPTY0004, String::from("TODO")))
                             }
                         }
-                        _ => Err(ErrorCode::XPTY0004)
+                        _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
                     }
                 }
                 Object::Atomic(..) => {
                     eq(left, right)
                 },
+                Object::Range { min, max } => {
+                    match lt {
+                        Type::Integer(ls) => {
+                            if min <= max {
+                                Ok(ls >= min && ls <= max)
+                            } else {
+                                Ok(ls >= max && ls <= min)
+                            }
+                        },
+                        _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                    }
+                }
                 Object::Sequence(items) => {
                     for item in items {
                         if eq(left, item)? {
@@ -288,7 +338,28 @@ pub(crate) fn general_eq(left: &Object, right: &Object) -> Result<bool, ErrorCod
                     }
                     Ok(false)
                 }
-                _ => Err(ErrorCode::XPTY0004)
+                _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+            }
+        }
+        Object::Range { min: l_min, max: l_max} => {
+            match right {
+                Object::Empty => Ok(false),
+                Object::Range { min: r_min, max: r_max} => {
+                    let (l_min, l_max) = if l_min <= l_max {
+                        (l_min, l_max)
+                    } else {
+                        (l_max, l_min)
+                    };
+
+                    let (r_min, r_max) = if r_min <= r_max {
+                        (r_min, r_max)
+                    } else {
+                        (r_max, r_min)
+                    };
+
+                    Ok((l_min <= r_max) && (l_max >= r_min))
+                },
+                _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
             }
         }
         Object::Sequence(left_items) => {
@@ -312,14 +383,14 @@ pub(crate) fn general_eq(left: &Object, right: &Object) -> Result<bool, ErrorCod
                     }
                     Ok(false)
                 }
-                _ => Err(ErrorCode::XPTY0004)
+                _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
             }
         },
-        _ => Err(ErrorCode::XPTY0004)
+        _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
     }
 }
 
-pub(crate) fn deep_eq(left: &Object, right: &Object) -> Result<bool, ErrorCode> {
+pub(crate) fn deep_eq(left: &Object, right: &Object) -> Result<bool, (ErrorCode, String)> {
     if left == right {
         Ok(true)
     } else {
@@ -381,8 +452,14 @@ pub(crate) fn deep_eq(left: &Object, right: &Object) -> Result<bool, ErrorCode> 
     }
 }
 
-pub(crate) fn deep_eq_sequence_and_range(left_items: &Vec<Object>, min: i128, max: i128) -> Result<bool, ErrorCode> {
-    if left_items.len() != (max - min).max(0) as usize {
+pub(crate) fn deep_eq_sequence_and_range(left_items: &Vec<Object>, min: i128, max: i128) -> Result<bool, (ErrorCode, String)> {
+    let (min, max) = if min <= max {
+        (min, max)
+    } else {
+        (max, min)
+    };
+
+    if left_items.len() != ((max - min).abs() + 1).max(0) as usize {
         Ok(false)
     } else {
         let mut left_it = left_items.iter();
@@ -398,7 +475,7 @@ pub(crate) fn deep_eq_sequence_and_range(left_items: &Vec<Object>, min: i128, ma
 
                 right_item += step;
             } else {
-                return Ok(false);
+                return Ok((right_item - step) == max);
             }
         }
     }

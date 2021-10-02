@@ -1,8 +1,5 @@
 use crate::parse_one_of;
 use crate::parse_one_of_;
-use crate::parse_sequence;
-use crate::parse_surroundings;
-use crate::parser::op;
 use crate::parser::errors::CustomError;
 use crate::eval::prolog::*;
 
@@ -17,8 +14,6 @@ use crate::parser::parse_names::{parse_eqname, parse_ncname};
 use crate::parser::op::{found_expr, Statement, ItemType, OccurrenceIndicator, OperatorComparison, OperatorArithmetic, OneOrMore};
 use nom::sequence::{preceded, delimited, tuple};
 use crate::eval::expression::Expression;
-use crate::eval::prolog::*;
-use nom::combinator::{map, map_res};
 use nom::multi::separated_list1;
 
 const DEBUG: bool = false;
@@ -107,7 +102,7 @@ pub(crate) fn parse_annotation(input: &str) -> IResult<&str, Box<dyn Expression>
 }
 
 pub(crate) fn parse_annotation_value(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
-    let (input, exprs) = delimited(
+    let (input, mut exprs) = delimited(
         tuple((ws, tag("("), ws)),
         separated_list1(
             tuple((ws, tag(","), ws)),
@@ -116,7 +111,12 @@ pub(crate) fn parse_annotation_value(input: &str) -> IResult<&str, Box<dyn Expre
         tuple((ws, tag(")"), ws))
     )(input)?;
 
-    Ok((input, Box::new(Literals { exprs } )))
+    if exprs.len() == 1 {
+        let expr = exprs.remove(0);
+        Ok((input, expr))
+    } else {
+        Ok((input, Box::new(Literals { exprs })))
+    }
 }
 
 // [28]    	VarDecl 	   ::=    	"variable" "$" VarName TypeDeclaration? ((":=" VarValue) | ("external" (":=" VarDefaultValue)?))
@@ -443,22 +443,32 @@ fn parse_if_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<
 
 // [83]    	OrExpr 	   ::=    	AndExpr ( "or" AndExpr )*
 fn parse_or_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
-    let (input, exprs) = separated_list1(
+    let (input, mut exprs) = separated_list1(
         tuple((ws1, tag("or"), ws1)),
         parse_and_expr
     )(input)?;
 
-    Ok((input, Box::new(Or { exprs })))
+    if exprs.len() == 1 {
+        let expr = exprs.remove(0);
+        Ok((input, expr))
+    } else {
+        Ok((input, Box::new(Or { exprs })))
+    }
 }
 
 // [84]    	AndExpr 	   ::=    	ComparisonExpr ( "and" ComparisonExpr )*
 fn parse_and_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
-    let (input, exprs) = separated_list1(
+    let (input, mut exprs) = separated_list1(
         tuple((ws1, tag("and"), ws1)),
-        parse_and_expr
+        parse_comparison_expr
     )(input)?;
 
-    Ok((input, Box::new(And { exprs })))
+    if exprs.len() == 1 {
+        let expr = exprs.remove(0);
+        Ok((input, expr))
+    } else {
+        Ok((input, Box::new(And { exprs })))
+    }
 }
 
 // [85]    	ComparisonExpr 	   ::=    	StringConcatExpr ( ( ValueComp
@@ -509,12 +519,17 @@ fn parse_comparison_expr(input: &str) -> IResult<&str, Box<dyn Expression>, Cust
 
 // [86]    	StringConcatExpr 	   ::=    	RangeExpr ( "||" RangeExpr )*
 fn parse_string_concat_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
-    let (input, exprs) = separated_list1(
+    let (input, mut exprs) = separated_list1(
         tuple((ws1, tag("||"), ws1)),
         parse_range_expr
     )(input)?;
 
-    Ok((input, Box::new(StringConcat { exprs } )))
+    if exprs.len() == 1 {
+        let expr = exprs.remove(0);
+        Ok((input, expr))
+    } else {
+        Ok((input, Box::new(StringConcat { exprs })))
+    }
 }
 
 // [87]    	RangeExpr 	   ::=    	AdditiveExpr ( "to" AdditiveExpr )?
@@ -686,7 +701,7 @@ fn parse_treat_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomErr
 
         let (input, st) = parse_sequence_type(input)?;
 
-        found_expr(input, Box::new(Castable { expr, st } ))
+        found_expr(input, Box::new(Treat { expr, st } ))
     }
 }
 
@@ -720,7 +735,7 @@ fn parse_cast_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomErro
 
         let (input, st) = parse_single_type(input)?;
 
-        found_expr(input, Box::new(Castable { expr, st } ))
+        found_expr(input, Box::new(Cast { expr, st } ))
     }
 }
 
@@ -777,12 +792,17 @@ fn parse_unary_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomErr
 
 // [107]    	SimpleMapExpr 	   ::=    	PathExpr ("!" PathExpr)*
 fn parse_simple_map_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
-    let (input, exprs) = separated_list1(
-        tuple((ws1, tag("!"), ws1)),
+    let (input, mut exprs) = separated_list1(
+        tuple((ws, tag("!"), ws)),
         parse_path_expr
     )(input)?;
 
-    Ok((input, Box::new( SimpleMap { exprs } )))
+    if exprs.len() == 1 {
+        let expr = exprs.remove(0);
+        Ok((input, expr))
+    } else {
+        Ok((input, Box::new(SimpleMap { exprs })))
+    }
 }
 
 // [108]    	PathExpr 	   ::=    	("/" RelativePathExpr?) | ("//" RelativePathExpr) | RelativePathExpr
