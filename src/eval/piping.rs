@@ -4,6 +4,8 @@ use crate::values::{QNameResolved, resolve_element_qname};
 use crate::eval::helpers::{relax, insert_into_sequences};
 use crate::eval::prolog::*;
 use crate::eval::expression::Expression;
+use crate::fns::object_to_bool;
+use crate::parser::errors::ErrorCode;
 
 struct SequenceIterator<'a> {
     name: &'a QNameResolved,
@@ -29,7 +31,8 @@ impl<'a> SequenceIterator<'a> {
 #[derive(Clone)]
 pub(crate) struct Pipe {
     pub binding: Option<Binding>,
-    pub expr: Option<Box<dyn Expression>>,
+    pub where_expr: Option<Box<dyn Expression>>,
+    pub return_expr: Option<Box<dyn Expression>>,
     pub next: Option<Box<Pipe>>,
 }
 
@@ -56,7 +59,18 @@ pub(crate) fn eval_pipe<'a>(pipe: Box<Pipe>, env: Box<Environment<'a>>, context:
                     let items = object_owned_to_sequence(evaluated);
                     if items.len() == 0 {
                         if allowing_empty {
-                            current_env.set(name.clone(), Object::Empty);
+
+                            let item = if let Some(st) = st.as_ref() {
+                                if st.is_castable(&Object::Empty)? {
+                                    Object::Empty
+                                } else {
+                                    return Err((ErrorCode::XPTY0004, String::from("TODO")))
+                                }
+                            } else {
+                                Object::Empty
+                            };
+
+                            current_env.set(name.clone(), item);
                             if let Some(positional_var) = positional_var.clone() {
                                 current_env.set(positional_var, Object::Atomic(Type::Integer(0)));
                             }
@@ -70,6 +84,16 @@ pub(crate) fn eval_pipe<'a>(pipe: Box<Pipe>, env: Box<Environment<'a>>, context:
                         let mut pos = 0;
                         for item in items {
                             pos += 1;
+
+                            let item = if let Some(st) = st.as_ref() {
+                                if st.is_castable(&item)? {
+                                    item
+                                } else {
+                                    return Err((ErrorCode::XPTY0004, String::from("TODO")))
+                                }
+                            } else {
+                                item
+                            };
 
                             current_env.set(name.clone(), item);
                             if let Some(positional_var) = positional_var.clone() {
@@ -101,7 +125,21 @@ pub(crate) fn eval_pipe<'a>(pipe: Box<Pipe>, env: Box<Environment<'a>>, context:
                 }
             },
         }
-    } else if let Some(expr) = pipe.expr {
+    } else if let Some(expr) = pipe.where_expr {
+        let (new_env, v) = expr.eval(current_env.clone(), context)?;
+        current_env = new_env;
+
+        if object_to_bool(&v)? {
+            if let Some(next) = next {
+                eval_pipe(next, current_env, context)
+            } else {
+                Ok((current_env, Object::Empty))
+            }
+        } else {
+            Ok((current_env, Object::Empty))
+        }
+
+    } else if let Some(expr) = pipe.return_expr {
         if let Some(..) = next {
             panic!("internal error");
         }

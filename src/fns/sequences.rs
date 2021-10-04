@@ -69,7 +69,6 @@ pub(crate) fn fn_remove<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _
 }
 
 pub(crate) fn fn_reverse<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
-
     match arguments.as_slice() {
         [Object::Empty] => Ok((env, Object::Empty)),
         [Object::Range { min, max}] => {
@@ -155,5 +154,56 @@ pub(crate) fn fn_last<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, con
         Ok((env, Object::Atomic(Type::Integer(last as i128))))
     } else {
         Err((ErrorCode::XPDY0002, String::from("context size unknown")))
+    }
+}
+
+pub(crate) fn fn_zero_or_one<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+    match arguments.as_slice() {
+        [Object::Empty] => Ok((env, Object::Empty)),
+        [Object::Range { .. }] => Err((ErrorCode::FORG0003, String::from("TODO"))),
+        [Object::Atomic(t)] => Ok((env, Object::Atomic(t.clone()))),
+        [Object::Node(node)] => Ok((env, Object::Node(node.clone()))),
+        [Object::Sequence(items)] => {
+            if items.len() > 1 {
+                Err((ErrorCode::FORG0003, String::from("TODO")))
+            } else {
+                Ok((env, Object::Sequence(items.clone())))
+            }
+        }
+        _ => Err((ErrorCode::FORG0003, String::from("TODO")))
+    }
+}
+
+pub(crate) fn fn_one_or_more<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+    match arguments.as_slice() {
+        [Object::Empty] => Err((ErrorCode::FORG0004, String::from("TODO"))),
+        [Object::Range { min, max }] => Ok((env, Object::Range { min: *min, max: *max })),
+        [Object::Atomic(t)] => Ok((env, Object::Atomic(t.clone()))),
+        [Object::Node(node)] => Ok((env, Object::Node(node.clone()))),
+        [Object::Sequence(items)] => {
+            if items.len() == 0 {
+                Err((ErrorCode::FORG0004, String::from("TODO")))
+            } else {
+                Ok((env, Object::Sequence(items.clone())))
+            }
+        }
+        _ => Err((ErrorCode::FORG0004, String::from("TODO")))
+    }
+}
+
+pub(crate) fn fn_exactly_one<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+    match arguments.as_slice() {
+        [Object::Empty] => Err((ErrorCode::FORG0005, String::from("TODO"))),
+        [Object::Range { min, max }] => Ok((env, Object::Range { min: *min, max: *max })),
+        [Object::Atomic(t)] => Ok((env, Object::Atomic(t.clone()))),
+        [Object::Node(node)] => Ok((env, Object::Node(node.clone()))),
+        [Object::Sequence(items)] => {
+            if items.len() != 1 {
+                Err((ErrorCode::FORG0005, String::from("TODO")))
+            } else {
+                Ok((env, Object::Sequence(items.clone())))
+            }
+        }
+        _ => Err((ErrorCode::FORG0005, String::from("TODO")))
     }
 }

@@ -21,7 +21,7 @@ pub use crate::fns::boolean::object_to_bool;
 
 use crate::parser::errors::ErrorCode;
 use crate::eval::expression::Expression;
-use crate::eval::prolog::SequenceType;
+use crate::eval::sequence_type::SequenceType;
 
 pub type FUNCTION<'a> = fn(Box<Environment<'a>>, Vec<Object>, &DynamicContext) -> EvalResult<'a>;
 
@@ -195,6 +195,10 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(XPATH_FUNCTIONS.url, "reverse", 1, sequences::fn_reverse);
         instance.register(XPATH_FUNCTIONS.url, "subsequence", 2, sequences::fn_subsequence);
         instance.register(XPATH_FUNCTIONS.url, "subsequence", 3, sequences::fn_subsequence);
+
+        instance.register(XPATH_FUNCTIONS.url, "zero-or-one", 1, sequences::fn_zero_or_one);
+        instance.register(XPATH_FUNCTIONS.url, "one-or-more", 1, sequences::fn_one_or_more);
+        instance.register(XPATH_FUNCTIONS.url, "exactly-one", 1, sequences::fn_exactly_one);
 
         instance.register(XPATH_FUNCTIONS.url, "deep-equal", 2, comparison::fn_deep_equal);
 

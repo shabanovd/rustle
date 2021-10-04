@@ -15,6 +15,8 @@ use crate::parser::op::{found_expr, Statement, ItemType, OccurrenceIndicator, Op
 use nom::sequence::{preceded, delimited, tuple};
 use crate::eval::expression::Expression;
 use nom::multi::separated_list1;
+use nom::combinator::{map_res, map};
+use crate::eval::sequence_type::SequenceType;
 
 const DEBUG: bool = false;
 
@@ -336,7 +338,10 @@ fn parse_initial_clause(input: &str) -> IResult<&str, Clause, CustomError<&str>>
 
 // [43]    	IntermediateClause 	   ::=    	InitialClause | TODO WhereClause | GroupByClause | OrderByClause | CountClause
 fn parse_intermediate_clause(input: &str) -> IResult<&str, Clause, CustomError<&str>> {
-    parse_initial_clause(input)
+    alt((
+        parse_initial_clause,
+        parse_where_clause
+    ))(input)
 }
 
 // [44]    	ForClause 	   ::=    	"for" ForBinding ("," ForBinding)*
@@ -443,6 +448,17 @@ fn parse_let_binding(input: &str) -> IResult<&str, Binding, CustomError<&str>> {
     let (input, value) = parse_expr_single(input)?;
 
     Ok((input, Binding::Let { name, st: type_declaration, value }))
+}
+
+// [60]    	WhereClause 	   ::=    	"where" ExprSingle
+fn parse_where_clause(input: &str) -> IResult<&str, Clause, CustomError<&str>> {
+    map(
+        preceded(
+            tuple((ws1, tag("where"))),
+            parse_expr_single
+        ),
+        |expr| Clause::Where(expr)
+    )(input)
 }
 
 // [77]    	IfExpr 	   ::=    	"if" "(" Expr ")" "then" ExprSingle "else" ExprSingle

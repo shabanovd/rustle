@@ -12,8 +12,8 @@ use std::collections::HashMap;
 use crate::eval::arithmetic::{eval_unary, eval_arithmetic};
 use crate::eval::comparison::{eval_comparison, eval_comparison_item};
 use crate::eval::piping::{Pipe, eval_pipe};
-use crate::values::*;
 use crate::parser::errors::ErrorCode;
+use crate::eval::sequence_type::SequenceType;
 
 //internal
 #[derive(Clone)]
@@ -671,12 +671,6 @@ impl Expression for SequenceEmpty {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SequenceType {
-    pub(crate) item_type: ItemType,
-    pub(crate) occurrence_indicator: OccurrenceIndicator
-}
-
 #[derive(Clone)]
 pub(crate) struct Range { pub(crate) from: Box<dyn Expression>, pub(crate) till: Box<dyn Expression> }
 
@@ -747,24 +741,7 @@ impl Expression for Treat {
         // TODO occurrence_indicator checks
 
         process_items(current_env, object, |env, item| {
-            let correct = match &self.st.item_type {
-                ItemType::AtomicOrUnionType(name) => {
-                    match item {
-                        Object::Empty => {
-                            self.st.occurrence_indicator == OccurrenceIndicator::ZeroOrMore
-                                || self.st.occurrence_indicator == OccurrenceIndicator::ZeroOrOne
-                        },
-                        Object::Atomic(Type::String(..)) => name == &*XS_STRING,
-                        Object::Atomic(Type::NormalizedString(..)) => name == &*XS_STRING,
-                        Object::Atomic(Type::Integer(..)) => name == &*XS_INTEGER,
-                        Object::Atomic(Type::Decimal{..}) => name == &*XS_DECIMAL,
-                        Object::Atomic(Type::Float{..}) => name == &*XS_FLOAT,
-                        Object::Atomic(Type::Double{..}) => name == &*XS_DOUBLE,
-                        _ => panic!("TODO: {:?}", item)
-                    }
-                },
-                _ => panic!("TODO: {:?}", &self.st.item_type)
-            };
+            let correct = self.st.is_castable(&item)?;
 
             if correct {
                 Ok((env, item))
@@ -1764,6 +1741,7 @@ impl Expression for SimpleMap {
 pub(crate) enum Clause {
     For(Vec<Binding>),
     Let(Vec<Binding>),
+    Where(Box<dyn Expression>)
 }
 
 #[derive(Clone)]
@@ -1782,22 +1760,22 @@ impl Expression for FLWOR {
         // TODO: new env?
         // TODO: handle  WhereClause | GroupByClause | OrderByClause | CountClause
 
-        let mut pipe = Pipe { binding: None, expr: Some(self.return_expr.clone()), next: None };
+        let mut pipe = Pipe { binding: None, where_expr: None, return_expr: Some(self.return_expr.clone()), next: None };
         for clause in self.clauses.clone().into_iter().rev() {
             match clause {
                 Clause::For(bindings) => {
                     for binding in bindings.into_iter().rev() {
-                        pipe = Pipe { binding: Some(binding), expr: None, next: Some(Box::new(pipe)) }
+                        pipe = Pipe { binding: Some(binding), where_expr: None, return_expr: None, next: Some(Box::new(pipe)) }
                     }
                 },
                 Clause::Let(bindings) => {
                     for binding in bindings.into_iter().rev() {
-                        pipe = Pipe { binding: Some(binding), expr: None, next: Some(Box::new(pipe)) }
+                        pipe = Pipe { binding: Some(binding), where_expr: None, return_expr: None, next: Some(Box::new(pipe)) }
                     }
                 },
-                // _ => {
-                //     pipe = Pipe { expr: clause, next: Some(Box::new(pipe)) }
-                // }
+                Clause::Where(expr) => {
+                    pipe = Pipe { where_expr: Some(expr), binding: None, return_expr: None, next: Some(Box::new(pipe)) }
+                }
             }
         }
 

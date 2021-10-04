@@ -14,6 +14,7 @@ pub(crate) use value::*;
 
 mod arithmetic;
 mod piping;
+pub(crate) mod sequence_type;
 
 pub(crate) mod helpers;
 use helpers::*;
