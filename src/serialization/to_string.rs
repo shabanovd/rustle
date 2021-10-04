@@ -3,14 +3,14 @@ use crate::serialization::node_to_string;
 use crate::parser::op::Representation;
 
 pub fn object_to_string_xml(object: &Object) -> String {
-    _object_to_string(object, false)
+    _object_to_string(object, false, " ")
 }
 
 pub fn object_to_string(object: &Object) -> String {
-    _object_to_string(object, true)
+    _object_to_string(object, true, " ")
 }
 
-fn _object_to_string(object: &Object, ref_resolving: bool) -> String {
+pub fn _object_to_string(object: &Object, ref_resolving: bool, sep: &str) -> String {
     match object {
         Object::Empty => String::new(),
         Object::Range { min, max } => {
@@ -18,10 +18,10 @@ fn _object_to_string(object: &Object, ref_resolving: bool) -> String {
 
             let mut buf = Vec::with_capacity(count);
             for item in it {
-                buf.push(_object_to_string(&item, ref_resolving));
+                buf.push(_object_to_string(&item, ref_resolving, sep));
             }
 
-            buf.join(" ")
+            buf.join(sep)
         }
         Object::CharRef { reference, representation } => {
             if ref_resolving {
@@ -90,10 +90,10 @@ fn _object_to_string(object: &Object, ref_resolving: bool) -> String {
         Object::Sequence(items) => {
             let mut buf = Vec::with_capacity(items.len());
             for item in items {
-                let str = _object_to_string(item, ref_resolving);
+                let str = _object_to_string(item, ref_resolving, " ");
                 buf.push(str);
             }
-            buf.join(" ")
+            buf.join(sep)
         },
         Object::Node(node) => {
             node_to_string(node)

@@ -264,7 +264,7 @@ pub(crate) fn object_to_iterator<'a>(object: &Object) -> Vec<Object> {
 pub(crate) fn object_owned_to_sequence<'a>(object: Object) -> Vec<Object> {
     // println!("object_to_iterator for {:?}", object);
     match object {
-        Object::Empty |
+        Object::Empty => vec![],
         Object::Node(..) |
         Object::Atomic(..) => {
             let mut result = Vec::with_capacity(1);

@@ -1,4 +1,4 @@
-use crate::eval::{Object, object_owned_to_sequence, Environment, EvalResult, DynamicContext};
+use crate::eval::{Object, object_owned_to_sequence, Environment, EvalResult, DynamicContext, Type};
 use std::slice::Iter;
 use crate::values::{QNameResolved, resolve_element_qname};
 use crate::eval::helpers::{relax, insert_into_sequences};
@@ -39,8 +39,14 @@ pub(crate) fn eval_pipe<'a>(pipe: Box<Pipe>, env: Box<Environment<'a>>, context:
     let next = pipe.next;
     if let Some(binding) = pipe.binding {
         match binding {
-            Binding::For { name, values } => {
+            Binding::For { name, values, st, allowing_empty, positional_var } => {
                 let name = resolve_element_qname(&name, &current_env);
+                let positional_var = if let Some(positional_var) = positional_var {
+                    Some(resolve_element_qname(&positional_var, &current_env))
+                } else {
+                    None
+                };
+
                 let (new_env, evaluated) = values.eval(current_env, context)?;
                 current_env = new_env;
 
@@ -48,19 +54,39 @@ pub(crate) fn eval_pipe<'a>(pipe: Box<Pipe>, env: Box<Environment<'a>>, context:
 
                 if let Some(next) = next {
                     let items = object_owned_to_sequence(evaluated);
-                    for item in items {
-                        current_env.set(name.clone(), item);
+                    if items.len() == 0 {
+                        if allowing_empty {
+                            current_env.set(name.clone(), Object::Empty);
+                            if let Some(positional_var) = positional_var.clone() {
+                                current_env.set(positional_var, Object::Atomic(Type::Integer(0)));
+                            }
 
-                        let (new_env, answer) = eval_pipe(next.clone(), current_env, context)?;
-                        current_env = new_env;
+                            let (new_env, answer) = eval_pipe(next.clone(), current_env, context)?;
+                            current_env = new_env;
 
-                        insert_into_sequences(&mut result, answer);
+                            insert_into_sequences(&mut result, answer);
+                        }
+                    } else {
+                        let mut pos = 0;
+                        for item in items {
+                            pos += 1;
+
+                            current_env.set(name.clone(), item);
+                            if let Some(positional_var) = positional_var.clone() {
+                                current_env.set(positional_var, Object::Atomic(Type::Integer(pos)));
+                            }
+
+                            let (new_env, answer) = eval_pipe(next.clone(), current_env, context)?;
+                            current_env = new_env;
+
+                            insert_into_sequences(&mut result, answer);
+                        }
                     }
                 }
 
                 relax(current_env, result)
             },
-            Binding::Let { name, type_declaration, value } => {
+            Binding::Let { name, st: type_declaration, value } => {
                 let (_, item) = value.eval(current_env.clone(), context)?;
 
                 // TODO: handle typeDeclaration

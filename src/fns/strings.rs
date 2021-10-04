@@ -1,6 +1,8 @@
 use crate::eval::{Object, Type, DynamicContext, EvalResult};
 use crate::eval::Environment;
 use crate::serialization::object_to_string;
+use crate::serialization::to_string::_object_to_string;
+use crate::parser::errors::ErrorCode;
 
 pub(crate) fn fn_string<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
 
@@ -44,13 +46,16 @@ pub(crate) fn fn_concat<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _
 }
 
 pub(crate) fn fn_string_join<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
-
-    if arguments.len() != 1 {
-        panic!("got {:?} arguments, but expected 1", arguments.len(), )
-    }
-    let item = arguments.get(0).unwrap();
-
-    let str = object_to_string(item);
+    let str = if let Some(item) = arguments.get(0) {
+        if let Some(sep) = arguments.get(1) {
+            let sep = object_to_string(sep);
+            _object_to_string(item, true, sep.as_str())
+        } else {
+            _object_to_string(item, true, " ")
+        }
+    } else {
+        return Err((ErrorCode::TODO, format!("got {:?} arguments, but expected 1 or 2", arguments.len())));
+    };
 
     Ok((env, Object::Atomic(Type::String(str))))
 }

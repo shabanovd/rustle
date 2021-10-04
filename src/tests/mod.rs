@@ -3,6 +3,7 @@ use crate::parser::parse;
 use crate::values::{resolve_element_qname, QName};
 use crate::serialization::object_to_string;
 use crate::fns::object_to_bool;
+use crate::parser::errors::ErrorCode;
 
 
 pub(crate) fn eval_on_spec(spec: &str, input: &str) -> Result<Object, String> {
@@ -143,13 +144,23 @@ pub(crate) fn bool_check_assert_permutation(result: &Result<Object, String>, che
 }
 
 pub(crate) fn check_assert_xml(result: &Result<Object, String>, check: &str) {
-    let actual = object_to_string(result.as_ref().unwrap());
-    assert_eq!(check, actual);
+    let expected = eval(check).unwrap();
+    match comparison::deep_eq(&expected, result.as_ref().unwrap()) {
+        Ok(v) => {
+            if !v {
+                assert_eq!(object_to_string(result.as_ref().unwrap()), check)
+            }
+        },
+        Err(e) => assert_eq!(format!("error {:?}", e), check),
+    }
+
+    // let actual = object_to_string(result.as_ref().unwrap());
+    // assert_eq!(expected, actual);
 }
 
 pub(crate) fn bool_check_assert_xml(result: &Result<Object, String>, check: &str) -> bool {
-    let actual = object_to_string(result.as_ref().unwrap());
-    check == actual
+    let expected = eval(check).unwrap();
+    comparison::deep_eq(&expected, result.as_ref().unwrap()).unwrap()
 }
 
 pub(crate) fn check_assert_type(result: &Result<Object, String>, check: &str) {

@@ -360,19 +360,45 @@ fn parse_for_clause(input: &str) -> IResult<&str, Clause, CustomError<&str>> {
 }
 
 // [45]    	ForBinding 	   ::=    	"$" VarName TypeDeclaration? AllowingEmpty? PositionalVar? "in" ExprSingle
+// [46]    	AllowingEmpty 	   ::=    	"allowing" "empty"
+// [47]    	PositionalVar 	   ::=    	"at" "$" VarName
 fn parse_for_binding(input: &str) -> IResult<&str, Binding, CustomError<&str>> {
     let (input, _) = ws_tag("$", input)?;
 
-    let (input, name) = parse_eqname(input)?;
+    let (input, name) = parse_var_name(input)?;
 
-    // let check = parse_type_declaration(input);
-    // TODO TypeDeclaration? AllowingEmpty? PositionalVar?
+    let check = parse_type_declaration(input);
+    let (input, st) = if check.is_ok() {
+        let (input, st) = check?;
+        (input, Some(st))
+    } else {
+        (input, None)
+    };
+
+    let check = tuple((ws1, tag("allowing"), ws1, tag("empty")))(input);
+    let (input, allowing_empty) = if check.is_ok() {
+        let (input, _) = check?;
+        (input, true)
+    } else {
+        (input, false)
+    };
+
+    let check = preceded(
+        tuple((ws1, tag("at"), ws1, tag("$"))),
+        parse_var_name
+    )(input);
+    let (input, positional_var) = if check.is_ok() {
+        let (input, name) = check?;
+        (input, Some(name))
+    } else {
+        (input, None)
+    };
 
     let (input, _) = ws_tag("in", input)?;
 
     let (input, values) = parse_expr_single(input)?;
 
-    Ok((input, Binding::For { name, values }))
+    Ok((input, Binding::For { name, values, st, allowing_empty, positional_var }))
 }
 
 // [48]    	LetClause 	   ::=    	"let" LetBinding ("," LetBinding)*
@@ -398,12 +424,11 @@ fn parse_let_clause(input: &str) -> IResult<&str, Clause, CustomError<&str>> {
 }
 
 // [49]    	LetBinding 	   ::=    	"$" VarName TypeDeclaration? ":=" ExprSingle
-// [132]    	VarName 	   ::=    	EQName
 fn parse_let_binding(input: &str) -> IResult<&str, Binding, CustomError<&str>> {
 
     let (input, _) = ws_tag("$", input)?;
 
-    let (input, name) = parse_eqname(input)?;
+    let (input, name) = parse_var_name(input)?;
 
     let check = parse_type_declaration(input);
     let (input, type_declaration) = if check.is_ok() {
@@ -417,7 +442,7 @@ fn parse_let_binding(input: &str) -> IResult<&str, Binding, CustomError<&str>> {
 
     let (input, value) = parse_expr_single(input)?;
 
-    Ok((input, Binding::Let { name, type_declaration, value }))
+    Ok((input, Binding::Let { name, st: type_declaration, value }))
 }
 
 // [77]    	IfExpr 	   ::=    	"if" "(" Expr ")" "then" ExprSingle "else" ExprSingle
@@ -1046,13 +1071,17 @@ parse_one_of!(parse_primary_expr,
 );
 
 // [131]    	VarRef 	   ::=    	"$" VarName
-// [132]    	VarName 	   ::=    	EQName
 fn parse_var_ref(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
     let (input, _) = ws_tag("$", input)?;
 
-    let (input, name) = parse_eqname(input)?;
+    let (input, name) = parse_var_name(input)?;
 
     found_expr(input, Box::new(VarRef { name }))
+}
+
+// [132]    	VarName 	   ::=    	EQName
+fn parse_var_name(input: &str) -> IResult<&str, QName, CustomError<&str>> {
+    parse_eqname(input)
 }
 
 // [133]    	ParenthesizedExpr 	   ::=    	"(" Expr? ")"

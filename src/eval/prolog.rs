@@ -954,6 +954,7 @@ impl Expression for NodeElement {
             current_env = new_env;
 
             match evaluated_child {
+                Object::Empty => {},
                 Object::Sequence(items) => {
                     let mut add_space = false;
                     for item in items {
@@ -1036,12 +1037,7 @@ impl Expression for NodeAttribute {
         let (new_env, evaluated_value) = self.value.eval(current_env, context)?;
         current_env = new_env;
 
-        let evaluated_value = match evaluated_value {
-            Object::Atomic(Type::String(string)) => { // TODO: avoid copy!
-                string
-            }
-            _ => panic!("unexpected object") //TODO: better error
-        };
+        let evaluated_value = object_to_string(&evaluated_value);
 
         let id = current_env.next_id();
 
@@ -1391,7 +1387,7 @@ impl Expression for If {
     fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
         let mut current_env = env;
 
-        let (new_env, evaluated) = self.eval(current_env, context)?;
+        let (new_env, evaluated) = self.condition.eval(current_env, context)?;
         current_env = new_env;
 
         process_items(current_env, evaluated, |env, item| {
@@ -1772,8 +1768,8 @@ pub(crate) enum Clause {
 
 #[derive(Clone)]
 pub(crate) enum Binding {
-    For { name: QName, values: Box<dyn Expression> },
-    Let { name: QName, type_declaration: Option<SequenceType>, value: Box<dyn Expression> },
+    For { name: QName, values: Box<dyn Expression>, st: Option<SequenceType>, allowing_empty: bool, positional_var: Option<QName> },
+    Let { name: QName, st: Option<SequenceType>, value: Box<dyn Expression> },
 }
 
 #[derive(Clone)]

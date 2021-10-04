@@ -9,6 +9,7 @@ use ordered_float::OrderedFloat;
 use crate::parser::errors::ErrorCode;
 use crate::values::QName;
 use crate::fns::object_to_bool;
+use crate::serialization::to_xml::object_to_xml_events;
 
 // TODO: join with eval_arithmetic ?
 pub fn eval_comparison(env: Box<Environment>, operator: OperatorComparison, left: Object, right: Object) -> EvalResult {
@@ -447,6 +448,33 @@ pub(crate) fn deep_eq(left: &Object, right: &Object) -> Result<bool, (ErrorCode,
                     _ => Ok(false)
                 }
             },
+            Object::Node(..) => {
+                match right {
+                    Object::Node(..) => {
+                        let mut l_events = object_to_xml_events(left).into_iter();
+                        let mut r_events = object_to_xml_events(right).into_iter();
+
+                        loop {
+                            if let Some(l_event) = l_events.next() {
+                                if let Some(r_event) = r_events.next() {
+                                    if l_event != r_event {
+                                        return Ok(false)
+                                    }
+                                } else {
+                                    return Ok(false)
+                                }
+                            } else {
+                                return if let Some(_) = r_events.next() {
+                                    Ok(false)
+                                } else {
+                                    Ok(true)
+                                }
+                            }
+                        }
+                    }
+                    _ => Ok(false)
+                }
+            }
             _ => panic!("TODO {:?}", left)
         }
     }

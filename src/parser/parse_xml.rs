@@ -4,13 +4,7 @@ use crate::parser::op::{Representation, found_expr, found_exprs};
 use crate::parser::errors::{CustomError, IResultExt};
 use crate::parser::parse_literal::{is_digits, is_0_9a_f};
 
-use nom::{
-    branch::alt,
-    bytes::complete::{is_not, tag, take_until, take_while1},
-    character::complete::multispace1,
-    error::Error,
-    IResult
-};
+use nom::{branch::alt, bytes::complete::{is_not, tag, take_until, take_while1}, character::complete::multispace1, error::Error, IResult, InputTakeAtPosition, FindToken};
 
 use crate::parser::helper::{ws, ws_tag_ws};
 use crate::parser::parse_names::{parse_ncname, parse_qname_expr};
@@ -166,18 +160,22 @@ pub(crate) fn parse_dir_attribute_value(input: &str) -> IResult<&str, Box<dyn Ex
     let except = if open == "'" { "'{}<&" } else { "\"{}<&" };
 
     let mut data: Vec<Box<dyn Expression>> = vec![];
+    let mut begin_input = input;
     let mut current_input = input;
 
     loop {
-        let (input, string) = is_not(except)(current_input)
-            .or_failure(CustomError::XPST0003)?;
+        begin_input = current_input;
+
+        // let (input, string) = is_not(except)(current_input)
+        //     .or_failure(CustomError::XPST0003)?;
+        let (input, string) = current_input.split_at_position_complete(|c| except.find_token(c))?;
         current_input = input;
 
         if string.len() > 0 {
             data.push(Box::new(StringExpr::from(string)));
         }
 
-        let check = parse_common_content(input);
+        let check = parse_common_content(current_input);
         if check.is_ok() {
             let (input, expr) = check?;
             current_input = input;
@@ -208,6 +206,10 @@ pub(crate) fn parse_dir_attribute_value(input: &str) -> IResult<&str, Box<dyn Ex
                     found_expr(current_input, StringComplex::new(data))
                 }
             }
+        }
+
+        if current_input == begin_input {
+            return Err(nom::Err::Failure(CustomError::XPST0003));
         }
     }
 }
