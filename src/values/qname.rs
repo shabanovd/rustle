@@ -56,6 +56,14 @@ pub struct QName {
 }
 
 impl QName {
+    pub fn wildcard() -> Self {
+        QName {
+            prefix: Some(String::from("*")),
+            url: Some(String::from("*")),
+            local_part: String::from("*"),
+        }
+    }
+
     pub fn full(prefix: &str, local_part: &str, url: &str) -> Self {
         QName {
             prefix: Some(String::from(prefix)),
@@ -133,5 +141,30 @@ impl fmt::Debug for QName {
         } else {
             write!(f, "QName {{ {} }}", self.local_part)
         }
+    }
+}
+
+#[derive(Eq, PartialEq, Clone, Hash)]
+pub struct Name {
+    pub name: String,
+}
+
+impl Name {
+    pub(crate) fn boxed(name: String) -> Box<dyn Expression> {
+        Box::new(Name { name })
+    }
+}
+
+impl Expression for Name {
+    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+        Ok((env, Object::Atomic( Type::String(self.name.clone()) ) ))
+    }
+
+    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+        todo!()
+    }
+
+    fn debug(&self) -> String {
+        todo!()
     }
 }

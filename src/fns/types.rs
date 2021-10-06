@@ -1,6 +1,6 @@
 use crate::eval::{Object, Type, string_to_decimal, DynamicContext, EvalResult};
 use crate::eval::Environment;
-use crate::parser::parse_duration::{string_to_dt_duration, string_to_ym_duration, string_to_duration, string_to_date};
+use crate::parser::parse_duration::{string_to_dt_duration, string_to_ym_duration, string_to_duration, string_to_date, string_to_date_time};
 use crate::parser::errors::ErrorCode;
 use ordered_float::OrderedFloat;
 use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
@@ -56,6 +56,21 @@ pub(crate) fn xs_date_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>
     match arguments.as_slice() {
         [Object::Atomic(Type::String(string))] => {
             match string_to_date(string) {
+                Ok(dt) => Ok((env, Object::Atomic(dt))),
+                Err(e) => {
+                    println!("{}", e);
+                    todo!()
+                }
+            }
+        },
+        _ => todo!()
+    }
+}
+
+pub(crate) fn xs_date_time_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+    match arguments.as_slice() {
+        [Object::Atomic(Type::String(string))] => {
+            match string_to_date_time(string) {
                 Ok(dt) => Ok((env, Object::Atomic(dt))),
                 Err(e) => {
                     println!("{}", e);

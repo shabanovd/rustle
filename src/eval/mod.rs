@@ -18,7 +18,7 @@ pub(crate) mod sequence_type;
 
 pub(crate) mod helpers;
 use helpers::*;
-use crate::eval::expression::Expression;
+use crate::eval::expression::{Expression, NodeTest};
 
 // pub type EvalResult<'a> = Result<(Box<Environment<'a>>, Iter<'a, Answer>), (ErrorCode, String)>;
 // pub type EvalResult<'a> = Result<(Box<Environment<'a>>, Answer), (ErrorCode, String)>;
@@ -96,7 +96,7 @@ enum Axis {
     ReverseAncestorOrSelf,
 }
 
-fn step_and_test<'a>(step: Axis, test: NameTest, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+fn step_and_test<'a>(step: Axis, test: &Box<dyn NodeTest>, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
     match &context.item {
         Object::Nothing => {
             panic!("XPDY0002")
@@ -108,7 +108,7 @@ fn step_and_test<'a>(step: Axis, test: NameTest, env: Box<Environment<'a>>, cont
                         Axis::ForwardChild => {
                             let mut result = vec![];
                             for child in children {
-                                if test_node(&test, child) {
+                                if test.test_node(child) {
                                     result.push(Object::Node(child.clone()))
                                 }
                             }
@@ -118,7 +118,7 @@ fn step_and_test<'a>(step: Axis, test: NameTest, env: Box<Environment<'a>>, cont
                         Axis::ForwardAttribute => {
                             let mut result = vec![];
                             for attribute in attributes {
-                                if test_node(&test, attribute) {
+                                if test.test_node(attribute) {
                                     result.push(Object::Node(attribute.clone()))
                                 }
                             }
@@ -132,24 +132,6 @@ fn step_and_test<'a>(step: Axis, test: NameTest, env: Box<Environment<'a>>, cont
             }
         },
         _ => Ok((env, Object::Empty))
-    }
-}
-
-fn test_node(test: &NameTest, node: &Node) -> bool {
-    match test {
-        NameTest { name: qname } => {
-            match node {
-                Node::Element { sequence, name, attributes, children } => {
-                    qname.local_part == name.local_part && qname.url == name.url
-                },
-                Node::Attribute { sequence, name, value } => {
-                    qname.local_part == name.local_part && qname.url == name.url
-                },
-                Node::Text { sequence, content } => false,
-                _ => panic!("error {:?}", node)
-            }
-        },
-        _ => panic!("error {:?}", test)
     }
 }
 

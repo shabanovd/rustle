@@ -11,6 +11,7 @@ mod boolean;
 mod strings;
 mod types;
 mod datetime;
+mod nodes;
 mod comparison;
 mod math;
 mod map;
@@ -64,6 +65,7 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(SCHEMA.url, "NCName", 1, types::xs_ncname_eval);
         instance.register(SCHEMA.url, "anyURI", 1, types::xs_anyuri_eval);
         instance.register(SCHEMA.url, "date", 1, types::xs_date_eval);
+        instance.register(SCHEMA.url, "dateTime", 1, types::xs_date_time_eval);
         instance.register(SCHEMA.url, "yearMonthDuration", 1, types::xs_year_month_duration_eval);
         instance.register(SCHEMA.url, "dayTimeDuration", 1, types::xs_day_time_duration_eval);
         instance.register(SCHEMA.url, "duration", 1, types::xs_duration_eval);
@@ -201,6 +203,23 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(XPATH_FUNCTIONS.url, "exactly-one", 1, sequences::fn_exactly_one);
 
         instance.register(XPATH_FUNCTIONS.url, "deep-equal", 2, comparison::fn_deep_equal);
+
+        instance.register(XPATH_FUNCTIONS.url, "name", 0, nodes::fn_name);
+        instance.register(XPATH_FUNCTIONS.url, "name", 1, nodes::fn_name);
+        instance.register(XPATH_FUNCTIONS.url, "local-name", 0, nodes::fn_local_name);
+        instance.register(XPATH_FUNCTIONS.url, "local-name", 1, nodes::fn_local_name);
+        instance.register(XPATH_FUNCTIONS.url, "namespace-uri", 0, nodes::fn_namespace_uri);
+        instance.register(XPATH_FUNCTIONS.url, "namespace-uri", 1, nodes::fn_namespace_uri);
+        instance.register(XPATH_FUNCTIONS.url, "lang", 1, nodes::fn_lang);
+        instance.register(XPATH_FUNCTIONS.url, "lang", 2, nodes::fn_lang);
+        instance.register(XPATH_FUNCTIONS.url, "root", 0, nodes::fn_root);
+        instance.register(XPATH_FUNCTIONS.url, "root", 1, nodes::fn_root);
+        instance.register(XPATH_FUNCTIONS.url, "path", 0, nodes::fn_path);
+        instance.register(XPATH_FUNCTIONS.url, "path", 1, nodes::fn_path);
+        instance.register(XPATH_FUNCTIONS.url, "has-children", 0, nodes::fn_has_children);
+        instance.register(XPATH_FUNCTIONS.url, "has-children", 1, nodes::fn_has_children);
+        instance.register(XPATH_FUNCTIONS.url, "innermost", 1, nodes::fn_innermost);
+        instance.register(XPATH_FUNCTIONS.url, "outermost", 1, nodes::fn_outermost);
 
         instance
     }

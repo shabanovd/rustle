@@ -134,6 +134,12 @@ impl Time<FixedOffset> {
 
 pub(crate) fn object_to_qname(t: Object) -> QName {
     match t {
+        Object::Atomic(Type::String(str)) => {
+            if str.contains(":") {
+                todo!()
+            }
+            QName::local_part(str.as_str())
+        }
         Object::Atomic(Type::QName { prefix, url, local_part }) =>
                        QName { prefix, url, local_part },
         _ => panic!("can't convert to QName {:?}", t)
@@ -539,6 +545,9 @@ pub(crate) fn atomization(obj: Object) -> Result<Object, ErrorCode> {
             }
         },
         Object::Empty => Ok(obj), // or it can be XPST0005?
+        Object::Function { .. } |
+        Object::FunctionRef { .. } |
+        Object::Map(..) => Err(ErrorCode::FOTY0013),
         _ => todo!()
     }
 }

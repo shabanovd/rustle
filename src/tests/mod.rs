@@ -3,12 +3,12 @@ use crate::parser::parse;
 use crate::values::{resolve_element_qname, QName};
 use crate::serialization::object_to_string;
 use crate::fns::object_to_bool;
-use crate::parser::errors::ErrorCode;
+use crate::serialization::to_xml::object_to_xml;
 
 
 pub(crate) fn eval_on_spec(spec: &str, input: &str) -> Result<Object, String> {
     match spec {
-        "XQ10+" | "XP30+ XQ10+" | "XQ30+" | "XP30+ XQ30+" | "XQ31+" | "XP31+ XQ31+" => {
+        "XQ10" | "XQ10+" | "XP30+ XQ10+" | "XQ30+" | "XP30+ XQ30+" | "XQ31+" | "XP31+ XQ31+" => {
             eval(input)
         }
         _ => panic!("unsupported spec {}", spec)
@@ -145,17 +145,19 @@ pub(crate) fn bool_check_assert_permutation(result: &Result<Object, String>, che
 
 pub(crate) fn check_assert_xml(result: &Result<Object, String>, check: &str) {
     let expected = eval(check).unwrap();
-    match comparison::deep_eq(&expected, result.as_ref().unwrap()) {
-        Ok(v) => {
-            if !v {
-                assert_eq!(object_to_string(result.as_ref().unwrap()), check)
+    match result {
+        Ok(obj) => {
+            match comparison::deep_eq(&expected, obj) {
+                Ok(v) => {
+                    if !v {
+                        assert_eq!(object_to_xml(obj), check)
+                    }
+                },
+                Err(e) => assert_eq!(format!("error {:?}", e), check),
             }
         },
         Err(e) => assert_eq!(format!("error {:?}", e), check),
     }
-
-    // let actual = object_to_string(result.as_ref().unwrap());
-    // assert_eq!(expected, actual);
 }
 
 pub(crate) fn bool_check_assert_xml(result: &Result<Object, String>, check: &str) -> bool {
@@ -178,9 +180,7 @@ pub(crate) fn _check_assert_type(result: &Result<Object, String>, check: &str) -
     if check == "array(*)" {
         match result {
             Object::Array(..) => None,
-            _ => {
-                Some(String::from("not array(*)"))
-            }
+            _ => Some(String::from("not array(*)"))
         }
     } else if check == "array(xs:string)" {
         match result {
@@ -191,8 +191,35 @@ pub(crate) fn _check_assert_type(result: &Result<Object, String>, check: &str) -
                     for item in items {
                         match item {
                             Object::Atomic(Type::String(..)) => {},
+                            _ => return Some(format!("not xs:string: {:?}", item))
+                        }
+                    }
+                    None
+                }
+            },
+            _ => {
+                Some(String::from("not array(xs:string)"))
+            }
+        }
+    } else if check == "array(xs:string*)" {
+        match result {
+            Object::Array(items) => {
+                if items.len() == 0 {
+                    Some(format!("not {}", check))
+                } else {
+                    for item in items {
+                        match item {
+                            Object::Atomic(Type::String(..)) => {},
+                            Object::Sequence(items) => {
+                                for item in items {
+                                    match item {
+                                        Object::Atomic(Type::String(..)) => {},
+                                        _ => return Some(format!("not xs:string: {:?}", item))
+                                    }
+                                }
+                            },
                             _ => {
-                                return Some(String::from("not array(xs:string)"));
+                                return Some(format!("not xs:string*: {:?}", item));
                             }
                         }
                     }
@@ -211,7 +238,7 @@ pub(crate) fn _check_assert_type(result: &Result<Object, String>, check: &str) -
             }
         }
     } else {
-        todo!()
+        todo!("{}", check)
     }
 }
 
@@ -258,11 +285,11 @@ pub(crate) fn bool_check_assert_false(result: &Result<Object, String>) -> bool {
 pub(crate) fn check_error(result: &Result<Object, String>, expected_code: &str) {
     match result {
         Err(code) => {
-            assert_eq!(*code, expected_code)
+            if expected_code != "*" {
+                assert_eq!(*code, expected_code)
+            }
         },
-        _ => {
-            assert_eq!("not error", format!("{:?}", result));
-        }
+        _ => assert_eq!("not error", format!("{:?}", result))
     }
 }
 

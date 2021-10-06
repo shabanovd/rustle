@@ -1,5 +1,6 @@
 use crate::eval::{Node, Object};
 use crate::values::QName;
+use crate::serialization::to_string::object_to_string_xml;
 
 #[derive(Debug)]
 pub enum XmlEvent {
@@ -118,7 +119,14 @@ fn private_node_to_events(node: &Node, events: &mut Vec<XmlEvent>) {
     }
 }
 
-pub fn node_to_string(node: &Node) -> String {
+pub fn object_to_xml(object: &Object) -> String {
+    match object {
+        Object::Node(node) => node_to_xml(node),
+        _ => object_to_string_xml(object)
+    }
+}
+
+pub fn node_to_xml(node: &Node) -> String {
     match node {
         Node::Document { children, .. } => {
             let mut buf = String::new();
@@ -160,7 +168,16 @@ pub fn node_to_string(node: &Node) -> String {
             }
             buf
         }
-        Node::Attribute { .. } => { todo!() }
+        Node::Attribute { name, value, .. } => {
+            let mut buf = String::new();
+
+            buf.push_str(name.string().as_str());
+            buf.push_str("=\"");
+            buf.push_str(value.as_str());
+            buf.push_str("\"");
+
+            buf
+        }
         Node::Text { content, .. } => { content.clone() }
         Node::Comment { content, .. } => {
             let mut buf = String::new();
@@ -184,6 +201,41 @@ pub fn node_to_string(node: &Node) -> String {
         }
     }
 }
+
+pub fn node_to_string(node: &Node) -> String {
+    match node {
+        Node::Document { children, .. } => {
+            let mut buf = String::new();
+            for child in children {
+                buf.push_str(node_to_string(child).as_str());
+            }
+            buf
+        }
+        Node::Element { name, attributes, children, .. } => {
+            let mut buf = String::new();
+
+            for attribute in attributes {
+                match attribute {
+                    Node::Attribute { name, value, .. } => {
+                        buf.push_str(fix(value).as_str());
+                    },
+                    _ => panic!("error: {:?}", attribute)
+                }
+            }
+
+            for child in children {
+                buf.push_str(node_to_string(child).as_str());
+            }
+
+            buf
+        }
+        Node::Attribute { name, value, .. } => value.clone(),
+        Node::Text { content, .. } => content.clone(),
+        Node::Comment { content, .. } => content.clone(),
+        Node::PI { target, content, .. } => content.clone(),
+    }
+}
+
 
 fn fix(str: &String) -> String {
     str.replace("\"", "&quot;")

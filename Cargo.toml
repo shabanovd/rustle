@@ -23,3 +23,5 @@ dyn-clone = "1.0.4"
 nom = "7.0"
 xmlparser = "0.13.3"
 quick-xml = "0.22.0"
+
+linked-hash-map = "0.5.4"

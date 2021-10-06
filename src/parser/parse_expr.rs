@@ -8,15 +8,15 @@ use nom::{branch::alt, bytes::complete::tag, character::complete::one_of, error:
 use crate::parser::helper::*;
 use crate::fns::Param;
 use crate::values::QName;
-use crate::parser::parse_literal::{parse_literal, parse_integer_literal};
+use crate::parser::parse_literal::{parse_literal, parse_integer_literal, parse_string_literal};
 use crate::parser::parse_xml::parse_node_constructor;
-use crate::parser::parse_names::{parse_eqname, parse_ncname};
-use crate::parser::op::{found_expr, Statement, ItemType, OccurrenceIndicator, OperatorComparison, OperatorArithmetic, OneOrMore};
+use crate::parser::parse_names::{parse_eqname, parse_ncname, parse_ncname_expr};
+use crate::parser::op::{found_expr, Statement, OperatorComparison, OperatorArithmetic, OneOrMore};
 use nom::sequence::{preceded, delimited, tuple};
-use crate::eval::expression::Expression;
+use crate::eval::expression::{Expression, NodeTest};
 use nom::multi::separated_list1;
-use nom::combinator::{map_res, map};
-use crate::eval::sequence_type::SequenceType;
+use nom::combinator::{map_res, map, opt};
+use crate::eval::sequence_type::*;
 
 const DEBUG: bool = false;
 
@@ -206,10 +206,9 @@ fn parse_param(input: &str) -> IResult<&str, Param, CustomError<&str>> {
 fn parse_function_decl(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
     let (input, _) = ws1_tag_ws1("function", input)?;
 
-    let (input, name) = parse_eqname(input)?;
+    let (input, name) = parse_function_name(input)?;
 
     let (input, _) = ws_tag_ws("(", input)?;
-
     let mut current_input = input;
 
     let check = parse_param_list(current_input);
@@ -939,8 +938,8 @@ fn parse_abbrev_forward_step(input: &str) -> IResult<&str, Box<dyn Expression>, 
 
 // [118]    	NodeTest 	   ::=    	KindTest | NameTest
 // TODO: parse_one_of!(parse_node_test, parse_kind_test, parse_name_test);
-fn parse_node_test(input: &str) -> IResult<&str, NameTest, CustomError<&str>> {
-    parse_name_test(input)
+fn parse_node_test(input: &str) -> IResult<&str, Box<dyn NodeTest>, CustomError<&str>> {
+    alt((parse_kind_test, parse_name_test))(input)
 }
 
 // [119]    	NameTest 	   ::=    	EQName | Wildcard
@@ -948,7 +947,7 @@ fn parse_node_test(input: &str) -> IResult<&str, NameTest, CustomError<&str>> {
 // | (NCName ":*")
 // | ("*:" NCName)
 // TODO: | (BracedURILiteral "*") 	/* ws: explicit */
-fn parse_name_test(input: &str) -> IResult<&str, NameTest, CustomError<&str>> {
+fn parse_name_test(input: &str) -> IResult<&str, Box<dyn NodeTest>, CustomError<&str>> {
     let check = parse_eqname(input);
     let (input, qname) = if check.is_ok() {
         let (input, name) = check?;
@@ -973,7 +972,7 @@ fn parse_name_test(input: &str) -> IResult<&str, NameTest, CustomError<&str>> {
         }
     };
 
-    Ok((input, NameTest { name: qname }))
+    Ok((input, NameTest::boxed(qname)))
 }
 
 // [121]    	PostfixExpr 	   ::=    	PrimaryExpr (Predicate | TODO: ArgumentList | Lookup)*
@@ -1128,7 +1127,7 @@ fn parse_context_item_expr(input: &str) -> IResult<&str, Box<dyn Expression>, Cu
 // [137]    	FunctionCall 	   ::=    	EQName ArgumentList
 fn parse_function_call(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
     let (input, _) = ws(input)?;
-    let (input, function) = parse_eqname(input)?;
+    let (input, function) = parse_function_name(input)?;
     let (input, arguments) = parse_argument_list(input)?;
 
     //workaround: lookahead for inline function
@@ -1139,6 +1138,38 @@ fn parse_function_call(input: &str) -> IResult<&str, Box<dyn Expression>, Custom
     } else {
         found_expr(input, Box::new(Call { function, arguments }))
     }
+}
+
+fn parse_function_name(input: &str) -> IResult<&str, QName, CustomError<&str>> {
+    let (input, name) = parse_eqname(input)?;
+
+    // Reserved Function Names
+    if name.prefix.is_none() {
+        match name.local_part.as_str() {
+            "array" |
+            "attribute" |
+            "comment" |
+            "document-node" |
+            "element" |
+            "empty-sequence" |
+            "function" |
+            "if" |
+            "item" |
+            "map" |
+            "namespace-node" |
+            "node" |
+            "processing-instruction" |
+            "schema-attribute" |
+            "schema-element" |
+            "switch" |
+            "text" |
+            "typeswitch" => {
+                return Err(nom::Err::Error(CustomError::XPST0003));
+            }
+            _ => {}
+        }
+    }
+    Ok((input, name))
 }
 
 // [138]    	Argument 	   ::=    	ExprSingle TODO: | ArgumentPlaceholder
@@ -1183,12 +1214,8 @@ parse_one_of!(parse_function_item_expr,
 
 // [168]    	NamedFunctionRef 	   ::=    	EQName "#" IntegerLiteral
 fn parse_named_function_ref(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
-    if DEBUG {
-        println!("parse_named_function_ref {:?}", input);
-    }
-
     let (input, _) = ws(input)?;
-    let (input, name) = parse_eqname(input)?;
+    let (input, name) = parse_function_name(input)?;
     let (input, _) = tag("#")(input)?;
     let (input, arity) = parse_integer_literal(input)?;
 
@@ -1384,11 +1411,10 @@ parse_one_of_!(parse_item_type, ItemType,
 );
 
 fn parse_item(input: &str) -> IResult<&str, ItemType, CustomError<&str>> {
-    let (input, _) = ws_tag("item", input)?;
-    let (input, _) = ws_tag("(", input)?;
-    let (input, _) = ws_tag(")", input)?;
-
-    Ok((input, ItemType::Item))
+    map(
+        tuple((ws, tag("item"), ws, tag("("), ws, tag(")"))),
+        |_| ItemType::Item
+    )(input)
 }
 
 // [187]    	AtomicOrUnionType 	   ::=    	EQName
@@ -1396,6 +1422,165 @@ fn parse_atomic_or_union_type(input: &str) -> IResult<&str, ItemType, CustomErro
     let (input, name) = parse_eqname(input)?;
 
     Ok((input, ItemType::AtomicOrUnionType(name)))
+}
+
+// [188]    	KindTest 	   ::=    	DocumentTest
+// | ElementTest
+// | AttributeTest
+// | SchemaElementTest
+// | SchemaAttributeTest
+// | PITest
+// | CommentTest
+// | TextTest
+// | NamespaceNodeTest
+// | AnyKindTest
+fn parse_kind_test(input: &str) -> IResult<&str, Box<dyn NodeTest>, CustomError<&str>> {
+    alt((
+        parse_document_test,
+        parse_element_test,
+        parse_attribute_test,
+        parse_schema_element_test,
+        parse_schema_attribute_test,
+        parse_pi_test,
+        parse_comment_test,
+        parse_text_test,
+        parse_namespace_node_test,
+        parse_any_kind_test,
+    ))(input)
+}
+
+// [189]    	AnyKindTest 	   ::=    	"node" "(" ")"
+fn parse_any_kind_test(input: &str) -> IResult<&str, Box<dyn NodeTest>, CustomError<&str>> {
+    map(
+        tuple((ws, tag("node"), ws, tag("("), ws, tag(")"))),
+        |_| AnyKindTest::boxed()
+    )(input)
+}
+
+// [190]    	DocumentTest 	   ::=    	"document-node" "(" (ElementTest | SchemaElementTest)? ")"
+fn parse_document_test(input: &str) -> IResult<&str, Box<dyn NodeTest>, CustomError<&str>> {
+    map(
+        delimited(
+            tuple((ws, tag("document-node"), ws, tag("("), ws)),
+            opt(alt((parse_element_test, parse_schema_element_test))),
+            tuple((ws, tag(")")))
+        ),
+        |test| DocumentTest::boxed(test)
+    )(input)
+}
+
+// [191]    	TextTest 	   ::=    	"text" "(" ")"
+fn parse_text_test(input: &str) -> IResult<&str, Box<dyn NodeTest>, CustomError<&str>> {
+    map(
+        tuple((ws, tag("text"), ws, tag("("), ws, tag(")"))),
+        |_| TextTest::boxed()
+    )(input)
+}
+
+// [192]    	CommentTest 	   ::=    	"comment" "(" ")"
+fn parse_comment_test(input: &str) -> IResult<&str, Box<dyn NodeTest>, CustomError<&str>> {
+    map(
+        tuple((ws, tag("comment"), ws, tag("("), ws, tag(")"))),
+        |_| CommentTest::boxed()
+    )(input)
+}
+
+// [193]    	NamespaceNodeTest 	   ::=    	"namespace-node" "(" ")"
+fn parse_namespace_node_test(input: &str) -> IResult<&str, Box<dyn NodeTest>, CustomError<&str>> {
+    map(
+        tuple((ws, tag("namespace-node"), ws, tag("("), ws, tag(")"))),
+        |_| NamespaceNodeTest::boxed()
+    )(input)
+}
+
+// [194]    	PITest 	   ::=    	"processing-instruction" "(" (NCName | StringLiteral)? ")"
+fn parse_pi_test(input: &str) -> IResult<&str, Box<dyn NodeTest>, CustomError<&str>> {
+    map(
+        delimited(
+            tuple((ws, tag("processing-instruction"), ws, tag("("), ws)),
+            opt(alt((parse_ncname_expr, parse_string_literal))),
+            tuple((ws, tag(")")))
+        ),
+        |name| PITest::boxed(name)
+    )(input)
+}
+
+// [199]    	ElementTest 	   ::=    	"element" "(" (ElementNameOrWildcard ("," TypeName "?"?)?)? ")"
+fn parse_element_test(input: &str) -> IResult<&str, Box<dyn NodeTest>, CustomError<&str>> {
+    map(
+        delimited(
+            tuple((ws, tag("element"), ws, tag("("), ws)),
+            opt(tuple((parse_element_name_or_wildcard, opt(tuple((ws, tag(","), parse_type_name)))))),
+            tuple((ws, tag(")")))
+        ),
+        |test| ElementTest::boxed()
+    )(input)
+}
+
+// [201]    	SchemaElementTest 	   ::=    	"schema-element" "(" ElementDeclaration ")"
+// [202]    	ElementDeclaration 	   ::=    	ElementName
+fn parse_schema_element_test(input: &str) -> IResult<&str, Box<dyn NodeTest>, CustomError<&str>> {
+    map(
+        delimited(
+            tuple((ws, tag("schema-element"), ws, tag("("), ws)),
+            parse_eqname,
+            tuple((ws, tag(")")))
+        ),
+        |name| SchemaElementTest::boxed(name)
+    )(input)
+}
+
+// [195]    	AttributeTest 	   ::=    	"attribute" "(" (AttribNameOrWildcard ("," TypeName)?)? ")"
+fn parse_attribute_test(input: &str) -> IResult<&str, Box<dyn NodeTest>, CustomError<&str>> {
+    map(
+        delimited(
+            tuple((ws, tag("attribute"), ws, tag("("), ws)),
+            opt(tuple((parse_attrib_name_or_wildcard, opt(tuple((ws, tag(","), parse_type_name)))))),
+            tuple((ws, tag(")")))
+        ),
+        |name| AttributeTest::boxed()
+    )(input)
+}
+
+// [197]    	SchemaAttributeTest 	   ::=    	"schema-attribute" "(" AttributeDeclaration ")"
+// [198]    	AttributeDeclaration 	   ::=    	AttributeName
+// [203]    	AttributeName 	   ::=    	EQName
+fn parse_schema_attribute_test(input: &str) -> IResult<&str, Box<dyn NodeTest>, CustomError<&str>> {
+    map(
+        delimited(
+            tuple((ws, tag("schema-attribute"), ws, tag("("), ws)),
+            parse_eqname,
+            tuple((ws, tag(")")))
+        ),
+        |name| SchemaAttributeTest::boxed(name)
+    )(input)
+}
+
+// [200]    	ElementNameOrWildcard 	   ::=    	ElementName | "*"
+// [204]    	ElementName 	   ::=    	EQName
+fn parse_element_name_or_wildcard(input: &str) -> IResult<&str, QName, CustomError<&str>> {
+    parse_ea_name_or_wildcard(input)
+}
+
+// [196]    	AttribNameOrWildcard 	   ::=    	AttributeName | "*"
+// [203]    	AttributeName 	   ::=    	EQName
+fn parse_attrib_name_or_wildcard(input: &str) -> IResult<&str, QName, CustomError<&str>> {
+    parse_ea_name_or_wildcard(input)
+}
+
+fn parse_ea_name_or_wildcard(input: &str) -> IResult<&str, QName, CustomError<&str>> {
+    let check = parse_eqname(input);
+    if check.is_ok() {
+        check
+    } else {
+        let (input, _) = tag("*")(input)?;
+        Ok((input, QName::wildcard()))
+    }
+}
+
+// [206]    	TypeName 	   ::=    	EQName
+fn parse_type_name(input: &str) -> IResult<&str, QName, CustomError<&str>> {
+    parse_eqname(input)
 }
 
 // [226]    	EscapeQuot 	   ::=    	'""'

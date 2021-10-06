@@ -1,13 +1,14 @@
 use crate::parser::op::found_qname;
 use crate::namespaces::*;
 use crate::parser::errors::CustomError;
-use crate::values::QName;
+use crate::values::{QName, Name};
 
 use nom::{
     bytes::complete::{tag, take_while, take_while_m_n},
     IResult
 };
 use crate::eval::expression::Expression;
+use crate::parser::helper::ws1;
 
 fn parse_name(input: &str) -> IResult<&str, String, CustomError<&str>> {
     parse_ncname(input)
@@ -20,6 +21,12 @@ pub(crate) fn parse_qname(input: &str) -> IResult<&str, QName, CustomError<&str>
 }
 
 pub(crate) fn parse_qname_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
+    let (input, qname) = parse_qname(input)?;
+    Ok((input, Box::new(qname)))
+}
+
+pub(crate) fn parse_ws1_qname_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
+    let (input, _) = ws1(input)?;
     let (input, qname) = parse_qname(input)?;
     Ok((input, Box::new(qname)))
 }
@@ -83,6 +90,16 @@ pub(crate) fn parse_ncname(input: &str) -> IResult<&str, String, CustomError<&st
     name.push_str(name_end);
 
     Ok((input, name))
+}
+
+pub(crate) fn parse_ws1_ncname(input: &str) -> IResult<&str, String, CustomError<&str>> {
+    let (input, _) = ws1(input)?;
+    parse_ncname(input)
+}
+
+pub(crate) fn parse_ncname_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
+    let (input, name) = parse_ncname(input)?;
+    Ok((input, Name::boxed(name) ))
 }
 
 //[4]   	NameStartChar	   ::=   	":" (An XML Name, minus the ":") | [A-Z] | "_" | [a-z] TODO: | [#xC0-#xD6] | [#xD8-#xF6] | [#xF8-#x2FF] | [#x370-#x37D] | [#x37F-#x1FFF] | [#x200C-#x200D] | [#x2070-#x218F] | [#x2C00-#x2FEF] | [#x3001-#xD7FF] | [#xF900-#xFDCF] | [#xFDF0-#xFFFD] | [#x10000-#xEFFFF]

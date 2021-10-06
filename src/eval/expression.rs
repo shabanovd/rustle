@@ -1,4 +1,4 @@
-use crate::eval::{Environment, DynamicContext, EvalResult, Object};
+use crate::eval::{Environment, DynamicContext, EvalResult, Object, Node};
 use dyn_clone::DynClone;
 
 pub trait Expression: DynClone {
@@ -10,3 +10,9 @@ pub trait Expression: DynClone {
 }
 
 dyn_clone::clone_trait_object!(Expression);
+
+pub(crate) trait NodeTest: DynClone {
+    fn test_node(&self, node: &Node) -> bool;
+}
+
+dyn_clone::clone_trait_object!(NodeTest);

@@ -10,7 +10,7 @@ use nom::combinator::{opt, map, map_res};
 
 use crate::eval::{Type, Time};
 use crate::parser::parse_literal::is_digits;
-use chrono::{Date, NaiveDate, FixedOffset, NaiveTime};
+use chrono::{Date, NaiveDate, FixedOffset, NaiveTime, DateTime, NaiveDateTime};
 use nom::error::{ParseError, ErrorKind};
 
 pub fn string_to_date(input: &str) -> Result<Type, String> {
@@ -27,6 +27,22 @@ pub fn string_to_date(input: &str) -> Result<Type, String> {
         }
     }
 }
+
+pub fn string_to_date_time(input: &str) -> Result<Type, String> {
+    match parse_date_time(input) {
+        Ok((input, dt)) => {
+            if input.is_empty() {
+                Ok(dt)
+            } else {
+                Err(String::from(input))
+            }
+        },
+        Err(e) => {
+            Err(format!("{:?}", e))
+        }
+    }
+}
+
 pub fn string_to_duration(input: &str) -> Result<Type, String> {
     match parse_duration(input) {
         Ok((input, dt)) => {
@@ -97,13 +113,50 @@ pub fn parse_date(input: &str) -> IResult<&str, Type> {
         }
     )(input)
 }
+// 2002-04-02T12:00:00-01:00
+pub fn parse_date_time(input: &str) -> IResult<&str, Type> {
+    map_res(
+        tuple((
+            parse_year,
+            tag("-"),
+            parse_month,
+            tag("-"),
+            parse_day,
+            tag("T"),
+            parse_hour,
+            tag(":"),
+            parse_minute,
+            tag(":"),
+            parse_second,
+            opt(alt((timezone_hour, timezone_utc))),
+        )),
+        |(yy, _, mm, _, dd, _, h, _, m, _, s, z)| {
+            let (tz_h, tz_m) = z.unwrap_or((0, 0));
+            if let Some(date) = NaiveDate::from_ymd_opt(yy as i32, mm, dd) {
+                if let Some(time) = NaiveTime::from_hms_opt(h, m, s) {
+                    let offset = if tz_h > 0 {
+                        FixedOffset::east(((tz_h * 60) + tz_m) * 60)
+                    } else {
+                        FixedOffset::west(((-tz_h * 60) + tz_m) * 60)
+                    };
+                    let dt = NaiveDateTime::new(date, time - offset);
+                    Ok(Type::DateTime(DateTime::from_utc(dt, offset)))
+                } else {
+                    Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
+                }
+            } else {
+                Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
+            }
+        }
+    )(input)
+}
 
 fn timezone_hour(input: &str) -> IResult<&str, (i32, i32)> {
     map(
         tuple((
             opt(alt((tag("+"), tag("-")))),
-            time_hour,
-            opt(preceded(tag(":"), time_minute))
+            parse_hour,
+            opt(preceded(tag(":"), parse_minute))
         )),
         |(sign, h, m)| {
             let s = if let Some(ch) = sign {
@@ -260,11 +313,15 @@ fn parse_day(input: &str) -> IResult<&str, u32> {
     digit_in_range(input, (1, 2), 0..=31)
 }
 
-fn time_hour(input: &str) -> IResult<&str, u32> {
+fn parse_hour(input: &str) -> IResult<&str, u32> {
     digit_in_range(input, (2, 2), 0..=24)
 }
 
-fn time_minute(input: &str) -> IResult<&str, u32> {
+fn parse_minute(input: &str) -> IResult<&str, u32> {
+    digit_in_range(input, (2, 2), 0..=59)
+}
+
+fn parse_second(input: &str) -> IResult<&str, u32> {
     digit_in_range(input, (2, 2), 0..=59)
 }
 

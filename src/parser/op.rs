@@ -80,18 +80,3 @@ pub enum OperatorComparison {
     ValueGreaterThan,
     ValueGreaterOrEquals,
 }
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum ItemType {
-    SequenceEmpty,
-    Item,
-    AtomicOrUnionType(QName)
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum OccurrenceIndicator {
-    ExactlyOne,
-    ZeroOrOne, // ?
-    ZeroOrMore, // *
-    OneOrMore, // +
-}

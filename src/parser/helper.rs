@@ -1,6 +1,7 @@
 use nom::{bytes::complete::tag, IResult};
 use crate::parser::errors::CustomError;
 use nom::bytes::complete::take;
+use nom::character::complete::multispace0;
 
 pub(crate) fn ws(input: &str) -> Result<(&str, &str), nom::Err<CustomError<&str>>> {
     match find_ws_end(input) {
@@ -47,7 +48,10 @@ fn find_ws_end(input: &str) -> Option<(usize, bool)> {
                 match c {
                     ' ' | '\t' | '\r' | '\n' => {},
                     '(' => step = State::OpeningComment,
-                    ':' => step = State::ClosingComment,
+                    ':' => {
+                        if open_comments == 0 { return Some((i, false)); }
+                        step = State::ClosingComment
+                    },
                     _ => if open_comments == 0 { return Some((i, false)); }
                 }
             },
@@ -59,7 +63,6 @@ fn find_ws_end(input: &str) -> Option<(usize, bool)> {
             State::ClosingComment => {
                 if c == ')' { open_comments -= 1 }
                 step = State::None;
-                if open_comments == 0 { return Some((i - 1, false)); }
             }
         }
     }
@@ -79,6 +82,12 @@ pub(crate) fn ws_tag_ws<'a>(token: &str, input: &'a str) -> IResult<&'a str, &'a
     let (input, _) = ws(input)?;
     let (input, _) = tag(token)(input)?;
     ws(input)
+}
+
+pub(crate) fn s_tag_s<'a>(token: &str, input: &'a str) -> IResult<&'a str, &'a str, CustomError<&'a str>> {
+    let (input, _) = multispace0(input)?;
+    let (input, _) = tag(token)(input)?;
+    multispace0(input)
 }
 
 pub(crate) fn tag_ws1<'a>(token: &str, input: &'a str) -> IResult<&'a str, &'a str, CustomError<&'a str>> {

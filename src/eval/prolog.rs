@@ -1,5 +1,5 @@
-use crate::eval::expression::Expression;
-use crate::parser::op::{Representation, ItemType, OccurrenceIndicator, OperatorArithmetic, OperatorComparison, OneOrMore};
+use crate::eval::expression::{Expression, NodeTest};
+use crate::parser::op::{Representation, OperatorArithmetic, OperatorComparison, OneOrMore};
 use bigdecimal::BigDecimal;
 use ordered_float::OrderedFloat;
 use crate::values::{QName, resolve_function_qname, resolve_element_qname};
@@ -14,6 +14,7 @@ use crate::eval::comparison::{eval_comparison, eval_comparison_item};
 use crate::eval::piping::{Pipe, eval_pipe};
 use crate::parser::errors::ErrorCode;
 use crate::eval::sequence_type::SequenceType;
+use linked_hash_map::LinkedHashMap;
 
 //internal
 #[derive(Clone)]
@@ -364,14 +365,14 @@ impl Expression for AxisStep {
 }
 
 #[derive(Clone)]
-pub(crate) struct ForwardStep { pub(crate) attribute: bool, pub(crate) test: NameTest }
+pub(crate) struct ForwardStep { pub(crate) attribute: bool, pub(crate) test: Box<dyn NodeTest> }
 
 impl Expression for ForwardStep {
     fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
         if self.attribute {
-            step_and_test(Axis::ForwardAttribute, self.test.clone(), env, context)
+            step_and_test(Axis::ForwardAttribute, &self.test, env, context)
         } else {
-            step_and_test(Axis::ForwardChild, self.test.clone(), env, context)
+            step_and_test(Axis::ForwardChild, &self.test, env, context)
         }
     }
 
@@ -383,9 +384,6 @@ impl Expression for ForwardStep {
         todo!()
     }
 }
-
-#[derive(Debug, Clone)]
-pub(crate) struct NameTest { pub(crate) name: QName }
 
 //spec
 #[derive(Clone)]
@@ -891,14 +889,43 @@ impl Expression for NodeDocument {
 }
 
 #[derive(Clone)]
+pub(crate) struct Attributes {
+    pub(crate) pairs: LinkedHashMap<QName, Box<dyn Expression>>,
+}
+
+impl Attributes {
+    pub fn new() -> Self {
+        Attributes {
+            pairs: LinkedHashMap::new()
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.pairs.len()
+    }
+
+    pub fn add(&mut self, name: QName, value: Box<dyn Expression>) -> Result<(), (ErrorCode, String)> {
+        if let Some(..) = self.pairs.insert(name, value) {
+            Err((ErrorCode::XQST0040, String::from("TODO")))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+#[derive(Clone)]
 pub(crate) struct NodeElement {
     pub(crate) name: Box<dyn Expression>,
-    pub(crate) attributes: Vec<Box<dyn Expression>>,
+    pub(crate) attributes: Option<Attributes>,
     pub(crate) children: Vec<Box<dyn Expression>>
 }
 
 impl NodeElement {
-    pub(crate) fn new(name: Box<dyn Expression>, attributes: Vec<Box<dyn Expression>>, children: Vec<Box<dyn Expression>>) -> Box<dyn Expression> {
+    pub(crate) fn new(
+        name: Box<dyn Expression>,
+        attributes: Option<Attributes>,
+        children: Vec<Box<dyn Expression>>
+    ) -> Box<dyn Expression> {
         Box::new(NodeElement { name, attributes, children })
     }
 }
@@ -912,17 +939,14 @@ impl Expression for NodeElement {
 
         let evaluated_name = object_to_qname(evaluated_name);
         let mut evaluated_attributes = vec![];
-        for attribute in &self.attributes {
-            let (new_env, evaluated_attribute) = attribute.eval(current_env, context)?;
-            current_env = new_env;
+        if let Some(attributes) = &self.attributes {
+            for attribute in &attributes.pairs {
+                let (new_env, evaluated_value) = attribute.1.eval(current_env, context)?;
+                current_env = new_env;
 
-            match evaluated_attribute {
-                Object::Node(Node::Attribute { sequence, name, value}) => { // TODO: avoid copy!
-                    let evaluated_attribute = Node::Attribute { sequence, name, value };
-                    evaluated_attributes.push(evaluated_attribute);
-                }
-                _ => panic!("unexpected object") //TODO: better error
-            };
+                let value = object_to_string(&evaluated_value);
+                evaluated_attributes.push(Node::Attribute { sequence: -1, name: attribute.0.clone(), value });
+            }
         }
 
         let mut evaluated_children = vec![];
