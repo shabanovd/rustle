@@ -2,6 +2,7 @@ use core::fmt;
 use crate::eval::{Environment, DynamicContext, EvalResult, Object, Type};
 use crate::namespaces::SCHEMA;
 use std::cmp::Ordering;
+use std::fmt::Formatter;
 use crate::eval::expression::Expression;
 
 lazy_static! {
@@ -10,6 +11,7 @@ lazy_static! {
     pub static ref XS_DECIMAL: QName = QName::full("xs", "decimal", SCHEMA.url);
     pub static ref XS_FLOAT: QName = QName::full("xs", "float", SCHEMA.url);
     pub static ref XS_DOUBLE: QName = QName::full("xs", "double", SCHEMA.url);
+    pub static ref XS_UNTYPED_ATOMIC: QName = QName::full("xs", "untypedAtomic", SCHEMA.url);
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
@@ -19,14 +21,14 @@ pub struct QNameResolved {
 }
 
 pub fn resolve_element_qname(qname: &QName, env: &Box<Environment>) -> QNameResolved {
-    resolve_qname(qname, env, env.namespaces.default_for_element)
+    resolve_qname(qname, env, &env.namespaces.default_for_element)
 }
 
 pub fn resolve_function_qname(qname: &QName, env: &Box<Environment>) -> QNameResolved {
-    resolve_qname(qname, env, env.namespaces.default_for_function)
+    resolve_qname(qname, env, &env.namespaces.default_for_function)
 }
 
-fn resolve_qname(qname: &QName, env: &Box<Environment>, default: &str) -> QNameResolved {
+fn resolve_qname(qname: &QName, env: &Box<Environment>, default: &String) -> QNameResolved {
     if let Some(url) = &qname.url {
         QNameResolved { url: url.clone(), local_part: qname.local_part.clone() }
     } else {
@@ -41,7 +43,7 @@ fn resolve_qname(qname: &QName, env: &Box<Environment>, default: &str) -> QNameR
             }
         } else {
             QNameResolved {
-                url: String::from(default),
+                url: default.clone(),
                 local_part: qname.local_part.clone(),
             }
         }
@@ -129,8 +131,8 @@ impl Expression for QName {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
@@ -144,7 +146,7 @@ impl fmt::Debug for QName {
     }
 }
 
-#[derive(Eq, PartialEq, Clone, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Name {
     pub name: String,
 }
@@ -164,7 +166,7 @@ impl Expression for Name {
         todo!()
     }
 
-    fn debug(&self) -> String {
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         todo!()
     }
 }

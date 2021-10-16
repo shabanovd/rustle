@@ -1,10 +1,11 @@
+use core::fmt;
 use crate::eval::expression::{Expression, NodeTest};
 use crate::parser::op::{Representation, OperatorArithmetic, OperatorComparison, OneOrMore};
 use bigdecimal::BigDecimal;
 use ordered_float::OrderedFloat;
 use crate::values::{QName, resolve_function_qname, resolve_element_qname};
 use crate::fns::{Param, call, object_to_bool};
-use crate::eval::{Environment, DynamicContext, EvalResult, Object, Type, eval_predicates, Axis, step_and_test, Node, object_to_qname, object_to_iterator, object_owned_to_sequence, object_to_integer};
+use crate::eval::{Environment, DynamicContext, EvalResult, Object, Type, eval_predicates, Axis, step_and_test, object_to_qname, object_to_iterator, object_owned_to_sequence, object_to_integer, ErrorInfo};
 use crate::serialization::{object_to_string};
 use crate::serialization::to_string::object_to_string_xml;
 use crate::eval::helpers::{relax, relax_sequences, sort_and_dedup, process_items, join_sequences};
@@ -17,7 +18,7 @@ use crate::eval::sequence_type::SequenceType;
 use linked_hash_map::LinkedHashMap;
 
 //internal
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Literals { pub(crate) exprs: Vec<Box<dyn Expression>> }
 
 impl Expression for Literals {
@@ -29,12 +30,12 @@ impl Expression for Literals {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct CharRef { pub(crate) representation: Representation, pub(crate) reference: u32 }
 
 impl Expression for CharRef {
@@ -46,12 +47,12 @@ impl Expression for CharRef {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct EntityRef {
     pub(crate) reference: String
 }
@@ -71,12 +72,12 @@ impl Expression for EntityRef {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct EscapeQuot {}
 
 impl Expression for EscapeQuot {
@@ -88,12 +89,12 @@ impl Expression for EscapeQuot {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct EscapeApos {}
 
 impl Expression for EscapeApos {
@@ -105,13 +106,84 @@ impl Expression for EscapeApos {
         todo!()
     }
 
-    fn debug(&self) -> String {
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct DeclareBaseURI {
+    uri: Box<dyn Expression>
+}
+
+impl DeclareBaseURI {
+    pub(crate) fn boxed(uri: Box<dyn Expression>) -> Box<dyn Expression> {
+        Box::new(DeclareBaseURI { uri })
+    }
+}
+
+impl Expression for DeclareBaseURI {
+    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+        let (mut new_env, uri) = self.uri.eval(env, context)?;
+
+        let uri = object_to_string(&new_env, &uri);
+
+        new_env.static_base_uri = Some(uri);
+
+        Ok((new_env, Object::Nothing))
+    }
+
+    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
         todo!()
+    }
+
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct DeclareDefaultNamespace {
+    what: String,
+    uri: Box<dyn Expression>
+}
+
+impl DeclareDefaultNamespace {
+    pub(crate) fn boxed(what: &str, uri: Box<dyn Expression>) -> Box<dyn Expression> {
+        Box::new(DeclareDefaultNamespace { what: String::from(what), uri })
+    }
+}
+
+impl Expression for DeclareDefaultNamespace {
+    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+        let (mut new_env, uri) = self.uri.eval(env, context)?;
+
+        let uri = object_to_string(&new_env, &uri);
+
+        match self.what.as_str() {
+            "element" => {
+                new_env.namespaces.default_for_element = uri;
+            }
+            "function" => {
+                new_env.namespaces.default_for_function = uri;
+            }
+            _ => panic!("internal error")
+        }
+
+        Ok((new_env, Object::Nothing))
+    }
+
+    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+        todo!()
+    }
+
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
 //prolog
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct AnnotatedDecl {
     pub(crate) annotations: Vec<Box<dyn Expression>>,
     pub(crate) decl: Box<dyn Expression>
@@ -127,12 +199,12 @@ impl Expression for AnnotatedDecl {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct VarDecl {
     pub(crate) name: QName,
     pub(crate) type_declaration: Option<SequenceType>,
@@ -144,12 +216,14 @@ impl Expression for VarDecl {
     fn eval<'a>(&self, mut env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
         let name = resolve_element_qname(&self.name, &env);
 
+        let new_env = (*env.clone()).next(); // TODO fix it
+
         if let Some(expr) = &self.value {
-            match expr.eval(Box::new(*env.clone()), &DynamicContext::nothing()) {
+            match expr.eval(new_env, &DynamicContext::nothing()) {
                 Ok((new_env, obj)) => {
                     env.set(name, obj);
                 },
-                Err((code, msg)) => panic!("Error {:?} {:?}", code, msg),
+                Err(e) => return Err(e),
             }
         }
 
@@ -160,12 +234,12 @@ impl Expression for VarDecl {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct FunctionDecl {
     pub(crate) name: QName,
     pub(crate) params: Vec<Param>,
@@ -194,12 +268,12 @@ impl Expression for FunctionDecl {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Body {
     pub(crate) exprs: Vec<Box<dyn Expression>>
 }
@@ -240,13 +314,13 @@ impl Expression for Body {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
 //navigation
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Root {}
 
 impl Expression for Root {
@@ -258,12 +332,12 @@ impl Expression for Root {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Steps {
     pub(crate) steps: Vec<Box<dyn Expression>>
 }
@@ -296,12 +370,12 @@ impl Expression for Steps {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct InitialPath { pub(crate) steps: OneOrMore, pub(crate) expr: Box<dyn Expression> }
 
 impl Expression for InitialPath {
@@ -313,12 +387,12 @@ impl Expression for InitialPath {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Path {
     pub(crate) steps: OneOrMore,
     pub(crate) expr: Box<dyn Expression>
@@ -334,15 +408,21 @@ impl Expression for Path {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct AxisStep {
     pub(crate) step: Box<dyn Expression>,
     pub(crate) predicates: Vec<Predicate>
+}
+
+impl AxisStep {
+    pub(crate) fn boxed(step: Box<dyn Expression>, predicates: Vec<Predicate>) -> Box<dyn Expression> {
+        Box::new(AxisStep { step, predicates })
+    }
 }
 
 impl Expression for AxisStep {
@@ -359,12 +439,12 @@ impl Expression for AxisStep {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct ForwardStep { pub(crate) attribute: bool, pub(crate) test: Box<dyn NodeTest> }
 
 impl Expression for ForwardStep {
@@ -380,13 +460,13 @@ impl Expression for ForwardStep {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
 //spec
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Ident { pub(crate) value: String }
 
 impl Expression for Ident {
@@ -398,12 +478,12 @@ impl Expression for Ident {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Boolean { pub(crate) bool: bool }
 
 impl Expression for Boolean {
@@ -415,12 +495,12 @@ impl Expression for Boolean {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Integer { pub(crate) number: i128 }
 
 impl Expression for Integer {
@@ -434,7 +514,8 @@ impl Expression for Integer {
             Ok((env, Object::Empty))
         } else {
             match value {
-                Object::Atomic(..) => {
+                Object::Atomic(..) |
+                Object::Node {..} => {
                     if pos == 1 {
                         Ok((env, value))
                     } else {
@@ -458,24 +539,17 @@ impl Expression for Integer {
                         Ok((env, Object::Empty))
                     }
                 },
-                Object::Node(node) => {
-                    if pos == 1 {
-                        Ok((env, Object::Node(node)))
-                    } else {
-                        Ok((env, Object::Empty))
-                    }
-                }
                 _ => panic!("predicate {:?} on {:?}", pos, value)
             }
         }
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Decimal { pub(crate) number: BigDecimal }
 
 impl Expression for Decimal {
@@ -487,12 +561,12 @@ impl Expression for Decimal {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Double { pub(crate) number: OrderedFloat<f64> }
 
 impl Expression for Double {
@@ -504,12 +578,12 @@ impl Expression for Double {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct StringComplex {
     pub(crate) exprs: Vec<Box<dyn Expression>>
 }
@@ -529,7 +603,7 @@ impl Expression for StringComplex {
             let (new_env, object) = expr.eval(current_env, context)?;
             current_env = new_env;
 
-            let str = object_to_string(&object);
+            let str = object_to_string(&current_env, &object);
             strings.push(str);
         }
 
@@ -540,12 +614,12 @@ impl Expression for StringComplex {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct StringExpr {
     pub(crate) string: String
 }
@@ -581,12 +655,12 @@ impl Expression for StringExpr {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Item {}
 
 impl Expression for Item {
@@ -598,12 +672,12 @@ impl Expression for Item {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct ContextItem {}
 
 impl Expression for ContextItem {
@@ -615,12 +689,12 @@ impl Expression for ContextItem {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Sequence { pub(crate) expr: Box<dyn Expression> }
 
 impl Sequence {
@@ -647,12 +721,12 @@ impl Expression for Sequence {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct SequenceEmpty {}
 
 impl Expression for SequenceEmpty {
@@ -664,12 +738,12 @@ impl Expression for SequenceEmpty {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Range { pub(crate) from: Box<dyn Expression>, pub(crate) till: Box<dyn Expression> }
 
 impl Expression for Range {
@@ -692,12 +766,12 @@ impl Expression for Range {
             _ => {}
         }
 
-        let min = match object_to_integer(evaluated_from) {
+        let min = match object_to_integer(&current_env, evaluated_from) {
             Ok(num) => num,
             Err(e) => return Err(e)
         };
 
-        let max = match object_to_integer(evaluated_till) {
+        let max = match object_to_integer(&current_env, evaluated_till) {
             Ok(num) => num,
             Err(e) => return Err(e)
         };
@@ -715,15 +789,45 @@ impl Expression for Range {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Predicate { pub(crate) expr: Box<dyn Expression> }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
+pub(crate) struct InstanceOf {
+    pub(crate) expr: Box<dyn Expression>,
+    pub(crate) st: SequenceType
+}
+
+impl Expression for InstanceOf {
+    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+        let mut current_env = env;
+
+        let (new_env, object) = self.expr.eval(current_env, context)?;
+        current_env = new_env;
+
+        // TODO occurrence_indicator checks
+
+        process_items(current_env, object, |env, item| {
+            let result = self.st.is_castable(&item)?;
+            Ok((env, Object::Atomic(Type::Boolean(result))))
+        })
+    }
+
+    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+        todo!()
+    }
+
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+#[derive(Clone, Debug)]
 pub(crate) struct Treat {
     pub(crate) expr: Box<dyn Expression>,
     pub(crate) st: SequenceType
@@ -753,12 +857,12 @@ impl Expression for Treat {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Castable { pub(crate) expr: Box<dyn Expression>, pub(crate) st: SequenceType }
 
 impl Expression for Castable {
@@ -774,12 +878,12 @@ impl Expression for Castable {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Cast { pub(crate) expr: Box<dyn Expression>, pub(crate) st: SequenceType }
 
 impl Expression for Cast {
@@ -791,12 +895,12 @@ impl Expression for Cast {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Postfix { pub(crate) primary: Box<dyn Expression>, pub(crate) suffix: Vec<Predicate> }
 
 impl Expression for Postfix {
@@ -810,12 +914,12 @@ impl Expression for Postfix {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Union { pub(crate) exprs: Vec<Box<dyn Expression>> }
 
 impl Expression for Union {
@@ -840,12 +944,12 @@ impl Expression for Union {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct IntersectExcept { pub(crate) left: Box<dyn Expression>, pub(crate) is_intersect: bool, pub(crate) right: Box<dyn Expression> }
 
 impl Expression for IntersectExcept {
@@ -857,12 +961,12 @@ impl Expression for IntersectExcept {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct NodeDocument {
     pub(crate) expr: Box<dyn Expression>
 }
@@ -883,12 +987,12 @@ impl Expression for NodeDocument {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Attributes {
     pub(crate) pairs: LinkedHashMap<QName, Box<dyn Expression>>,
 }
@@ -904,7 +1008,7 @@ impl Attributes {
         self.pairs.len()
     }
 
-    pub fn add(&mut self, name: QName, value: Box<dyn Expression>) -> Result<(), (ErrorCode, String)> {
+    pub fn add(&mut self, name: QName, value: Box<dyn Expression>) -> Result<(), ErrorInfo> {
         if let Some(..) = self.pairs.insert(name, value) {
             Err((ErrorCode::XQST0040, String::from("TODO")))
         } else {
@@ -913,7 +1017,7 @@ impl Attributes {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct NodeElement {
     pub(crate) name: Box<dyn Expression>,
     pub(crate) attributes: Option<Attributes>,
@@ -937,19 +1041,21 @@ impl Expression for NodeElement {
         let (new_env, evaluated_name) = self.name.eval(current_env, context)?;
         current_env = new_env;
 
-        let evaluated_name = object_to_qname(evaluated_name);
-        let mut evaluated_attributes = vec![];
+        let name = object_to_qname(evaluated_name);
+
+        let rf = current_env.xml_writer(|w| w.start_element(name));
+
         if let Some(attributes) = &self.attributes {
             for attribute in &attributes.pairs {
                 let (new_env, evaluated_value) = attribute.1.eval(current_env, context)?;
                 current_env = new_env;
 
-                let value = object_to_string(&evaluated_value);
-                evaluated_attributes.push(Node::Attribute { sequence: -1, name: attribute.0.clone(), value });
+                let value = object_to_string(&current_env, &evaluated_value);
+
+                current_env.xml_writer(|w| w.attribute(attribute.0.clone(), value));
             }
         }
 
-        let mut evaluated_children = vec![];
         for child in &self.children {
             let (new_env, evaluated_child) = child.eval(current_env, context)?;
             current_env = new_env;
@@ -961,24 +1067,14 @@ impl Expression for NodeElement {
                     for item in items {
                         let id = current_env.next_id();
                         match item {
-                            Object::Node(Node::Attribute { sequence, name, value}) => { // TODO: avoid copy!
-                                add_space = false;
-
-                                let evaluated_attribute = Node::Attribute { sequence, name, value };
-
-                                evaluated_attributes.push(evaluated_attribute);
-                            },
-                            Object::Node(node) => {
-                                add_space = false;
-
-                                evaluated_children.push(node);
-                            }
+                            Object::Node(rf) => todo!(),
                             Object::Atomic(..) => {
-                                let mut content = object_to_string_xml(&item);
+                                let mut content = object_to_string_xml(&current_env, &item);
                                 if add_space {
                                     content.insert(0, ' ');
                                 }
-                                evaluated_children.push(Node::Text { sequence: -1, content });
+
+                                current_env.xml_writer(|w| w.text(content));
 
                                 add_space = true;
                             }
@@ -986,38 +1082,33 @@ impl Expression for NodeElement {
                         }
                     }
                 },
-                Object::Node(Node::Attribute { sequence, name, value}) => { // TODO: avoid copy!
-                    let evaluated_attribute = Node::Attribute { sequence, name, value };
-
-                    evaluated_attributes.push(evaluated_attribute);
-                },
-                Object::Node(node) => {
-                    evaluated_children.push(node);
+                Object::Node(rf) => {
+                    if current_env.xml_tree_id() != rf.storage_id {
+                        todo!()
+                    }
                 },
                 Object::Atomic(..) => {
-                    let content = object_to_string(&evaluated_child);
-                    evaluated_children.push(Node::Text { sequence: -1, content });
+                    let content = object_to_string(&current_env, &evaluated_child);
+                    current_env.xml_writer(|w| w.text(content));
                 }
                 _ => panic!("unexpected object {:?}", evaluated_child) //TODO: better error
             };
         }
 
-        let id = current_env.next_id();
-        Ok((current_env, Object::Node(
-            Node::Element { sequence: id, name: evaluated_name, attributes: evaluated_attributes, children: evaluated_children }
-        )))
+        current_env.xml_writer(|w| w.end_element().unwrap()); // TODO check?
+        Ok((current_env, Object::Node(rf) ))
     }
 
     fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct NodeAttribute { pub(crate) name: Box<dyn Expression>, pub(crate) value: Box<dyn Expression> }
 
 impl NodeAttribute {
@@ -1033,30 +1124,28 @@ impl Expression for NodeAttribute {
         let (new_env, evaluated_name) = self.name.eval(current_env, context)?;
         current_env = new_env;
 
-        let evaluated_name = object_to_qname(evaluated_name);
+        let name = object_to_qname(evaluated_name);
 
         let (new_env, evaluated_value) = self.value.eval(current_env, context)?;
         current_env = new_env;
 
-        let evaluated_value = object_to_string(&evaluated_value);
+        let value = object_to_string(&current_env, &evaluated_value);
 
-        let id = current_env.next_id();
+        let rf = current_env.xml_writer(|w| w.attribute(name, value));
 
-        Ok((current_env, Object::Node(
-            Node::Attribute { sequence: id, name: evaluated_name, value: evaluated_value }
-        )))
+        Ok((current_env, Object::Node(rf) ))
     }
 
     fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct NodeText {
     pub(crate) content: Box<dyn Expression>
 }
@@ -1071,22 +1160,23 @@ impl Expression for NodeText {
     fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
         let (mut new_env, evaluated) = self.content.eval(env, context)?;
 
-        let content = object_to_string(&evaluated);
+        let content = object_to_string(&new_env, &evaluated);
 
-        let id = new_env.next_id();
-        Ok((new_env, Object::Node(Node::Text { sequence: id, content })))
+        let pointer = new_env.xml_writer(|w| w.text(content));
+
+        Ok((new_env, Object::Node(pointer) ))
     }
 
     fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct NodeComment {
     pub(crate) content: Box<dyn Expression>
 }
@@ -1106,22 +1196,23 @@ impl Expression for NodeComment {
     fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
         let (mut new_env, evaluated) = self.content.eval(env, context)?;
 
-        let content = object_to_string(&evaluated);
+        let content = object_to_string(&new_env, &evaluated);
 
-        let id = new_env.next_id();
-        Ok((new_env, Object::Node(Node::Comment { sequence: id, content })))
+        let rf = new_env.xml_writer(|w| w.comment(content));
+
+        Ok((new_env, Object::Node(rf) ))
     }
 
     fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct NodePI {
     pub(crate) target: Box<dyn Expression>,
     pub(crate) content: Box<dyn Expression>
@@ -1145,22 +1236,23 @@ impl Expression for NodePI {
         let (new_env, evaluated) = self.content.eval(current_env, context)?;
         current_env = new_env;
 
-        let content = object_to_string(&evaluated);
+        let content = object_to_string(&current_env, &evaluated);
 
-        let id = current_env.next_id();
-        Ok((current_env, Object::Node(Node::PI { sequence: id, target, content })))
+        let rf = current_env.xml_writer(|w| w.pi(target, content));
+
+        Ok(( current_env, Object::Node(rf) ))
     }
 
     fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Map { pub(crate) entries: Vec<MapEntry> } // Expr because can't use MapEntry here
 
 impl Expression for Map {
@@ -1191,12 +1283,12 @@ impl Expression for Map {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct MapEntry { pub(crate) key: Box<dyn Expression>, pub(crate) value: Box<dyn Expression> }
 
 impl Expression for MapEntry {
@@ -1208,12 +1300,12 @@ impl Expression for MapEntry {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct SquareArrayConstructor { pub(crate) items: Vec<Box<dyn Expression>> }
 
 impl Expression for SquareArrayConstructor {
@@ -1235,12 +1327,12 @@ impl Expression for SquareArrayConstructor {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct CurlyArrayConstructor { pub(crate) expr: Box<dyn Expression> }
 
 impl Expression for CurlyArrayConstructor {
@@ -1259,12 +1351,12 @@ impl Expression for CurlyArrayConstructor {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Unary { pub(crate) expr: Box<dyn Expression>, pub(crate) sign_is_positive: bool }
 
 impl Expression for Unary {
@@ -1286,12 +1378,12 @@ impl Expression for Unary {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Binary { pub(crate) left: Box<dyn Expression>, pub(crate) operator: OperatorArithmetic, pub(crate) right: Box<dyn Expression> }
 
 impl Expression for Binary {
@@ -1315,12 +1407,12 @@ impl Expression for Binary {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Comparison {
     pub(crate) left: Box<dyn Expression>,
     pub(crate) operator: OperatorComparison,
@@ -1361,10 +1453,12 @@ impl Expression for Comparison {
             let (new_env, r_value) = self.right.eval(current_env, &context)?;
             current_env = new_env;
 
-            let (new_env, v) = eval_comparison_item(current_env, self.operator.clone(), l_value, r_value)?;
+            let (new_env, v) = eval_comparison_item(
+                current_env, self.operator.clone(), l_value, r_value
+            )?;
             current_env = new_env;
 
-            if object_to_bool(&v)? {
+            if v {
                 evaluated.push(context.item)
             }
         }
@@ -1372,12 +1466,12 @@ impl Expression for Comparison {
         relax(current_env, evaluated)
     }
 
-    fn debug(&self) -> String {
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         todo!()
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct If {
     pub(crate) condition: Box<dyn Expression>,
     pub(crate) consequence: Box<dyn Expression>,
@@ -1412,12 +1506,12 @@ impl Expression for If {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Function {
     pub(crate) arguments: Vec<Param>,
     pub(crate) body: Box<dyn Expression>
@@ -1432,12 +1526,12 @@ impl Expression for Function {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Call {
     pub(crate) function: QName,
     pub(crate) arguments: Vec<Box<dyn Expression>>
@@ -1467,17 +1561,24 @@ impl Expression for Call {
 
         assert_eq!(parameters.len(), self.arguments.len(), "wrong number of parameters");
 
-        let mut function_environment = Environment::new();
+        let mut arguments = Vec::with_capacity(parameters.len());
+
         for (parameter, argument) in parameters.into_iter().zip(self.arguments.clone().into_iter()) {
             let (new_env, new_result) = argument.eval(current_env, context)?;
             current_env = new_env;
 
             let name = resolve_function_qname(&parameter.name, &current_env);
 
-            function_environment.set(name, new_result);
+            arguments.push((name, new_result));
         }
 
-        let (_, result) = body.eval(Box::new(function_environment), context)?;
+        let mut fn_env = current_env.next();
+        for (name, value) in arguments {
+            fn_env.set(name, value);
+        }
+
+        let (new_env, result) = body.eval(fn_env, context)?;
+        current_env = new_env.prev();
 
         Ok((current_env, result))
     }
@@ -1486,12 +1587,12 @@ impl Expression for Call {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct NamedFunctionRef {
     pub(crate) name: QName,
     pub(crate) arity: Box<dyn Expression>
@@ -1504,7 +1605,7 @@ impl Expression for NamedFunctionRef {
         let (new_env, arity) = self.arity.eval(current_env, context)?;
         current_env = new_env;
 
-        let arity = match object_to_integer(arity) {
+        let arity = match object_to_integer(&current_env, arity) {
             Ok(num) => {
                 if num > 0 {
                     num as usize
@@ -1524,12 +1625,12 @@ impl Expression for NamedFunctionRef {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Annotation {
     pub(crate) name: QName,
     pub(crate) value: Option<String>
@@ -1544,12 +1645,12 @@ impl Expression for Annotation {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct VarRef { pub(crate) name: QName }
 
 impl Expression for VarRef {
@@ -1567,12 +1668,12 @@ impl Expression for VarRef {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Or { pub(crate) exprs: Vec<Box<dyn Expression>> }
 
 impl Expression for Or {
@@ -1613,12 +1714,12 @@ impl Expression for Or {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct And { pub(crate) exprs: Vec<Box<dyn Expression>> }
 
 impl Expression for And {
@@ -1665,12 +1766,12 @@ impl Expression for And {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct StringConcat { pub(crate) exprs: Vec<Box<dyn Expression>> }
 
 impl Expression for StringConcat {
@@ -1695,7 +1796,7 @@ impl Expression for StringConcat {
                 Ok((current_env, object))
             } else {
                 let str = sequence.into_iter()
-                    .map(|item| object_to_string(&item))
+                    .map(|item| object_to_string(&current_env, &item))
                     .collect();
 
                 Ok((current_env, Object::Atomic(Type::String(str))))
@@ -1707,12 +1808,12 @@ impl Expression for StringConcat {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct SimpleMap { pub(crate) exprs: Vec<Box<dyn Expression>> }
 
 impl Expression for SimpleMap {
@@ -1756,25 +1857,25 @@ impl Expression for SimpleMap {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) enum Clause {
     For(Vec<Binding>),
     Let(Vec<Binding>),
     Where(Box<dyn Expression>)
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) enum Binding {
     For { name: QName, values: Box<dyn Expression>, st: Option<SequenceType>, allowing_empty: bool, positional_var: Option<QName> },
     Let { name: QName, st: Option<SequenceType>, value: Box<dyn Expression> },
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct FLWOR { pub(crate) clauses: Vec<Clause>, pub(crate) return_expr: Box<dyn Expression> }
 
 impl Expression for FLWOR {
@@ -1803,18 +1904,17 @@ impl Expression for FLWOR {
             }
         }
 
-        let old_env = current_env.clone();
+        let (new_env, answer) = eval_pipe(Box::new(pipe), current_env.next(), context)?;
+        let current_env = new_env.prev();
 
-        let (_, answer) = eval_pipe(Box::new(pipe), current_env, context)?;
-
-        Ok((old_env, answer))
+        Ok((current_env, answer))
     }
 
     fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
         todo!()
     }
 
-    fn debug(&self) -> String {
-        todo!()
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }

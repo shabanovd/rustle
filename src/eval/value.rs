@@ -14,6 +14,8 @@ use chrono::format::{DelayedFormat, StrftimeItems, Item};
 use std::borrow::Borrow;
 use crate::eval::expression::Expression;
 use std::fmt::{Debug, Formatter};
+use crate::eval::{Environment, ErrorInfo};
+use crate::tree::Reference;
 
 #[allow(dead_code)]
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone, Hash)]
@@ -162,105 +164,6 @@ pub fn string_to_decimal(string: &String) -> Result<BigDecimal, ErrorCode> {
     }
 }
 
-#[derive(Eq, PartialEq, Clone, Hash)]
-pub enum Node {
-    Document { sequence: isize, children: Vec<Node> },
-    Element { sequence: isize, name: QName, attributes: Vec<Node>, children: Vec<Node> },
-    Attribute { sequence: isize, name: QName, value: String },
-    Text { sequence: isize, content: String },
-    Comment { sequence: isize, content: String },
-    PI { sequence: isize, target: QName, content: String },
-}
-
-fn node_to_number(node: &Node) -> &isize {
-    match node {
-        Node::Document { sequence, .. } => sequence,
-        Node::Element { sequence, .. } => sequence,
-        Node::Attribute { sequence, .. } => sequence,
-        Node::Text { sequence, .. } => sequence,
-        Node::Comment { sequence, .. } => sequence,
-        Node::PI { sequence, .. } => sequence,
-    }
-}
-
-impl Ord for Node {
-    fn cmp(&self, other: &Self) -> Ordering {
-        node_to_number(self).cmp(node_to_number(other))
-    }
-}
-
-impl PartialOrd<Self> for Node {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        node_to_number(self).partial_cmp(node_to_number(other))
-    }
-}
-
-impl fmt::Debug for Node {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let write = |f: &mut fmt::Formatter, qname: &QName| {
-            if let Some(prefix) = &qname.prefix {
-                write!(f, "{}:", prefix).unwrap();
-            }
-            write!(f, "{}", qname.local_part).unwrap();
-        };
-
-        match self {
-            Node::Document { children, .. } => {
-                for child in children {
-                    write!(f, "{:?}", child)?;
-                }
-            },
-            Node::PI { target, content, .. } => {
-                write!(f, "<?")?;
-                write(f, target);
-                write!(f, "{:?}?>", content)?;
-            },
-            Node::Comment { content, ..} => {
-                write!(f, "<!--{}-->", content)?;
-            },
-            Node::Text { content, ..} => {
-                write!(f, "{}", content)?;
-            },
-            Node:: Attribute { name, value, .. } => {
-                write!(f, "@")?;
-                write(f, name);
-                write!(f, "={:?}", value)?;
-            },
-            Node::Element { name, attributes, children, .. } => {
-                write!(f, "<")?;
-
-                write(f, name);
-
-                if attributes.len() > 0 {
-                    for attribute in attributes {
-                        println!("attribute {:?}", attribute);
-                        match attribute {
-                            Node::Attribute { sequence, name, value } => {
-                                write!(f, " ")?;
-                                write(f, name);
-                                write!(f, "={}", value)?;
-                            },
-                            _ => panic!("unexpected")
-                        }
-                    }
-                }
-
-                if children.len() == 0 {
-                    write!(f, "/>")?;
-                } else {
-                    write!(f, ">").unwrap();
-                    for child in children {
-                        write!(f, "{:?}", child)?;
-                    }
-                    write!(f, "</")?;
-                    write(f, name);
-                }
-            }
-        }
-        write!(f, "")
-    }
-}
-
 #[derive(Clone)]
 pub enum Object {
     Range { min: i128, max: i128 },
@@ -275,7 +178,7 @@ pub enum Object {
     Sequence(Vec<Object>),
 
     Atomic(Type),
-    Node(Node),
+    Node(Reference),
 
     Array(Vec<Object>),
     Map(HashMap<Type, Object>),
@@ -286,7 +189,7 @@ pub enum Object {
     Return(Box<Object>),
 }
 
-impl PartialEq<Self> for Object {
+impl<'a> PartialEq<Self> for Object {
     fn eq(&self, other: &Self) -> bool {
         match self {
             Object::Range { min: l_min, max: l_max } => {
@@ -418,7 +321,7 @@ impl Debug for Object {
             }
             Object::Node(node) => {
                 f.debug_tuple("Node")
-                    .field(node)
+                    // .field(node)
                     .finish()
             }
             Object::Array(items) => {
@@ -483,37 +386,37 @@ impl PartialOrd<Self> for Object {
                     Object::Atomic(t2) => {
                         t1.partial_cmp(t2)
                     },
-                    _ => Some(Ordering::Greater),
+                    _ => None,
                 }
             },
             Object::Node(n1) => {
                 match other {
                     Object::Node(n2) => {
-                        n1.partial_cmp(n2)
+                        Some(n1.cmp(n2))
                     },
-                    _ => Some(Ordering::Less),
+                    _ => None,
                 }
             },
-            _ => Some(Ordering::Less)
+            _ => None
         }
     }
 }
 
-fn zero_or_one(items: &mut Vec<Object>) -> Result<Object, crate::parser::errors::ErrorCode> {
+fn zero_or_one(items: &mut Vec<Object>) -> Result<Object, ErrorInfo> {
     sort_and_dedup(items);
     if items.len() == 1 {
         Ok(items.remove(0))
     } else if items.len() == 0 {
         Ok(Object::Empty)
     } else {
-        Err(ErrorCode::XPTY0004)
+        Err((ErrorCode::XPTY0004, String::from("TODO")))
     }
 }
 
-pub fn atomization_of_vec(items: Vec<Object>) -> Result<Object, ErrorCode> {
+pub fn atomization_of_vec(env: &Box<Environment>, items: Vec<Object>) -> Result<Object, ErrorInfo> {
     let mut result = Vec::with_capacity(items.len());
     for item in items {
-        let value = atomization(item)?;
+        let value = atomization(env, item)?;
         match value {
             Object::Sequence(elements) => {
                 for el in elements {
@@ -526,43 +429,44 @@ pub fn atomization_of_vec(items: Vec<Object>) -> Result<Object, ErrorCode> {
     zero_or_one(&mut result)
 }
 
-pub(crate) fn atomization(obj: Object) -> Result<Object, ErrorCode> {
+pub(crate) fn atomization(env: &Box<Environment>, obj: Object) -> Result<Object, ErrorInfo> {
     match obj {
         Object::Atomic(..) => Ok(obj),
-        Object::Node(node) => {
-            let mut result = vec![];
-            let t = typed_value_of_node(node, &mut result);
-            let str = result.join("");
-            Ok(Object::Atomic(Type::Untyped(str)))
+        Object::Node(rf) => {
+            match rf.to_typed_value(env) {
+                Ok(data) => Ok(Object::Atomic(Type::Untyped(data))),
+                Err(msg) => Err((ErrorCode::TODO, msg))
+            }
+
         },
-        Object::Array(items) => atomization_of_vec(items),
-        Object::Sequence(items) => atomization_of_vec(items),
+        Object::Array(items) => atomization_of_vec(env, items),
+        Object::Sequence(items) => atomization_of_vec(env, items),
         Object::Range { min, max } => {
             if min == max {
                 Ok(Object::Atomic(Type::Integer(min)))
             } else {
-                Err(ErrorCode::XPTY0004)
+                Err((ErrorCode::XPTY0004, String::from("TODO")))
             }
         },
         Object::Empty => Ok(obj), // or it can be XPST0005?
         Object::Function { .. } |
         Object::FunctionRef { .. } |
-        Object::Map(..) => Err(ErrorCode::FOTY0013),
+        Object::Map(..) => Err((ErrorCode::FOTY0013, String::from("TODO"))),
         _ => todo!()
     }
 }
 
-pub(crate) fn sequence_atomization(obj: Object) -> Result<Object, ErrorCode> {
+pub(crate) fn sequence_atomization(env: &Box<Environment>, obj: Object) -> Result<Object, ErrorInfo> {
     match obj {
         Object::Range { .. } |
         Object::Array(..) |
         Object::Sequence(..) |
         Object::Atomic(..) => Ok(obj),
-        Object::Node(node) => {
-            let mut result = vec![];
-            let t = typed_value_of_node(node, &mut result);
-            let str = result.join("");
-            Ok(Object::Atomic(Type::Untyped(str)))
+        Object::Node(rf) => {
+            match rf.to_typed_value(env) {
+                Ok(data) => Ok(Object::Atomic(Type::Untyped(data))),
+                Err(msg) => Err((ErrorCode::TODO, msg))
+            }
         },
         Object::Empty => Ok(obj), // or it can be XPST0005?
         _ => todo!()
@@ -574,41 +478,4 @@ pub(crate) enum Value {
     String,
     Absent,
     UntypedAtomic,
-}
-
-pub(crate) fn typed_value_of_node(node: Node, result: &mut Vec<String>) -> Value {
-    match node {
-        Node::Document { children, .. } => {
-            for child in children {
-                typed_value_of_node(child, result);
-            }
-            Value::Typed
-        }
-        Node::Element { children, .. } => {
-            for child in children {
-                typed_value_of_node(child, result);
-            }
-            Value::Typed
-        }
-        Node::Attribute { value, .. } => {
-            // Object::Atomic(Type::Untyped(value))
-            result.push(value);
-            Value::Typed
-        }
-        Node::Text { content, .. } => {
-            // result.push(Object::Atomic(Type::Untyped(content)))
-            result.push(content);
-            Value::UntypedAtomic
-        }
-        Node::Comment { content, .. } => {
-            // result.push(Object::Atomic(Type::String(content)))
-            result.push(content);
-            Value::String
-        }
-        Node::PI { content, .. } => {
-            // result.push(Object::Atomic(Type::String(content)))
-            result.push(content);
-            Value::String
-        }
-    }
 }

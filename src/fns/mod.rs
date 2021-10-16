@@ -12,6 +12,7 @@ mod strings;
 mod types;
 mod datetime;
 mod nodes;
+mod context;
 mod comparison;
 mod math;
 mod map;
@@ -90,6 +91,15 @@ impl<'a> FunctionsRegister<'a> {
 
         instance.register(XPATH_FUNCTIONS.url, "resolve-QName", 2, qname::fn_resolve_qname);
         instance.register(XPATH_FUNCTIONS.url, "QName", 2, qname::fn_qname);
+        instance.register(XPATH_FUNCTIONS.url, "prefix-from-QName", 1, qname::fn_prefix_from_qname);
+        instance.register(XPATH_FUNCTIONS.url, "local-name-from-QName", 1, qname::fn_local_name_from_qname);
+        instance.register(XPATH_FUNCTIONS.url, "namespace-uri-from-QName", 1, qname::fn_namespace_uri_from_qname);
+        instance.register(XPATH_FUNCTIONS.url, "namespace-uri-for-prefix", 1, qname::fn_namespace_uri_for_prefix);
+        instance.register(XPATH_FUNCTIONS.url, "in-scope-prefixes", 1, qname::fn_in_scope_prefixes);
+
+        instance.register(XPATH_FUNCTIONS.url, "node-name", 0, qname::fn_node_name);
+        instance.register(XPATH_FUNCTIONS.url, "node-name", 1, qname::fn_node_name);
+
 
 //        instance.register("op", "same-key", 2, map::map_merge);
         instance.register(XPATH_MAP.url, "merge", 1, map::map_merge);
@@ -189,6 +199,9 @@ impl<'a> FunctionsRegister<'a> {
 
         instance.register(XPATH_FUNCTIONS.url, "position", 0, sequences::fn_position);
         instance.register(XPATH_FUNCTIONS.url, "last", 0, sequences::fn_last);
+        instance.register(XPATH_FUNCTIONS.url, "default-collation", 0, context::fn_default_collation);
+        instance.register(XPATH_FUNCTIONS.url, "default-language", 0, context::fn_default_language);
+        instance.register(XPATH_FUNCTIONS.url, "static-base-uri", 0, context::fn_static_base_uri);
 
         instance.register(XPATH_FUNCTIONS.url, "data", 0, sequences::fn_data);
         instance.register(XPATH_FUNCTIONS.url, "data", 1, sequences::fn_data);
@@ -262,30 +275,34 @@ impl<'a> FunctionsRegister<'a> {
     }
 }
 
-pub(crate) fn call<'a>(env: Box<Environment<'a>>, name: QNameResolved, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn call<'a, 'b>(env: Box<Environment<'a>>, name: QNameResolved, arguments: Vec<Object>, context: &'b DynamicContext) -> EvalResult<'a> {
     // println!("call: {:?} {:?}", name, arguments);
+    let mut fn_env = env.next();
 
-    let fun = env.functions.declared(&name, arguments.len());
+    let fun = fn_env.declared_functions(&name, arguments.len());
     if fun.is_some() {
-        let fun = fun.unwrap();
+        let fun = fun.unwrap().clone();
 
-        let mut fn_env = Environment::new();
-        fun.parameters.clone().into_iter()
+        for (parameter, argument) in (&fun.parameters).into_iter()
             .zip(arguments.into_iter())
-            .for_each(
-                |(parameter, argument)|
-                    fn_env.set(resolve_element_qname(&parameter.name, &env), argument.clone())
-            );
+            .into_iter()
+        {
+            fn_env.set(resolve_element_qname(&parameter.name, &fn_env), argument.clone())
+        }
 
-        let (_, result) = fun.body.eval(Box::new(fn_env), context)?;
+        let (new_env, result) = fun.body.eval(fn_env, context)?;
+        let env = new_env.prev();
 
         Ok((env, result))
 
     } else {
-        let fun: Option<FUNCTION> = env.functions.get(&name, arguments.len());
+        let fun: Option<FUNCTION> = fn_env.functions.get(&name, arguments.len());
 
         if fun.is_some() {
-            fun.unwrap()(env, arguments, context)
+            let (new_env, result) = fun.unwrap()(fn_env, arguments, context)?;
+            let env = new_env.prev();
+
+            Ok((env, result))
         } else {
             Err((ErrorCode::XPST0017, format!("no function {:?}#{:?}", name, arguments.len())))
         }

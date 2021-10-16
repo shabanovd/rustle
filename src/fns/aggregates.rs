@@ -85,7 +85,7 @@ pub(crate) fn fn_max<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _con
                 if obj == &Object::Empty {
                     obj = item
                 } else {
-                    match comparison::gr(item, obj) {
+                    match comparison::gr((&env, item), (&env, obj)) {
                         Ok(v) => {
                             if v {
                                 obj = item
@@ -101,31 +101,28 @@ pub(crate) fn fn_max<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _con
     }
 }
 
-pub(crate) fn fn_min<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
-    match arguments.as_slice() {
-        [Object::Empty] => {
+pub(crate) fn fn_min<'a>(env: Box<Environment<'a>>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+    let arg = arguments.remove(0);
+    match arg {
+        Object::Empty => {
             Ok((env, Object::Empty))
         },
-        [Object::Range { min, max}] => {
-            Ok((env, Object::Atomic(Type::Integer(*min))))
+        Object::Range{..} => {
+            Ok((env, arg))
         },
-        [Object::Sequence(items)] => {
-            let mut obj = &Object::Empty;
+        Object::Sequence(items) => {
+            let mut obj = Object::Empty;
             for item in items {
-                if obj == &Object::Empty {
+                if obj == Object::Empty {
                     obj = item
                 } else {
-                    match comparison::ls(item, obj) {
-                        Ok(v) => {
-                            if v {
-                                obj = item
-                            }
-                        },
+                    match comparison::ls((&env, &item), (&env, &obj)) {
+                        Ok(v) => if v { obj = item },
                         Err(e) => return Err(e)
                     }
                 }
             }
-            Ok((env, obj.clone()))
+            Ok((env, obj))
         }
         _ => panic!("error {:?}", arguments)
     }

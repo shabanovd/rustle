@@ -1,4 +1,4 @@
-use crate::eval::{Object, EvalResult, atomization, Type, string_to_double, Environment, relax};
+use crate::eval::{Object, EvalResult, atomization, Type, string_to_double, Environment, relax, ErrorInfo};
 use crate::parser::errors::ErrorCode;
 use ordered_float::OrderedFloat;
 use bigdecimal::{BigDecimal, ToPrimitive, FromPrimitive, Zero};
@@ -846,22 +846,22 @@ pub fn eval_arithmetic<'a>(env: Box<Environment<'a>>, operator: OperatorArithmet
 }
 
 pub fn eval_arithmetic_item<'a>(env: Box<Environment<'a>>, operator: OperatorArithmetic, left: Object, right: Object) -> EvalResult<'a> {
-    let left = match atomization(left) {
+    let left = match atomization(&env, left) {
         Ok(v) => v,
-        Err(e) => return Err((e, String::from("TODO")))
+        Err(e) => return Err(e)
     };
-    let right = match atomization(right) {
+    let right = match atomization(&env, right) {
         Ok(v) => v,
-        Err(e) => return Err((e, String::from("TODO")))
+        Err(e) => return Err(e)
     };
 
     let left_value = match into_type(left) {
         Ok(v) => v,
-        Err(e) => return Err((e, String::from("TODO")))
+        Err(e) => return Err(e)
     };
     let right_value = match into_type(right) {
         Ok(v) => v,
-        Err(e) => return Err((e, String::from("TODO")))
+        Err(e) => return Err(e)
     };
 
     let result = match operator {
@@ -882,14 +882,14 @@ pub fn eval_arithmetic_item<'a>(env: Box<Environment<'a>>, operator: OperatorAri
 }
 
 pub fn eval_unary(env: Box<Environment>, object: Object, sign_is_positive: bool) -> EvalResult {
-    let object = match atomization(object) {
+    let object = match atomization(&env, object) {
         Ok(v) => v,
-        Err(e) => return Err((e, String::from("TODO")))
+        Err(e) => return Err(e)
     };
 
     let value = match into_type(object) {
         Ok(v) => v,
-        Err(e) => return Err((e, String::from("TODO")))
+        Err(e) => return Err(e)
     };
 
     if sign_is_positive {
@@ -905,7 +905,7 @@ pub fn eval_unary(env: Box<Environment>, object: Object, sign_is_positive: bool)
     }
 }
 
-fn into_type(obj: Object) -> Result<Box<dyn Operand>, ErrorCode> {
+fn into_type(obj: Object) -> Result<Box<dyn Operand>, ErrorInfo> {
     match obj {
         Object::Atomic(t) => {
             match t {
@@ -914,7 +914,7 @@ fn into_type(obj: Object) -> Result<Box<dyn Operand>, ErrorCode> {
                         Ok(Object::Atomic(Type::Double(number))) => {
                             Ok(Box::new(VDouble { number: number.into_inner() }))
                         },
-                        _ => Err(ErrorCode::FORG0001)
+                        _ => Err((ErrorCode::FORG0001, String::from("TODO")))
                     }
                 }
                 // Type::dateTime() => {}
@@ -961,9 +961,9 @@ fn into_type(obj: Object) -> Result<Box<dyn Operand>, ErrorCode> {
                 // Type::AnyURI(_) => {}
                 // Type::QName() => {}
                 // Type::NOTATION() => {}
-                _ => Err(ErrorCode::XPTY0004)
+                _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
             }
         },
-        _ => Err(ErrorCode::XPTY0004)
+        _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
     }
 }

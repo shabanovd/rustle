@@ -1,7 +1,7 @@
-use crate::eval::{Object, Type, Node};
-use crate::parser::errors::ErrorCode;
+use crate::eval::{Environment, ErrorInfo, Object, Type};
 use crate::values::*;
 use crate::eval::expression::{NodeTest, Expression};
+use crate::tree::{Reference, XMLTreeReader};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ItemType {
@@ -36,11 +36,11 @@ pub struct SequenceType {
 }
 
 impl SequenceType {
-    pub fn cascade(&self, obj: Object) -> Result<Object, (ErrorCode, String)> {
+    pub fn cascade(&self, obj: Object) -> Result<Object, ErrorInfo> {
         todo!()
     }
 
-    pub fn is_castable(&self, obj: &Object) -> Result<bool, (ErrorCode, String)> {
+    pub fn is_castable(&self, obj: &Object) -> Result<bool, ErrorInfo> {
         let result = match &self.item_type {
             ItemType::AtomicOrUnionType(name) => {
                 match obj {
@@ -54,6 +54,7 @@ impl SequenceType {
                     Object::Atomic(Type::Decimal{..}) => name == &*XS_DECIMAL,
                     Object::Atomic(Type::Float{..}) => name == &*XS_FLOAT,
                     Object::Atomic(Type::Double{..}) => name == &*XS_DOUBLE,
+                    Object::Atomic(Type::Untyped(..)) => name == &*XS_UNTYPED_ATOMIC,
                     _ => panic!("TODO: {:?}", obj)
                 }
             },
@@ -63,7 +64,7 @@ impl SequenceType {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct AnyKindTest { }
 
 impl AnyKindTest {
@@ -73,12 +74,12 @@ impl AnyKindTest {
 }
 
 impl NodeTest for AnyKindTest {
-    fn test_node(&self, node: &Node) -> bool {
+    fn test_node(&self, env: &Box<Environment>, rf: &Reference) -> bool {
         todo!()
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct DocumentTest {
     child: Option<Box<dyn NodeTest>>
 }
@@ -90,7 +91,7 @@ impl DocumentTest {
 }
 
 impl NodeTest for DocumentTest {
-    fn test_node(&self, node: &Node) -> bool {
+    fn test_node(&self, env: &Box<Environment>, rf: &Reference) -> bool {
         todo!()
     }
 }
@@ -106,11 +107,8 @@ impl TextTest {
 }
 
 impl NodeTest for TextTest {
-    fn test_node(&self, node: &Node) -> bool {
-        match node {
-            Node::Text { .. } => true,
-            _ => false,
-        }
+    fn test_node(&self, env: &Box<Environment>, rf: &Reference) -> bool {
+        todo!()
     }
 }
 
@@ -125,7 +123,7 @@ impl CommentTest {
 }
 
 impl NodeTest for CommentTest {
-    fn test_node(&self, node: &Node) -> bool {
+    fn test_node(&self, env: &Box<Environment>, rf: &Reference) -> bool {
         todo!()
     }
 }
@@ -141,12 +139,12 @@ impl NamespaceNodeTest {
 }
 
 impl NodeTest for NamespaceNodeTest {
-    fn test_node(&self, node: &Node) -> bool {
+    fn test_node(&self, env: &Box<Environment>, rf: &Reference) -> bool {
         todo!()
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct PITest {
     content: Option<Box<dyn Expression>>
 }
@@ -158,12 +156,12 @@ impl PITest {
 }
 
 impl NodeTest for PITest {
-    fn test_node(&self, node: &Node) -> bool {
+    fn test_node(&self, env: &Box<Environment>, rf: &Reference) -> bool {
         todo!()
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct ElementTest {
 }
 
@@ -174,12 +172,12 @@ impl ElementTest {
 }
 
 impl NodeTest for ElementTest {
-    fn test_node(&self, node: &Node) -> bool {
+    fn test_node(&self, env: &Box<Environment>, rf: &Reference) -> bool {
         todo!()
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct AttributeTest {
 }
 
@@ -190,12 +188,12 @@ impl AttributeTest {
 }
 
 impl NodeTest for AttributeTest {
-    fn test_node(&self, node: &Node) -> bool {
+    fn test_node(&self, env: &Box<Environment>, rf: &Reference) -> bool {
         todo!()
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct SchemaElementTest {
     name: QName
 }
@@ -207,12 +205,12 @@ impl SchemaElementTest {
 }
 
 impl NodeTest for SchemaElementTest {
-    fn test_node(&self, node: &Node) -> bool {
+    fn test_node(&self, env: &Box<Environment>, rf: &Reference) -> bool {
         todo!()
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct SchemaAttributeTest {
     name: QName
 }
@@ -224,12 +222,12 @@ impl SchemaAttributeTest {
 }
 
 impl NodeTest for SchemaAttributeTest {
-    fn test_node(&self, node: &Node) -> bool {
+    fn test_node(&self, env: &Box<Environment>, rf: &Reference) -> bool {
         todo!()
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct NameTest { pub(crate) name: QName }
 
 impl NameTest {
@@ -239,15 +237,12 @@ impl NameTest {
 }
 
 impl NodeTest for NameTest {
-    fn test_node(&self, node: &Node) -> bool {
-        match node {
-            Node::Element { name, .. } => {
-                self.name.local_part == name.local_part && self.name.url == name.url
-            },
-            Node::Attribute { name, .. } => {
-                self.name.local_part == name.local_part && self.name.url == name.url
-            },
-            _ => false,
+    fn test_node(&self, env: &Box<Environment>, rf: &Reference) -> bool {
+        if let Some(name) = rf.name(env) {
+            (self.name.local_part == "*" || self.name.local_part == name.local_part)
+                && (self.name.url == Some(String::from("*")) || self.name.url == name.url)
+        } else {
+            false
         }
     }
 }

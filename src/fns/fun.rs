@@ -77,34 +77,35 @@ pub(crate) fn sort<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _conte
     }
 }
 
-pub(crate) fn apply<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
-
-
-
+pub(crate) fn apply<'a>(env: Box<Environment<'a>>, mut arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
     let mut current_env = env;
 
-    match arguments.as_slice() {
-        [Object::Function { parameters, body }, Object::Array( arguments )] => {
+    let arg1 = arguments.remove(0);
+    let arg2 = arguments.remove(0);
+
+    match (arg1, arg2) {
+        (Object::Function { parameters, body }, Object::Array( arguments )) => {
 
             assert_eq!(parameters.len(), arguments.len(), "wrong number of parameters");
 
-            let mut function_environment = Environment::new();
+            let mut fn_env = current_env.next();
             for (parameter, argument) in parameters.into_iter().zip(arguments.into_iter()) {
 
-                let name = resolve_element_qname(&parameter.name, &current_env);
+                let name = resolve_element_qname(&parameter.name, &fn_env);
 
-                function_environment.set(name, argument.clone());
+                fn_env.set(name, argument);
             }
 
-            let (_, result) = body.eval(Box::new(function_environment), &DynamicContext::nothing())?;
+            let (new_env, result) = body.eval(fn_env, &DynamicContext::nothing())?;
+            current_env = new_env.prev();
 
             Ok((current_env, result))
         },
-        [Object::FunctionRef { name, arity }, Object::Array( arguments )] => {
-            let fun = current_env.functions.get(&name, *arity);
+        (Object::FunctionRef { name, arity }, Object::Array( arguments )) => {
+            let fun = current_env.functions.get(&name, arity);
 
             return if fun.is_some() {
-                fun.unwrap()(current_env, arguments.clone(), context)
+                fun.unwrap()(current_env, arguments, context)
             } else {
                 panic!("no function {:?}#{:?}", name, arity)
             }

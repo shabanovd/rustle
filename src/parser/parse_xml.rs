@@ -1,21 +1,19 @@
 use crate::parse_one_of;
 
-use crate::parser::op::{Representation, found_expr, found_exprs};
+use crate::parser::op::{Representation, found_expr};
 use crate::parser::errors::{CustomError, IResultExt};
 use crate::parser::parse_literal::{is_digits, is_0_9a_f};
 
 use nom::{branch::alt, bytes::complete::{is_not, tag, take_until, take_while1}, character::complete::multispace1, error::Error, IResult, InputTakeAtPosition, FindToken};
 
-use crate::parser::helper::{ws, ws_tag_ws, s_tag_s, ws1};
-use crate::parser::parse_names::{parse_ncname, parse_qname_expr, parse_qname, parse_ws1_qname_expr, parse_ws1_ncname};
+use crate::parser::helper::{ws, s_tag_s};
+use crate::parser::parse_names::{parse_qname_expr, parse_qname, parse_ws1_qname_expr, parse_ws1_ncname};
 use crate::parser::parse_expr::{parse_enclosed_expr, parse_expr};
 use nom::error::ParseError;
 use crate::eval::prolog::*;
 use crate::eval::expression::Expression;
-use linked_hash_map::LinkedHashMap;
-use crate::values::QName;
 use nom::character::complete::multispace0;
-use nom::sequence::{delimited, preceded};
+use nom::sequence::preceded;
 
 // [140]    	NodeConstructor 	   ::=    	DirectConstructor | ComputedConstructor
 parse_one_of!(parse_node_constructor,
@@ -54,6 +52,7 @@ pub(crate) fn parse_direct_constructor(input: &str) -> IResult<&str, Box<dyn Exp
         let input = result?.0;
 
         let (input, target) = parse_qname_expr(input).or_failure(CustomError::XPST0003)?;
+        let (input, _) = ws(input)?;
 
         //TODO: target must not be 'xml'
 

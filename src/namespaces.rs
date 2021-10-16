@@ -21,16 +21,16 @@ pub const XQT_ERROR: Namespace = Namespace { prefix: "err", url: "http://www.w3.
 #[derive(Clone)]
 pub struct Namespaces<'a> {
     prefixes: HashMap<&'a str, Namespace<'a>>,
-    pub default_for_element: &'a str,
-    pub default_for_function: &'a str,
+    pub default_for_element: String,
+    pub default_for_function: String,
 }
 
 impl<'a> Namespaces<'a> {
     pub fn new() -> Self {
         let mut instance = Namespaces {
             prefixes: HashMap::new(),
-            default_for_element: "",
-            default_for_function: XPATH_FUNCTIONS.url,
+            default_for_element: "".to_string(),
+            default_for_function: XPATH_FUNCTIONS.url.to_string(),
         };
 
         instance.add(XML);
@@ -46,11 +46,11 @@ impl<'a> Namespaces<'a> {
     }
 
     pub fn default_for_element(&self) -> String {
-        String::from(self.default_for_element)
+        self.default_for_element.clone()
     }
 
     pub fn default_for_function(&self) -> String {
-        String::from(self.default_for_function)
+        self.default_for_function.clone()
     }
 
     pub fn add(&mut self, ns: Namespace<'a>) {

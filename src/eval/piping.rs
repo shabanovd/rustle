@@ -6,6 +6,7 @@ use crate::eval::prolog::*;
 use crate::eval::expression::Expression;
 use crate::fns::object_to_bool;
 use crate::parser::errors::ErrorCode;
+use crate::tree::Reference;
 
 struct SequenceIterator<'a> {
     name: &'a QNameResolved,
@@ -111,7 +112,21 @@ pub(crate) fn eval_pipe<'a>(pipe: Box<Pipe>, env: Box<Environment<'a>>, context:
                 relax(current_env, result)
             },
             Binding::Let { name, st: type_declaration, value } => {
-                let (_, item) = value.eval(current_env.clone(), context)?;
+                let (new_env, item) = value.eval(current_env.next(), context)?;
+                // let item = match item {
+                //     Object::Node(rf) => {
+                //         if rf.storage.is_none() {
+                //             let storage = new_env.xml_tree.clone();
+                //             Object::Node(
+                //                 Reference { storage: Some(storage), storage_id: rf.storage_id, id: rf.id, attr_name: rf.attr_name }
+                //             )
+                //         } else {
+                //             Object::Node(rf)
+                //         }
+                //     },
+                //     _ => item,
+                // };
+                current_env = new_env.prev();
 
                 // TODO: handle typeDeclaration
 
@@ -126,7 +141,7 @@ pub(crate) fn eval_pipe<'a>(pipe: Box<Pipe>, env: Box<Environment<'a>>, context:
             },
         }
     } else if let Some(expr) = pipe.where_expr {
-        let (new_env, v) = expr.eval(current_env.clone(), context)?;
+        let (new_env, v) = expr.eval(current_env, context)?;
         current_env = new_env;
 
         if object_to_bool(&v)? {

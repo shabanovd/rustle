@@ -1,12 +1,13 @@
-use crate::eval::{Object, Environment, Type, eval_statements, object_to_iterator, comparison};
+use crate::eval::{Object, Environment, Type, eval_statements, object_to_iterator, comparison, EvalResult};
 use crate::parser::parse;
 use crate::values::{resolve_element_qname, QName};
 use crate::serialization::object_to_string;
 use crate::fns::object_to_bool;
+use crate::parser::errors::ErrorCode;
 use crate::serialization::to_xml::object_to_xml;
 
 
-pub(crate) fn eval_on_spec(spec: &str, input: &str) -> Result<Object, String> {
+pub(crate) fn eval_on_spec<'a>(spec: &str, input: &str) -> EvalResult<'a> {
     match spec {
         "XQ10" | "XQ10+" | "XP30+ XQ10+" | "XQ30+" | "XP30+ XQ30+" | "XQ31+" | "XP31+ XQ31+" => {
             eval(input)
@@ -15,7 +16,7 @@ pub(crate) fn eval_on_spec(spec: &str, input: &str) -> Result<Object, String> {
     }
 }
 
-pub(crate) fn eval(input: &str) -> Result<Object, String> {
+pub(crate) fn eval<'a>(input: &str) -> EvalResult<'a> {
     println!("script: {:?}", input);
 
     let parsed = parse(input);
@@ -24,15 +25,9 @@ pub(crate) fn eval(input: &str) -> Result<Object, String> {
 
         // println!("{:#?}", program);
 
-        let env = Environment::new();
-        let check = eval_statements(program, Box::new(env));
-        match check {
-            Ok(obj) => Ok(obj),
-            Err((error_code, ..)) => {
-                let code = error_code.as_ref();
-                Err(String::from(code))
-            }
-        }
+        let env = Environment::create();
+        eval_statements(program, env)
+
     } else {
         // println!("error: {:#?}", parsed);
 
@@ -43,24 +38,25 @@ pub(crate) fn eval(input: &str) -> Result<Object, String> {
             }
             _ => "err".to_string() // format!("error {:?}", parsed)
         };
-        Err(msg)
+        Err((ErrorCode::TODO, msg))
     }
 }
 
-pub(crate) fn check_assert(result: &Result<Object, String>, check: &str) {
-    let check_result = eval_assert(result, check);
+pub(crate) fn check_assert<'a>(result: &'a EvalResult<'a>, check: &str) {
+    let (check_env, check_result) = eval_assert(result, check).unwrap();
     match object_to_bool(&check_result) {
         Ok(check_result) => {
             if !check_result {
-                assert_eq!(format!("{:?}", result), check);
+                let (env, obj) = result.as_ref().unwrap();
+                assert_eq!(format!("{:?}", obj), check);
             }
         },
         Err((code, msg)) => assert_eq!(format!("error {:?} {}", code, msg), "")
     }
 }
 
-pub(crate) fn bool_check_assert(result: &Result<Object, String>, check: &str) -> bool {
-    let check_result = eval_assert(result, check);
+pub(crate) fn bool_check_assert<'a>(result: &'a EvalResult<'a>, check: &str) -> bool {
+    let (check_env, check_result) = eval_assert(result, check).unwrap();
     match object_to_bool(&check_result) {
         Ok(check_result) => !check_result,
         Err((code, msg)) => {
@@ -70,113 +66,116 @@ pub(crate) fn bool_check_assert(result: &Result<Object, String>, check: &str) ->
     }
 }
 
-fn eval_assert(result: &Result<Object, String>, check: &str) -> Object {
+fn eval_assert<'a, 'b>(result: &'a EvalResult<'a>, check: &str) -> EvalResult<'b> {
+    let (_, result) = result.as_ref().unwrap();
 
     let parsed = parse(check);
     if parsed.is_ok() {
         let program = parsed.unwrap();
 
-        let mut env = Box::new(Environment::new());
+        let mut env = Environment::create();
 
         let name = resolve_element_qname(&QName::local_part("result"), &env);
-        env.set(name, result.as_ref().unwrap().clone());
+        env.set(name, result.clone());
 
-        match eval_statements(program, env) {
-            Ok(obj) => obj,
-            Err((code, msg)) => {
-                panic!("error {:?} {:?}", code, msg);
-            }
-        }
+        eval_statements(program, env)
     } else {
-        //panic!("error {:?}", parsed);
-        panic!("error")
+        todo!()
     }
 }
 
-pub(crate) fn check_assert_eq(result: &Result<Object, String>, check: &str) {
-    let expected = eval(check).unwrap();
-    match comparison::eq(&expected, &result.as_ref().unwrap()) {
-        Ok(v) => if !v { assert_eq!(expected, result.as_ref().unwrap().clone()) },
-        Err(code) => panic!("Error {:?}", code)
+pub(crate) fn check_assert_eq<'a>(result: &'a EvalResult<'a>, check: &str) {
+    let (env, obj) = result.as_ref().unwrap();
+
+    match eval(check) {
+        Ok((expected_env, expected_obj)) => {
+            match comparison::eq((&expected_env, &expected_obj), (env, obj)) {
+                Ok(v) => if !v { assert_eq!(&expected_obj, obj) },
+                Err(e) => panic!("Error {:?}", e)
+            }
+        },
+        Err(e) => panic!("Error {:?}", e)
     }
 }
 
-pub(crate) fn bool_check_assert_eq(result: &Result<Object, String>, check: &str) -> bool {
-    let expected = eval(check).unwrap();
-    match comparison::eq(&expected, result.as_ref().unwrap()) {
+pub(crate) fn bool_check_assert_eq<'a>(result: &'a EvalResult<'a>, check: &str) -> bool {
+    let (env, obj) = result.as_ref().unwrap();
+    let (expected_env, expected_obj) = eval(check).unwrap();
+    match comparison::eq((&expected_env, &expected_obj), (env, obj)) {
         Ok(v) => !v,
         Err(code) => panic!("Error {:?}", code)
     }
 }
 
-pub(crate) fn check_assert_count(result: &Result<Object, String>, check: &str) {
-    let actual = object_to_iterator(&result.as_ref().unwrap()).len();
+pub(crate) fn check_assert_count<'a>(result: &'a EvalResult<'a>, check: &str) {
+    let (env, obj) = result.as_ref().unwrap();
+    let actual = object_to_iterator(obj).len();
     let expected: usize = check.parse().unwrap();
     assert_eq!(expected, actual)
 }
 
-pub(crate) fn bool_check_assert_count(result: &Result<Object, String>, check: &str) -> bool {
-    let actual = object_to_iterator(&result.as_ref().unwrap()).len();
+pub(crate) fn bool_check_assert_count<'a>(result: &'a EvalResult<'a>, check: &str) -> bool {
+    let (env, obj) = result.as_ref().unwrap();
+    let actual = object_to_iterator(obj).len();
     let expected: usize = check.parse().unwrap();
     expected == actual
 }
 
-pub(crate) fn check_assert_deep_eq(result: &Result<Object, String>, check: &str) {
-    let expected = eval(check).unwrap();
-    if comparison::deep_eq(&expected, result.as_ref().unwrap()).unwrap() {
-        assert_eq!(expected, result.as_ref().unwrap().clone());
+pub(crate) fn check_assert_deep_eq<'a>(result: &'a EvalResult<'a>, check: &str) {
+    let (env, obj) = result.as_ref().unwrap();
+    let (expected_env, expected_obj) = eval(check).unwrap();
+    if comparison::deep_eq((&expected_env, &expected_obj), (env, obj)).unwrap() {
+        assert_eq!(&expected_obj, obj);
     }
 }
 
-pub(crate) fn bool_check_assert_deep_eq(result: &Result<Object, String>, check: &str) -> bool {
-    let expected = eval(check).unwrap();
-    comparison::deep_eq(&expected, result.as_ref().unwrap()).unwrap()
+pub(crate) fn bool_check_assert_deep_eq<'a>(result: &'a EvalResult<'a>, check: &str) -> bool {
+    let (env, obj) = result.as_ref().unwrap();
+    let (expected_env, expected_obj) = eval(check).unwrap();
+    comparison::deep_eq((&expected_env, &expected_obj), (env, obj)).unwrap()
 }
 
-pub(crate) fn check_assert_permutation(result: &Result<Object, String>, check: &str) {
-    println!("result: {:?}\ncheck: {:?}", result, check);
+pub(crate) fn check_assert_permutation<'a>(result: &'a EvalResult<'a>, check: &str) {
+    println!("result: {:?}\ncheck: {:?}", result.as_ref().unwrap().1, check);
     todo!()
 }
 
-pub(crate) fn bool_check_assert_permutation(result: &Result<Object, String>, check: &str) -> bool {
-    println!("result: {:?}\ncheck: {:?}", result, check);
+pub(crate) fn bool_check_assert_permutation<'a>(result: &'a EvalResult<'a>, check: &str) -> bool {
+    println!("result: {:?}\ncheck: {:?}", result.as_ref().unwrap().1, check);
     todo!()
 }
 
-pub(crate) fn check_assert_xml(result: &Result<Object, String>, check: &str) {
-    let expected = eval(check).unwrap();
-    match result {
-        Ok(obj) => {
-            match comparison::deep_eq(&expected, obj) {
-                Ok(v) => {
-                    if !v {
-                        assert_eq!(object_to_xml(obj), check)
-                    }
-                },
-                Err(e) => assert_eq!(format!("error {:?}", e), check),
+pub(crate) fn check_assert_xml<'a>(result: &'a EvalResult<'a>, check: &str) {
+    let (env, obj) = result.as_ref().unwrap();
+    let (expected_env, expected_obj) = eval(check).unwrap();
+    match comparison::deep_eq((&expected_env, &expected_obj), (env, obj)) {
+        Ok(v) => {
+            if !v {
+                assert_eq!(object_to_xml(env, obj), check)
             }
         },
         Err(e) => assert_eq!(format!("error {:?}", e), check),
     }
 }
 
-pub(crate) fn bool_check_assert_xml(result: &Result<Object, String>, check: &str) -> bool {
-    let expected = eval(check).unwrap();
-    comparison::deep_eq(&expected, result.as_ref().unwrap()).unwrap()
+pub(crate) fn bool_check_assert_xml<'a>(result: &'a EvalResult<'a>, check: &str) -> bool {
+    let (expected_env, expected_obj) = eval(check).unwrap();
+    let (env, obj) = result.as_ref().unwrap();
+    comparison::deep_eq((&expected_env, &expected_obj), (env, obj)).unwrap()
 }
 
-pub(crate) fn check_assert_type(result: &Result<Object, String>, check: &str) {
+pub(crate) fn check_assert_type<'a>(result: &'a EvalResult<'a>, check: &str) {
     if let Some(err) = _check_assert_type(result, check) {
-        assert_eq!(err, format!("{:?}", result));
+        assert_eq!(err, format!("{:?}", result.as_ref().unwrap().1));
     }
 }
 
-pub(crate) fn bool_check_assert_type(result: &Result<Object, String>, check: &str) -> bool {
+pub(crate) fn bool_check_assert_type<'a>(result: &'a EvalResult<'a>, check: &str) -> bool {
     _check_assert_type(result, check).is_some()
 }
 
-pub(crate) fn _check_assert_type(result: &Result<Object, String>, check: &str) -> Option<String> {
-    let result = result.as_ref().unwrap();
+pub(crate) fn _check_assert_type<'a>(result: &'a EvalResult<'a>, check: &str) -> Option<String> {
+    let (env, result) = result.as_ref().unwrap();
     if check == "array(*)" {
         match result {
             Object::Array(..) => None,
@@ -242,64 +241,76 @@ pub(crate) fn _check_assert_type(result: &Result<Object, String>, check: &str) -
     }
 }
 
-pub(crate) fn check_assert_string_value(result: &Result<Object, String>, check: &str) {
-    let actual = object_to_string(result.as_ref().unwrap());
+pub(crate) fn check_assert_string_value<'a>(result: &'a EvalResult<'a>, check: &str) {
+    let (env, obj) = result.as_ref().unwrap();
+    let actual = object_to_string(env, obj);
     assert_eq!(check, actual);
 }
 
-pub(crate) fn bool_check_assert_string_value(result: &Result<Object, String>, check: &str) -> bool {
-    let actual = object_to_string(result.as_ref().unwrap());
+pub(crate) fn bool_check_assert_string_value<'a>(result: &'a EvalResult<'a>, check: &str) -> bool {
+    let (env, obj) = result.as_ref().unwrap();
+    let actual = object_to_string(env, obj);
     check == actual
 }
 
-pub(crate) fn check_assert_empty(result: &Result<Object, String>) {
-    if result.as_ref().unwrap() != &Object::Empty {
-        assert_eq!("not empty", format!("{:?}", result));
+pub(crate) fn check_assert_empty<'a>(result: &'a EvalResult<'a>) {
+    let (env, obj) = result.as_ref().unwrap();
+    if obj != &Object::Empty {
+        assert_eq!("not empty", format!("{:?}", obj));
     }
 }
 
-pub(crate) fn bool_check_assert_empty(result: &Result<Object, String>) -> bool {
-    result.as_ref().unwrap() != &Object::Empty
+pub(crate) fn bool_check_assert_empty<'a>(result: &'a EvalResult<'a>) -> bool {
+    let (env, obj) = result.as_ref().unwrap();
+    obj != &Object::Empty
 }
 
-pub(crate) fn check_assert_true(result: &Result<Object, String>) {
-    if result.as_ref().unwrap() != &Object::Atomic(Type::Boolean(true)) {
-        assert_eq!("not true", format!("{:?}", result));
+pub(crate) fn check_assert_true<'a>(result: &'a EvalResult<'a>) {
+    let (env, obj) = result.as_ref().unwrap();
+    if obj != &Object::Atomic(Type::Boolean(true)) {
+        assert_eq!("not true", format!("{:?}", obj));
     }
 }
 
-pub(crate) fn bool_check_assert_true(result: &Result<Object, String>) -> bool {
-    result.as_ref().unwrap() != &Object::Atomic(Type::Boolean(true))
+pub(crate) fn bool_check_assert_true<'a>(result: &'a EvalResult<'a>) -> bool {
+    let (env, obj) = result.as_ref().unwrap();
+    obj != &Object::Atomic(Type::Boolean(true))
 }
 
-pub(crate) fn check_assert_false(result: &Result<Object, String>) {
-    if result.as_ref().unwrap() != &Object::Atomic(Type::Boolean(false)) {
-        assert_eq!("not false", format!("{:?}", result));
+pub(crate) fn check_assert_false<'a>(result: &'a EvalResult<'a>) {
+    let (env, obj) = result.as_ref().unwrap();
+    if obj != &Object::Atomic(Type::Boolean(false)) {
+        assert_eq!("not false", format!("{:?}", obj));
     }
 }
 
-pub(crate) fn bool_check_assert_false(result: &Result<Object, String>) -> bool {
-    result.as_ref().unwrap() != &Object::Atomic(Type::Boolean(false))
+pub(crate) fn bool_check_assert_false<'a>(result: &'a EvalResult<'a>) -> bool {
+    let (env, obj) = result.as_ref().unwrap();
+    obj != &Object::Atomic(Type::Boolean(false))
 }
 
-pub(crate) fn check_error(result: &Result<Object, String>, expected_code: &str) {
+pub(crate) fn check_error<'a>(result: &'a EvalResult<'a>, expected_code: &str) {
     match result {
-        Err(code) => {
+        Err((code, msg)) => {
             if expected_code != "*" {
-                assert_eq!(*code, expected_code)
+                let code = String::from(code.as_ref());
+                assert_eq!(code, expected_code)
             }
         },
-        _ => assert_eq!("not error", format!("{:?}", result))
+        _ => assert_eq!("not error", format!("{:?}", result.as_ref().unwrap().1))
     }
 }
 
-pub(crate) fn bool_check_error(result: &Result<Object, String>, expected_code: &str) -> bool {
+pub(crate) fn bool_check_error<'a>(result: &'a EvalResult<'a>, expected_code: &str) -> bool {
     match result {
-        Err(code) => {
-            code == expected_code
+        Err((code, msg)) => {
+            if expected_code != "*" {
+                let code = String::from(code.as_ref());
+                code == expected_code
+            } else {
+                true
+            }
         },
-        _ => {
-            false
-        }
+        _ => false
     }
 }

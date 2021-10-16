@@ -1,4 +1,4 @@
-use crate::eval::{Object, Type, DynamicContext, EvalResult};
+use crate::eval::{Object, Type, DynamicContext, EvalResult, ErrorInfo};
 use crate::eval::Environment;
 
 use bigdecimal::Zero;
@@ -35,11 +35,11 @@ pub(crate) fn fn_boolean<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, 
     }
 }
 
-pub fn object_to_bool(object: &Object) ->  Result<bool, (ErrorCode, String)> {
+pub fn object_to_bool(object: &Object) ->  Result<bool, ErrorInfo> {
     object_casting_bool(object, false)
 }
 
-pub fn object_casting_bool(object: &Object, is_casting: bool) -> Result<bool, (ErrorCode, String)> {
+pub fn object_casting_bool(object: &Object, is_casting: bool) -> Result<bool, ErrorInfo> {
     match object {
         Object::Atomic(Type::Boolean(v)) => Ok(*v),
         Object::Empty => Ok(false),
@@ -78,7 +78,7 @@ pub fn object_casting_bool(object: &Object, is_casting: bool) -> Result<bool, (E
             };
             Ok(v)
         },
-        Object::Node(..) |
+        Object::Node{..} |
         Object::Atomic(..) => Ok(!is_casting),
         _ => Err((ErrorCode::FORG0001, format!("The {:?} cannot be cast to a boolean", object)))
     }

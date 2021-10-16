@@ -1,4 +1,4 @@
-use crate::eval::{Object, Type, typed_value_of_node, DynamicContext, EvalResult};
+use crate::eval::{Object, Type, DynamicContext, EvalResult};
 use crate::eval::Environment;
 
 use crate::eval::helpers::relax;
@@ -13,30 +13,45 @@ pub(crate) fn fn_data<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, con
     };
 
     let mut result = vec![];
-    data(item.clone(), &mut result);
-
-    relax(env, result)
+    match data(env, item.clone(), &mut result) {
+        Ok(env) => relax(env, result),
+        Err(msg) => Err((ErrorCode::TODO, String::from("TODO")))
+    }
 }
 
-fn data(obj: Object, result: &mut Vec<Object>) {
+fn data<'a>(env: Box<Environment<'a>>, obj: Object, result: &mut Vec<Object>) -> Result<Box<Environment<'a>>, String> {
     match obj {
-        Object::Atomic(..) => result.push(obj),
-        Object::Node(node) => {
-            let mut data = vec![];
-            typed_value_of_node(node, &mut data);
-            let item = Object::Atomic(Type::Untyped(data.join("")));
-            result.push(item);
+        Object::Atomic(..) => {
+            result.push(obj);
+            Ok(env)
         },
-        Object::Array(items) => data_of_vec(items, result),
-        Object::Sequence(items) => data_of_vec(items, result),
+        Object::Node(rf) => {
+            match rf.to_typed_value(&env) {
+                Ok(data) => {
+                    let item = Object::Atomic(Type::Untyped(data));
+                    result.push(item);
+                },
+                Err(msg) => return Err(msg)
+            }
+            Ok(env)
+        },
+        Object::Array(items) |
+        Object::Sequence(items) => {
+            data_of_vec(env, items, result)
+        },
         _ => todo!()
     }
 }
 
-fn data_of_vec(items: Vec<Object>, result: &mut Vec<Object>) {
+fn data_of_vec<'a>(env: Box<Environment<'a>>, items: Vec<Object>, result: &mut Vec<Object>) -> Result<Box<Environment<'a>>, String> {
+    let mut current_env = env;
     for item in items {
-        data(item, result);
+        match data(current_env, item, result) {
+            Ok(env) => current_env = env,
+            Err(msg) => return Err(msg),
+        }
     }
+    Ok(current_env)
 }
 
 pub(crate) fn fn_empty<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
@@ -157,51 +172,54 @@ pub(crate) fn fn_last<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, con
     }
 }
 
-pub(crate) fn fn_zero_or_one<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
-    match arguments.as_slice() {
-        [Object::Empty] => Ok((env, Object::Empty)),
-        [Object::Range { .. }] => Err((ErrorCode::FORG0003, String::from("TODO"))),
-        [Object::Atomic(t)] => Ok((env, Object::Atomic(t.clone()))),
-        [Object::Node(node)] => Ok((env, Object::Node(node.clone()))),
-        [Object::Sequence(items)] => {
+pub(crate) fn fn_zero_or_one<'a>(env: Box<Environment<'a>>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+    let arg = arguments.remove(0);
+    match arg {
+        Object::Empty => Ok((env, Object::Empty)),
+        Object::Range{..} => Err((ErrorCode::FORG0003, String::from("TODO"))),
+        Object::Atomic(..) |
+        Object::Node{..} => Ok((env, arg)),
+        Object::Sequence(items) => {
             if items.len() > 1 {
                 Err((ErrorCode::FORG0003, String::from("TODO")))
             } else {
-                Ok((env, Object::Sequence(items.clone())))
+                Ok((env, Object::Sequence(items)))
             }
         }
         _ => Err((ErrorCode::FORG0003, String::from("TODO")))
     }
 }
 
-pub(crate) fn fn_one_or_more<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
-    match arguments.as_slice() {
-        [Object::Empty] => Err((ErrorCode::FORG0004, String::from("TODO"))),
-        [Object::Range { min, max }] => Ok((env, Object::Range { min: *min, max: *max })),
-        [Object::Atomic(t)] => Ok((env, Object::Atomic(t.clone()))),
-        [Object::Node(node)] => Ok((env, Object::Node(node.clone()))),
-        [Object::Sequence(items)] => {
+pub(crate) fn fn_one_or_more<'a>(env: Box<Environment<'a>>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+    let arg = arguments.remove(0);
+    match arg {
+        Object::Empty => Err((ErrorCode::FORG0004, String::from("TODO"))),
+        Object::Range{..} |
+        Object::Atomic(..) |
+        Object::Node{..} => Ok((env, arg)),
+        Object::Sequence(items) => {
             if items.len() == 0 {
                 Err((ErrorCode::FORG0004, String::from("TODO")))
             } else {
-                Ok((env, Object::Sequence(items.clone())))
+                Ok((env, Object::Sequence(items)))
             }
         }
         _ => Err((ErrorCode::FORG0004, String::from("TODO")))
     }
 }
 
-pub(crate) fn fn_exactly_one<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
-    match arguments.as_slice() {
-        [Object::Empty] => Err((ErrorCode::FORG0005, String::from("TODO"))),
-        [Object::Range { min, max }] => Ok((env, Object::Range { min: *min, max: *max })),
-        [Object::Atomic(t)] => Ok((env, Object::Atomic(t.clone()))),
-        [Object::Node(node)] => Ok((env, Object::Node(node.clone()))),
-        [Object::Sequence(items)] => {
+pub(crate) fn fn_exactly_one<'a>(env: Box<Environment<'a>>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+    let arg = arguments.remove(0);
+    match arg {
+        Object::Empty => Err((ErrorCode::FORG0005, String::from("TODO"))),
+        Object::Range{..} |
+        Object::Atomic(..) |
+        Object::Node{..} => Ok((env, arg)),
+        Object::Sequence(items) => {
             if items.len() != 1 {
                 Err((ErrorCode::FORG0005, String::from("TODO")))
             } else {
-                Ok((env, Object::Sequence(items.clone())))
+                Ok((env, Object::Sequence(items)))
             }
         }
         _ => Err((ErrorCode::FORG0005, String::from("TODO")))

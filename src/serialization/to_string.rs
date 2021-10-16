@@ -1,16 +1,15 @@
-use crate::eval::{Object, Type, RangeIterator};
-use crate::serialization::node_to_string;
+use crate::eval::{Object, Type, RangeIterator, Environment};
 use crate::parser::op::Representation;
 
-pub fn object_to_string_xml(object: &Object) -> String {
-    _object_to_string(object, false, " ")
+pub fn object_to_string_xml(env: &Box<Environment>, object: &Object) -> String {
+    _object_to_string(env, object, false, " ")
 }
 
-pub fn object_to_string(object: &Object) -> String {
-    _object_to_string(object, true, " ")
+pub fn object_to_string(env: &Box<Environment>, object: &Object) -> String {
+    _object_to_string(env, object, true, " ")
 }
 
-pub fn _object_to_string(object: &Object, ref_resolving: bool, sep: &str) -> String {
+pub fn _object_to_string(env: &Box<Environment>, object: &Object, ref_resolving: bool, sep: &str) -> String {
     match object {
         Object::Empty => String::new(),
         Object::Range { min, max } => {
@@ -18,7 +17,7 @@ pub fn _object_to_string(object: &Object, ref_resolving: bool, sep: &str) -> Str
 
             let mut buf = Vec::with_capacity(count);
             for item in it {
-                buf.push(_object_to_string(&item, ref_resolving, sep));
+                buf.push(_object_to_string(env, &item, ref_resolving, sep));
             }
 
             buf.join(sep)
@@ -90,13 +89,17 @@ pub fn _object_to_string(object: &Object, ref_resolving: bool, sep: &str) -> Str
         Object::Sequence(items) => {
             let mut buf = Vec::with_capacity(items.len());
             for item in items {
-                let str = _object_to_string(item, ref_resolving, " ");
-                buf.push(str);
+                let data = _object_to_string(env, item, ref_resolving, " ");
+                buf.push(data);
             }
-            buf.join(sep)
+            let data = buf.join(sep);
+            data
         },
-        Object::Node(node) => {
-            node_to_string(node)
+        Object::Node(rf) => {
+            match rf.to_string(env) {
+                Ok(data) => data,
+                Err(msg) => panic!(msg)
+            }
         },
         _ => panic!("TODO object_to_string {:?}", object)
     }

@@ -10,7 +10,7 @@ use crate::fns::boolean::object_casting_bool;
 pub(crate) fn xs_untyped_atomic_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     let item = arguments.get(0).unwrap();
 
-    let str = object_to_string(item);
+    let str = object_to_string(&env, item);
 
     Ok((env, Object::Atomic(Type::Untyped(str))))
 }
@@ -27,7 +27,7 @@ pub(crate) fn xs_boolean_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Obje
 pub(crate) fn xs_string_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     let item = arguments.get(0).unwrap();
 
-    let str = object_to_string(item);
+    let str = object_to_string(&env, item);
 
     Ok((env, Object::Atomic(Type::String(str))))
 }

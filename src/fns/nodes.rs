@@ -1,4 +1,4 @@
-use crate::eval::{Environment, Object, DynamicContext, EvalResult, Type, Node};
+use crate::eval::{Environment, Object, DynamicContext, EvalResult, Type};
 use crate::parser::errors::ErrorCode;
 
 pub(crate) fn fn_name<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
@@ -18,13 +18,11 @@ pub(crate) fn fn_local_name<'a>(env: Box<Environment<'a>>, arguments: Vec<Object
 
     match item {
         Object::Empty => Ok((env, Object::Atomic(Type::String(String::new())))),
-        Object::Node(node) => {
-            match node {
-                Node::Element { name, .. } |
-                Node::Attribute { name, .. } => {
-                    Ok((env, Object::Atomic(Type::String(name.local_part.clone()))))
-                },
-                _ => Ok((env, Object::Atomic(Type::String(String::new())))),
+        Object::Node(rf) => {
+            if let Some(name) = rf.name(&env) {
+                Ok((env, Object::Atomic(Type::String(name.local_part))))
+            } else {
+                Ok((env, Object::Atomic(Type::String(String::new()))))
             }
 
         }

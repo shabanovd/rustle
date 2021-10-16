@@ -32,7 +32,7 @@ pub enum Statement {
     Program(Box<dyn Expression>),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum OneOrMore {
     One,
     More,
@@ -79,4 +79,8 @@ pub enum OperatorComparison {
     ValueLessOrEquals,
     ValueGreaterThan,
     ValueGreaterOrEquals,
+
+    NodeIs,
+    NodePrecedes,
+    NodeFollows
 }

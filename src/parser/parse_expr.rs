@@ -15,8 +15,10 @@ use crate::parser::op::{found_expr, Statement, OperatorComparison, OperatorArith
 use nom::sequence::{preceded, delimited, tuple};
 use crate::eval::expression::{Expression, NodeTest};
 use nom::multi::separated_list1;
-use nom::combinator::{map_res, map, opt};
+use nom::combinator::{map, opt};
 use crate::eval::sequence_type::*;
+use crate::eval::navigation::NodeParent;
+use nom::bytes::complete::is_not;
 
 const DEBUG: bool = false;
 
@@ -43,6 +45,19 @@ pub(crate) fn parse_prolog(input: &str) -> IResult<&str, Vec<Box<dyn Expression>
 
     let mut current_input = input;
     loop {
+        let check = alt((parse_default_namespace_decl, parse_setter))(current_input);
+        if check.is_ok() {
+            let (input, expr) = check?;
+            let (input, _) = tag(";")(input)?;
+            current_input = input;
+
+            prolog.push(expr);
+        } else {
+            break
+        }
+    }
+
+    loop {
         let check = parse_annotated_decl(current_input);
         if check.is_ok() {
             let (input, expr) = check?;
@@ -57,6 +72,36 @@ pub(crate) fn parse_prolog(input: &str) -> IResult<&str, Vec<Box<dyn Expression>
 
     Ok((current_input, prolog))
 }
+
+// [8]    	Setter 	   ::=    	TODO: BoundarySpaceDecl | DefaultCollationDecl
+// | BaseURIDecl
+// TODO | ConstructionDecl | OrderingModeDecl | EmptyOrderDecl | CopyNamespacesDecl | DecimalFormatDecl
+pub(crate) fn parse_setter(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
+    parse_base_uri_decl(input)
+}
+
+// [11]    	BaseURIDecl 	   ::=    	"declare" "base-uri" URILiteral
+pub(crate) fn parse_base_uri_decl(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
+    map(
+        preceded(
+            tuple((ws, tag("declare"), ws1, tag("base-uri"), ws1)),
+            parse_uri_literal
+        ),
+        |uri| DeclareBaseURI::boxed(uri)
+    )(input)
+}
+
+// [25]    	DefaultNamespaceDecl 	   ::=    	"declare" "default" ("element" | "function") "namespace" URILiteral
+pub(crate) fn parse_default_namespace_decl(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
+    map(
+        preceded(
+            tuple((ws, tag("declare"), ws1, tag("default"), ws1)),
+            tuple((alt((tag("element"), tag("function"))), ws1, tag("namespace"), ws1, parse_uri_literal))
+        ),
+        |(name, _, _, _, uri)| DeclareDefaultNamespace::boxed(name, uri)
+    )(input)
+}
+
 
 // [26]    	AnnotatedDecl 	   ::=    	"declare" Annotation* (VarDecl | FunctionDecl)
 pub(crate) fn parse_annotated_decl(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
@@ -258,7 +303,7 @@ pub(crate) fn parse_enclosed_expr(input: &str) -> IResult<&str, Box<dyn Expressi
         (input, Body::empty())
     };
 
-    let (input, _) = ws_tag("}", input)?;
+    let (input, _) = ws_tag_ws("}", input)?;
 
     Ok((input, expr))
 }
@@ -524,7 +569,7 @@ fn parse_comparison_expr(input: &str) -> IResult<&str, Box<dyn Expression>, Cust
         alt((
             tag("="), tag("!="), tag("<"), tag("<="), tag(">"), tag(">="),
             tag("eq"), tag("ne"), tag("lt"), tag("le"), tag("gt"), tag("ge"),
-            // TODO: tag("is"), tag("<<"), tag(">>"),
+            tag("is"), tag("<<"), tag(">>"),
         )),
         ws1
     )(current_input);
@@ -547,6 +592,10 @@ fn parse_comparison_expr(input: &str) -> IResult<&str, Box<dyn Expression>, Cust
             "le" => OperatorComparison::ValueLessOrEquals,
             "gt" => OperatorComparison::ValueGreaterThan,
             "ge" => OperatorComparison::ValueGreaterOrEquals,
+
+            "is" => OperatorComparison::NodeIs,
+            "<<" => OperatorComparison::NodePrecedes,
+            ">>" => OperatorComparison::NodeFollows,
 
             _ => panic!("internal error"),
         };
@@ -724,7 +773,7 @@ fn parse_instanceof_expr(input: &str) -> IResult<&str, Box<dyn Expression>, Cust
 
         let (input, st) = parse_sequence_type(input)?;
 
-        found_expr(input, Box::new(Treat { expr, st } ))
+        found_expr(input, Box::new(InstanceOf { expr, st } ))
     }
 }
 
@@ -897,21 +946,19 @@ fn parse_relative_path_expr(input: &str) -> IResult<&str, Box<dyn Expression>, C
 }
 
 // [110]    	StepExpr 	   ::=    	PostfixExpr | AxisStep
-parse_one_of!(parse_step_expr,
-    parse_postfix_expr, parse_axis_step,
-);
+fn parse_step_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
+    alt((parse_postfix_expr, parse_axis_step))(input)
+}
 
 // [111]    	AxisStep 	   ::=    	(ReverseStep | ForwardStep) PredicateList
-// [123]    	PredicateList 	   ::=    	Predicate*
 fn parse_axis_step(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
-    // TODO let check = parse_reverse_step(input);
-
-    let (input, step) = parse_forward_step(input)?;
-
-    let (input, predicates) = parse_predicate_list(input)?;
-
-    found_expr(input, Box::new(AxisStep { step, predicates } ))
-
+    map(
+        tuple((
+                  alt((parse_reverse_step, parse_forward_step)),
+                  parse_predicate_list
+              )),
+        |(step, predicates)| AxisStep::boxed(step, predicates)
+    )(input)
 }
 
 // [112]    	ForwardStep 	   ::=    	TODO (ForwardAxis NodeTest) | AbbrevForwardStep
@@ -934,7 +981,17 @@ fn parse_abbrev_forward_step(input: &str) -> IResult<&str, Box<dyn Expression>, 
     found_expr(input, Box::new(ForwardStep { attribute, test } ))
 }
 
-// [115]    	ReverseStep 	   ::=    	(ReverseAxis NodeTest) | AbbrevReverseStep
+// [115]    	ReverseStep 	   ::=    	TODO (ReverseAxis NodeTest) | AbbrevReverseStep
+fn parse_reverse_step(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
+    parse_abbrev_reverse_step(input)
+}
+
+// [117]    	AbbrevReverseStep 	   ::=    	".."
+fn parse_abbrev_reverse_step(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
+    let (input, _) = tag("..")(input)?;
+
+    Ok((input, NodeParent::boxed()))
+}
 
 // [118]    	NodeTest 	   ::=    	KindTest | NameTest
 // TODO: parse_one_of!(parse_node_test, parse_kind_test, parse_name_test);
@@ -1119,7 +1176,8 @@ fn parse_parenthesized_expr(input: &str) -> IResult<&str, Box<dyn Expression>, C
 
 // [134]    	ContextItemExpr 	   ::=    	"."
 fn parse_context_item_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
-    let (input, _) = ws_tag(".", input)?;
+    // lookahead for ".." case
+    let (input, _) = tuple((ws, tag("."), is_not(".")))(input)?;
 
     found_expr(input, Box::new(ContextItem{}))
 }
@@ -1581,6 +1639,11 @@ fn parse_ea_name_or_wildcard(input: &str) -> IResult<&str, QName, CustomError<&s
 // [206]    	TypeName 	   ::=    	EQName
 fn parse_type_name(input: &str) -> IResult<&str, QName, CustomError<&str>> {
     parse_eqname(input)
+}
+
+// [217]    	URILiteral 	   ::=    	StringLiteral
+fn parse_uri_literal(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
+    parse_string_literal(input)
 }
 
 // [226]    	EscapeQuot 	   ::=    	'""'

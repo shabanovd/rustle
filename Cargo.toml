@@ -7,6 +7,8 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+rand = "0.8.4"
+
 strum = "0.21"
 strum_macros = "0.21"
 
@@ -24,4 +26,5 @@ nom = "7.0"
 xmlparser = "0.13.3"
 quick-xml = "0.22.0"
 
+#bytes = "1.1.0"
 linked-hash-map = "0.5.4"

@@ -1,8 +1,13 @@
+#![feature(test)]
+#![feature(in_band_lifetimes)]
+#![feature(map_first_last)]
+
 mod namespaces;
 mod parser;
 mod fns;
 mod eval;
 mod values;
+mod tree;
 mod serialization;
 
 mod tests;

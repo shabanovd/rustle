@@ -12,7 +12,7 @@ pub(crate) fn fn_string<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, c
         arguments.get(0).unwrap()
     };
 
-    let str = object_to_string(item);
+    let str = object_to_string(&env, item);
 
     Ok((env, Object::Atomic(Type::String(str))))
 }
@@ -22,7 +22,7 @@ pub(crate) fn fn_upper_case<'a>(env: Box<Environment<'a>>, arguments: Vec<Object
     // TODO empty sequence return empty string
     let item = arguments.get(0).unwrap();
 
-    let str = object_to_string(item);
+    let str = object_to_string(&env, item);
 
     Ok((env, Object::Atomic(Type::String(str.to_uppercase()))))
 }
@@ -32,14 +32,14 @@ pub(crate) fn fn_lower_case<'a>(env: Box<Environment<'a>>, arguments: Vec<Object
     // TODO empty sequence return empty string
     let item = arguments.get(0).unwrap();
 
-    let str = object_to_string(item);
+    let str = object_to_string(&env, item);
 
     Ok((env, Object::Atomic(Type::String(str.to_lowercase()))))
 }
 
 pub(crate) fn fn_concat<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     let str = arguments.iter()
-        .map(|item| object_to_string(item))
+        .map(|item| object_to_string(&env, item))
         .collect();
 
     Ok((env, Object::Atomic(Type::String(str))))
@@ -48,10 +48,10 @@ pub(crate) fn fn_concat<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _
 pub(crate) fn fn_string_join<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
     let str = if let Some(item) = arguments.get(0) {
         if let Some(sep) = arguments.get(1) {
-            let sep = object_to_string(sep);
-            _object_to_string(item, true, sep.as_str())
+            let sep = object_to_string(&env, sep);
+            _object_to_string(&env, item, true, sep.as_str())
         } else {
-            _object_to_string(item, true, " ")
+            _object_to_string(&env, item, true, " ")
         }
     } else {
         return Err((ErrorCode::TODO, format!("got {:?} arguments, but expected 1 or 2", arguments.len())));
@@ -68,7 +68,7 @@ pub(crate) fn fn_string_length<'a>(env: Box<Environment<'a>>, arguments: Vec<Obj
         arguments.get(0).unwrap()
     };
 
-    let str = object_to_string(item);
+    let str = object_to_string(&env, item);
 
     println!("{:?} {:?}", str, str.len());
 
@@ -99,8 +99,8 @@ pub(crate) fn fn_starts_with<'a>(env: Box<Environment<'a>>, arguments: Vec<Objec
     let string = arguments.get(0).unwrap();
     let pattern = arguments.get(1).unwrap();
 
-    let string = object_to_string(string);
-    let pattern = object_to_string(pattern);
+    let string = object_to_string(&env, string);
+    let pattern = object_to_string(&env, pattern);
 
     let result = string.starts_with(&pattern);
 
@@ -112,8 +112,8 @@ pub(crate) fn fn_ends_with<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>
     let string = arguments.get(0).unwrap();
     let pattern = arguments.get(1).unwrap();
 
-    let string = object_to_string(string);
-    let pattern = object_to_string(pattern);
+    let string = object_to_string(&env, string);
+    let pattern = object_to_string(&env, pattern);
 
     let result = string.ends_with(&pattern);
 

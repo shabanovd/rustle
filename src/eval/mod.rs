@@ -12,6 +12,7 @@ pub(crate) mod comparison;
 mod value;
 pub(crate) use value::*;
 
+pub(crate) mod navigation;
 mod arithmetic;
 mod piping;
 pub(crate) mod sequence_type;
@@ -20,9 +21,10 @@ pub(crate) mod helpers;
 use helpers::*;
 use crate::eval::expression::{Expression, NodeTest};
 
+pub type ErrorInfo = (ErrorCode, String);
 // pub type EvalResult<'a> = Result<(Box<Environment<'a>>, Iter<'a, Answer>), (ErrorCode, String)>;
 // pub type EvalResult<'a> = Result<(Box<Environment<'a>>, Answer), (ErrorCode, String)>;
-pub type EvalResult<'a> = Result<(Box<Environment<'a>>, Object), (ErrorCode, String)>;
+pub type EvalResult<'a> = Result<(Box<Environment<'a>>, Object), ErrorInfo>;
 
 #[derive(Debug, Clone)]
 pub struct DynamicContext {
@@ -41,7 +43,7 @@ impl DynamicContext {
     }
 }
 
-pub(crate) fn eval_statements(statements: Vec<Statement>, env: Box<Environment>) -> Result<Object, (ErrorCode, String)> {
+pub(crate) fn eval_statements(statements: Vec<Statement>, env: Box<Environment>) -> EvalResult {
 
     let mut result = Object::Empty;
 
@@ -54,11 +56,11 @@ pub(crate) fn eval_statements(statements: Vec<Statement>, env: Box<Environment>)
         result = new_result;
 
         if let &Object::Return(_) = &result {
-            return Ok(result);
+            return Ok((current_env, result));
         }
     }
 
-    Ok(result)
+    Ok((current_env, result))
 }
 
 fn eval_statement(statement: Statement, env: Box<Environment>) -> EvalResult {
@@ -101,34 +103,27 @@ fn step_and_test<'a>(step: Axis, test: &Box<dyn NodeTest>, env: Box<Environment<
         Object::Nothing => {
             panic!("XPDY0002")
         },
-        Object::Node(node) => {
-            match node {
-                Node::Element { sequence, name, attributes, children } => {
-                    match step {
-                        Axis::ForwardChild => {
-                            let mut result = vec![];
-                            for child in children {
-                                if test.test_node(child) {
-                                    result.push(Object::Node(child.clone()))
-                                }
-                            }
-
-                            relax(env, result)
-                        },
-                        Axis::ForwardAttribute => {
-                            let mut result = vec![];
-                            for attribute in attributes {
-                                if test.test_node(attribute) {
-                                    result.push(Object::Node(attribute.clone()))
-                                }
-                            }
-
-                            relax(env, result)
+        Object::Node(rf) => {
+            match step {
+                Axis::ForwardChild => {
+                    let mut result = vec![];
+                    for child in rf.children(&env) {
+                        if test.test_node(&env, &child) {
+                            result.push(Object::Node(child))
                         }
-                        _ => todo!()
                     }
+                    relax(env, result)
                 },
-                _ => Ok((env, Object::Empty))
+                Axis::ForwardAttribute => {
+                    let mut result = vec![];
+                    for attribute in rf.attributes(&env) {
+                        if test.test_node(&env, &attribute) {
+                            result.push(Object::Node(attribute))
+                        }
+                    }
+                    relax(env, result)
+                }
+                _ => todo!()
             }
         },
         _ => Ok((env, Object::Empty))
@@ -189,7 +184,7 @@ impl Iterator for RangeIterator {
     }
 }
 
-pub(crate) fn object_to_integer(object: Object) -> Result<i128, (ErrorCode, String)> {
+pub(crate) fn object_to_integer(env: &Box<Environment>, object: Object) -> Result<i128, ErrorInfo> {
     match object {
         Object::Atomic(t) => {
             match t {
@@ -203,13 +198,15 @@ pub(crate) fn object_to_integer(object: Object) -> Result<i128, (ErrorCode, Stri
                 _ => Err((ErrorCode::XPTY0004, format!("can't convert to int {:?}", t)))
             }
         },
-        Object::Node(node) => {
-            let mut result = vec![];
-            typed_value_of_node(node, &mut result);
-            let num = result.join("");
-            match num.parse() {
-                Ok(v) => Ok(v),
-                Err(..) => Err((ErrorCode::XPTY0004, format!("can't convert to int {:?}", num)))
+        Object::Node(rf) => {
+            match rf.to_typed_value(env) {
+                Ok(num) => {
+                    match num.parse() {
+                        Ok(v) => Ok(v),
+                        Err(..) => Err((ErrorCode::XPTY0004, format!("can't convert to int {:?}", num)))
+                    }
+                },
+                Err(msg) => Err((ErrorCode::XPTY0004, format!("can't convert node to int")))
             }
         }
         _ => Err((ErrorCode::XPTY0004, format!("can't convert to int {:?}", object)))
@@ -217,7 +214,7 @@ pub(crate) fn object_to_integer(object: Object) -> Result<i128, (ErrorCode, Stri
 }
 
 // TODO: optimize!!!
-pub(crate) fn object_to_iterator<'a>(object: &Object) -> Vec<Object> {
+pub(crate) fn object_to_iterator(object: &Object) -> Vec<Object> {
     match object {
         Object::Atomic(..) => {
             let mut result = Vec::with_capacity(1);
@@ -299,9 +296,10 @@ mod tests {
         let result = parse(input);
         if result.is_ok() {
             let program = result.unwrap();
-            let env = Environment::new();
 
-            let result = eval_statements(program, Box::new(env)).unwrap();
+            let env = Environment::create();
+
+            let (new_env, result) = eval_statements(program, env).unwrap();
 
             assert_eq!(
                 result,
