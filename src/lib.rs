@@ -1,5 +1,3 @@
-#![feature(test)]
-#![feature(in_band_lifetimes)]
 #![feature(map_first_last)]
 
 mod namespaces;

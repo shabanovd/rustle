@@ -380,7 +380,15 @@ pub(crate) struct InitialPath { pub(crate) steps: OneOrMore, pub(crate) expr: Bo
 
 impl Expression for InitialPath {
     fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
-        todo!()
+        let obj = context.item.clone();
+
+        let context = DynamicContext {
+            item: obj,
+            position: None,
+            last: None,
+        };
+
+        self.expr.eval(env, &context)
     }
 
     fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
@@ -1083,9 +1091,10 @@ impl Expression for NodeElement {
                     }
                 },
                 Object::Node(rf) => {
-                    if current_env.xml_tree_id() != rf.storage_id {
-                        todo!()
-                    }
+                    // TODO
+                    // if current_env.xml_tree_id() != rf.storage_id {
+                    //     todo!()
+                    // }
                 },
                 Object::Atomic(..) => {
                     let content = object_to_string(&current_env, &evaluated_child);

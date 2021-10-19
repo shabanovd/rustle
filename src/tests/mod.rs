@@ -1,22 +1,26 @@
-use crate::eval::{Object, Environment, Type, eval_statements, object_to_iterator, comparison, EvalResult};
+use std::rc::Rc;
+use std::sync::Mutex;
+use crate::eval::{Object, Environment, Type, eval_statements, object_to_iterator, comparison, EvalResult, DynamicContext};
+use crate::eval::helpers::relax;
 use crate::parser::parse;
 use crate::values::{resolve_element_qname, QName};
 use crate::serialization::object_to_string;
 use crate::fns::object_to_bool;
 use crate::parser::errors::ErrorCode;
 use crate::serialization::to_xml::object_to_xml;
+use crate::tree::{InMemoryXMLTree, Reference, XMLTreeReader};
 
 
-pub(crate) fn eval_on_spec<'a>(spec: &str, input: &str) -> EvalResult<'a> {
+pub(crate) fn eval_on_spec<'a>(spec: &str, sources: Vec<(&str, &str)>, input: &str) -> EvalResult<'a> {
     match spec {
         "XQ10" | "XQ10+" | "XP30+ XQ10+" | "XQ30+" | "XP30+ XQ30+" | "XQ31+" | "XP31+ XQ31+" => {
-            eval(input)
+            eval(sources, input)
         }
         _ => panic!("unsupported spec {}", spec)
     }
 }
 
-pub(crate) fn eval<'a>(input: &str) -> EvalResult<'a> {
+pub(crate) fn eval<'a>(sources: Vec<(&str, &str)>, input: &str) -> EvalResult<'a> {
     println!("script: {:?}", input);
 
     let parsed = parse(input);
@@ -25,20 +29,38 @@ pub(crate) fn eval<'a>(input: &str) -> EvalResult<'a> {
 
         // println!("{:#?}", program);
 
-        let env = Environment::create();
-        eval_statements(program, env)
+        let mut env = Environment::create();
+
+        let mut context = DynamicContext::nothing();
+
+        for (name, path) in sources {
+            let tree = InMemoryXMLTree::load(env.next_id(), path);
+            if name == "." {
+                let writer = tree.lock().unwrap();
+                if let Some(rf) = writer.as_reader().first() {
+                    context.item = Object::Node(rf);
+                    context.position = Some(1)
+                }
+            }
+        }
+
+        eval_statements(program, env, &context)
 
     } else {
         // println!("error: {:#?}", parsed);
 
-        let msg = match parsed {
+        let e = match parsed {
             Err(error) => {
-                let code = error.as_ref();
-                String::from(code)
+                let msg = error.as_ref();
+                let code = match msg {
+                    "XPST0003" => ErrorCode::XPST0003,
+                    _ => ErrorCode::TODO,
+                };
+                (code, String::from(msg))
             }
-            _ => "err".to_string() // format!("error {:?}", parsed)
+            _ => (ErrorCode::TODO, "err".to_string())
         };
-        Err((ErrorCode::TODO, msg))
+        Err(e)
     }
 }
 
@@ -78,7 +100,7 @@ fn eval_assert<'a, 'b>(result: &'a EvalResult<'a>, check: &str) -> EvalResult<'b
         let name = resolve_element_qname(&QName::local_part("result"), &env);
         env.set(name, result.clone());
 
-        eval_statements(program, env)
+        eval_statements(program, env, &DynamicContext::nothing())
     } else {
         todo!()
     }
@@ -87,7 +109,7 @@ fn eval_assert<'a, 'b>(result: &'a EvalResult<'a>, check: &str) -> EvalResult<'b
 pub(crate) fn check_assert_eq<'a>(result: &'a EvalResult<'a>, check: &str) {
     let (env, obj) = result.as_ref().unwrap();
 
-    match eval(check) {
+    match eval(vec![], check) {
         Ok((expected_env, expected_obj)) => {
             match comparison::eq((&expected_env, &expected_obj), (env, obj)) {
                 Ok(v) => if !v { assert_eq!(&expected_obj, obj) },
@@ -100,7 +122,7 @@ pub(crate) fn check_assert_eq<'a>(result: &'a EvalResult<'a>, check: &str) {
 
 pub(crate) fn bool_check_assert_eq<'a>(result: &'a EvalResult<'a>, check: &str) -> bool {
     let (env, obj) = result.as_ref().unwrap();
-    let (expected_env, expected_obj) = eval(check).unwrap();
+    let (expected_env, expected_obj) = eval(vec![], check).unwrap();
     match comparison::eq((&expected_env, &expected_obj), (env, obj)) {
         Ok(v) => !v,
         Err(code) => panic!("Error {:?}", code)
@@ -123,7 +145,7 @@ pub(crate) fn bool_check_assert_count<'a>(result: &'a EvalResult<'a>, check: &st
 
 pub(crate) fn check_assert_deep_eq<'a>(result: &'a EvalResult<'a>, check: &str) {
     let (env, obj) = result.as_ref().unwrap();
-    let (expected_env, expected_obj) = eval(check).unwrap();
+    let (expected_env, expected_obj) = eval(vec![], check).unwrap();
     if comparison::deep_eq((&expected_env, &expected_obj), (env, obj)).unwrap() {
         assert_eq!(&expected_obj, obj);
     }
@@ -131,7 +153,7 @@ pub(crate) fn check_assert_deep_eq<'a>(result: &'a EvalResult<'a>, check: &str) 
 
 pub(crate) fn bool_check_assert_deep_eq<'a>(result: &'a EvalResult<'a>, check: &str) -> bool {
     let (env, obj) = result.as_ref().unwrap();
-    let (expected_env, expected_obj) = eval(check).unwrap();
+    let (expected_env, expected_obj) = eval(vec![], check).unwrap();
     comparison::deep_eq((&expected_env, &expected_obj), (env, obj)).unwrap()
 }
 
@@ -146,22 +168,56 @@ pub(crate) fn bool_check_assert_permutation<'a>(result: &'a EvalResult<'a>, chec
 }
 
 pub(crate) fn check_assert_xml<'a>(result: &'a EvalResult<'a>, check: &str) {
-    let (env, obj) = result.as_ref().unwrap();
-    let (expected_env, expected_obj) = eval(check).unwrap();
-    match comparison::deep_eq((&expected_env, &expected_obj), (env, obj)) {
-        Ok(v) => {
-            if !v {
-                assert_eq!(object_to_xml(env, obj), check)
-            }
-        },
-        Err(e) => assert_eq!(format!("error {:?}", e), check),
+    if !bool_check_assert_xml(result, check) {
+        let (env, obj) = result.as_ref().unwrap();
+        assert_eq!(object_to_xml(env, obj), check)
     }
 }
 
 pub(crate) fn bool_check_assert_xml<'a>(result: &'a EvalResult<'a>, check: &str) -> bool {
-    let (expected_env, expected_obj) = eval(check).unwrap();
     let (env, obj) = result.as_ref().unwrap();
-    comparison::deep_eq((&expected_env, &expected_obj), (env, obj)).unwrap()
+
+    // TODO: refactor
+
+    let tmp_env = Environment::create();
+
+    let mut items = vec![];
+
+    let tree = InMemoryXMLTree::from_str(0, format!("<doc>{}</doc>", check).as_str());
+    let (tmp_env, expected) = {
+        let writer = tree.lock().unwrap();
+        let reader = writer.as_reader();
+        let rf = reader.first().unwrap();
+        let mut refs = reader.children(&rf).unwrap();
+        for rf in refs {
+            items.push(Object::Node(rf))
+        }
+        relax(tmp_env, items).unwrap()
+    };
+
+    match comparison::deep_eq((&tmp_env, &expected), (env, obj)) {
+        Ok(v) => v,
+        Err(e) => {
+            assert_eq!(format!("error {:?}", e), check);
+            panic!()
+        },
+    }
+}
+
+pub(crate) fn check_serialization_matches<'a>(result: &'a EvalResult<'a>, check: &str) {
+    todo!()
+}
+
+pub(crate) fn bool_check_serialization_matches<'a>(result: &'a EvalResult<'a>, check: &str) -> bool {
+    todo!()
+}
+
+pub(crate) fn check_assert_serialization_error<'a>(result: &'a EvalResult<'a>, check: &str) {
+    todo!()
+}
+
+pub(crate) fn bool_check_assert_serialization_error<'a>(result: &'a EvalResult<'a>, check: &str) -> bool {
+    todo!()
 }
 
 pub(crate) fn check_assert_type<'a>(result: &'a EvalResult<'a>, check: &str) {

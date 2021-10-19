@@ -896,6 +896,7 @@ fn parse_simple_map_expr(input: &str) -> IResult<&str, Box<dyn Expression>, Cust
 
 // [108]    	PathExpr 	   ::=    	("/" RelativePathExpr?) | ("//" RelativePathExpr) | RelativePathExpr
 fn parse_path_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
+    let (input, _) = ws(input)?;
     let check = alt((tag("//"), tag("/")))(input);
     if check.is_ok() {
         let (input, steps) = check?;

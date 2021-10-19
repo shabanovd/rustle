@@ -13,8 +13,7 @@ use crate::eval::Environment;
 
 #[derive(Clone)]
 pub struct Reference {
-    pub storage: Option<Rc<Mutex<Box<dyn XMLTreeWriter>>>>,
-    pub storage_id: usize,
+    pub storage: Rc<Mutex<Box<dyn XMLTreeWriter>>>,
     pub id: DLN,
     pub attr_name: Option<QName>
 }
@@ -33,12 +32,8 @@ impl Reference {
     }
 
     pub fn to_typed_value(&self, env: &Box<Environment>) -> Result<String, String> {
-        if let Some(storage) = &self.storage {
-            let storage = storage.lock().unwrap();
-            storage.as_reader().typed_value_of_node(&self)
-        } else {
-            panic!("internal error")
-        }
+        let storage = self.storage.lock().unwrap();
+        storage.as_reader().typed_value_of_node(&self)
     }
 
     pub fn cmp(&self, other: &Reference) -> Ordering {
@@ -49,8 +44,9 @@ impl Reference {
         todo!()
     }
 
-    pub(crate) fn children(&self, env: &Box<Environment>) -> Vec<Reference> {
-        todo!()
+    pub(crate) fn children(&self, env: &Box<Environment>) -> Result<Vec<Reference>, String> {
+        let storage = self.storage.lock().unwrap();
+        storage.as_reader().children(&self)
     }
 }
 
@@ -66,6 +62,8 @@ pub trait XMLNode: DynClone {
     fn name(&self) -> Option<QName>;
 
     fn typed_value(&self) -> String;
+
+    fn add_attribute(&mut self, name: QName, value: String) -> bool;
 
     fn dump(&self) -> String;
 
@@ -87,6 +85,8 @@ pub trait XMLStorage {
 }
 
 pub trait XMLTreeWriter: DynClone {
+    fn init(&mut self, rf: Rc<Mutex<Box<dyn XMLTreeWriter>>>);
+
     fn id(&self) -> usize;
 
     fn as_reader(&self) -> Box<&dyn XMLTreeReader>;
@@ -120,6 +120,10 @@ pub trait XMLTreeReader: DynClone {
     fn to_xml(&self, rf: &Reference) -> Result<String, String>;
 
     fn typed_value_of_node(&self, rf: &Reference) -> Result<String, String>;
+
+    fn first(&self) -> Option<Reference>;
+
+    fn children(&self, rf: &Reference) -> Result<Vec<Reference>, String>;
 
     fn cmp(&self, other: Box<&dyn XMLTreeReader>, left: &Reference, right: &Reference) -> Ordering;
 

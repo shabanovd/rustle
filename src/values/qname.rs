@@ -2,7 +2,6 @@ use core::fmt;
 use crate::eval::{Environment, DynamicContext, EvalResult, Object, Type};
 use crate::namespaces::SCHEMA;
 use std::cmp::Ordering;
-use std::fmt::Formatter;
 use crate::eval::expression::Expression;
 
 lazy_static! {

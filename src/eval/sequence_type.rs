@@ -1,7 +1,7 @@
 use crate::eval::{Environment, ErrorInfo, Object, Type};
 use crate::values::*;
 use crate::eval::expression::{NodeTest, Expression};
-use crate::tree::{Reference, XMLTreeReader};
+use crate::tree::Reference;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ItemType {

@@ -1,13 +1,17 @@
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
+use std::fs;
+use std::rc::Rc;
+use std::sync::Mutex;
 use linked_hash_map::LinkedHashMap;
-use crate::eval::expression::Expression;
+use xmlparser::{ElementEnd, Token};
 use crate::tree::dln::DLN;
 use crate::tree::{Reference, XMLNode, XMLTreeReader, XMLTreeWriter};
 use crate::values::QName;
 
 #[derive(Clone)]
 pub struct InMemoryXMLTree {
+    storage: Option<Rc<Mutex<Box<dyn XMLTreeWriter>>>>,
     id: usize,
 
     // required during build only
@@ -18,11 +22,100 @@ pub struct InMemoryXMLTree {
 }
 
 impl InMemoryXMLTree {
-    pub fn create(id: usize) -> Self {
-        InMemoryXMLTree {
+    fn instance(id: usize) -> Box<dyn XMLTreeWriter> {
+        Box::new(InMemoryXMLTree {
+            storage: None,
             id,
             stack: Vec::with_capacity(42),
             items: BTreeMap::new()
+        })
+    }
+
+    pub fn create(id: usize) -> Rc<Mutex<Box<dyn XMLTreeWriter>>> {
+        let tree = InMemoryXMLTree::instance(id);
+
+        let rf = Rc::new(Mutex::new(tree));
+        let clone = rf.clone();
+
+        {
+            let mut instance = rf.lock().unwrap();
+            instance.init(clone);
+        }
+
+        rf
+    }
+
+    pub fn load(id: usize, path: &str) -> Rc<Mutex<Box<dyn XMLTreeWriter>>> {
+        let data = fs::read_to_string(path).unwrap();
+        InMemoryXMLTree::from_str(id, data.as_str())
+    }
+
+    pub fn from_str(id: usize, data: &str) -> Rc<Mutex<Box<dyn XMLTreeWriter>>> {
+        let mut rf = InMemoryXMLTree::create(id);
+        {
+            let mut tree = rf.lock().unwrap();
+            tree.start_document();
+            for token in xmlparser::Tokenizer::from(data) {
+                match token.unwrap() {
+                    Token::Declaration { version, encoding, standalone, .. } => {
+                        // TODO
+                    }
+                    Token::ProcessingInstruction { target, content, .. } => {
+                        let target = QName::local_part(target.as_str());
+                        let content = if let Some(data) = content {
+                            data.as_str().to_string()
+                        } else {
+                            String::new()
+                        };
+                        tree.pi(target, content);
+                    }
+                    Token::Comment { text, .. } => {
+                        tree.comment(text.as_str().to_string());
+                    },
+                    Token::DtdStart { .. } => panic!(),
+                    Token::EmptyDtd { .. } => panic!(),
+                    Token::EntityDeclaration { .. } => panic!(),
+                    Token::DtdEnd { .. } => panic!(),
+                    Token::ElementStart { prefix, local, .. } => {
+                        let name = QName::new(prefix.as_str().to_string(), local.as_str().to_string());
+                        tree.start_element(name);
+                    }
+                    Token::Attribute { prefix, local, value, .. } => {
+                        let name = QName::new(prefix.as_str().to_string(), local.as_str().to_string());
+                        tree.attribute(name, value.as_str().to_string());
+                    }
+                    Token::ElementEnd { end, .. } => {
+                        match end {
+                            ElementEnd::Open => {}
+                            ElementEnd::Close(prefix, local) => {
+                                tree.end_element();
+                            },
+                            ElementEnd::Empty => {
+                                tree.end_element();
+                            }
+                        }
+                    }
+                    Token::Text { text } => {
+                        tree.text(text.as_str().to_string());
+                    },
+                    Token::Cdata { text, .. } => panic!()
+                }
+            }
+            tree.end_document();
+        }
+
+        rf
+    }
+
+    pub(crate) fn as_writer(self) -> Box<dyn XMLTreeWriter> {
+        Box::new(self)
+    }
+
+    fn reference(&self, id: DLN, attr_name: Option<QName>) -> Reference {
+        if let Some(storage) = self.storage.clone() {
+            Reference { storage, id, attr_name }
+        } else {
+            panic!("internal error")
         }
     }
 
@@ -93,12 +186,40 @@ impl XMLTreeReader for InMemoryXMLTree {
         Ok(data)
     }
 
+    fn first(&self) -> Option<Reference> {
+        if let Some((k, v)) = self.items.first_key_value() {
+            Some(self.reference(k.clone(), None))
+        } else {
+            None
+        }
+    }
+
+    fn children(&self, rf: &Reference) -> Result<Vec<Reference>, String> {
+        let mut result = vec![];
+        for (k,v) in self.items.range(&rf.id..) {
+            if k == &rf.id { continue; }
+            if k.start_with(&rf.id) {
+                result.push(rf.clone() );
+            } else {
+                break;
+            }
+        }
+        Ok(result)
+    }
+
     fn cmp(&self, other: Box<&dyn XMLTreeReader>, left: &Reference, right: &Reference) -> Ordering {
         todo!()
     }
 }
 
 impl XMLTreeWriter for InMemoryXMLTree {
+    fn init(&mut self, rf: Rc<Mutex<Box<dyn XMLTreeWriter>>>) {
+        if self.storage.is_some() {
+            panic!("internal error");
+        }
+        self.storage = Some(rf)
+    }
+
     fn id(&self) -> usize {
         self.id
     }
@@ -114,12 +235,12 @@ impl XMLTreeWriter for InMemoryXMLTree {
         self.items.insert(id.clone(), node);
         self.prepare_child();
 
-        Reference { storage: None, storage_id: self.id, id, attr_name: None }
+        self.reference(id, None)
     }
 
     fn end_document(&mut self) -> Option<Reference> {
         match self.stack.pop() {
-            Some(id) => Some(Reference { storage: None, storage_id: self.id, id, attr_name: None }),
+            Some(id) => Some(self.reference(id, None)),
             None => None
         }
     }
@@ -133,16 +254,28 @@ impl XMLTreeWriter for InMemoryXMLTree {
         self.items.insert(id.clone(), node);
         self.prepare_child();
 
-        Reference { storage: None, storage_id: self.id, id, attr_name: None }
+        self.reference(id, None)
     }
 
     fn attribute(&mut self, name: QName, value: String) -> Reference {
+        let size = self.stack.len();
+        if size >= 2 {
+            if let Some(id) = self.stack.get(size - 2) {
+                if let Some(node) = self.items.get_mut(id) {
+                    if node.add_attribute(name.clone(), value) {
+                        return self.reference(id.clone(), Some(name));
+                    } else {
+                        todo!()
+                    }
+                }
+            }
+        }
         todo!()
     }
 
     fn end_element(&mut self) -> Option<Reference> {
         match self.stack.pop() {
-            Some(id) => Some(Reference { storage: None, storage_id: self.id, id, attr_name: None }),
+            Some(id) => Some(self.reference(id, None)),
             None => None
         }
     }
@@ -154,7 +287,7 @@ impl XMLTreeWriter for InMemoryXMLTree {
 
         self.items.insert(id.clone(), node);
 
-        Reference { storage: None, storage_id: self.id, id, attr_name: None }
+        self.reference(id, None)
     }
 
     fn text(&mut self, content: String) -> Reference {
@@ -164,7 +297,7 @@ impl XMLTreeWriter for InMemoryXMLTree {
 
         self.items.insert(id.clone(), node);
 
-        Reference { storage: None, storage_id: self.id, id, attr_name: None }
+        self.reference(id, None)
     }
 
     fn comment(&mut self, content: String) -> Reference {
@@ -174,7 +307,7 @@ impl XMLTreeWriter for InMemoryXMLTree {
 
         self.items.insert(id.clone(), node);
 
-        Reference { storage: None, storage_id: self.id, id, attr_name: None }
+        self.reference(id, None)
     }
 
     fn dump(&self) -> String {
@@ -205,6 +338,10 @@ impl XMLNode for Document {
         String::new()
     }
 
+    fn add_attribute(&mut self, name: QName, value: String) -> bool {
+        false
+    }
+
     fn dump(&self) -> String {
         format!("Document {{ id={} }}", self.id)
     }
@@ -228,6 +365,18 @@ impl XMLNode for Element {
 
     fn typed_value(&self) -> String {
         String::new()
+    }
+
+    fn add_attribute(&mut self, name: QName, value: String) -> bool {
+        if self.attributes.is_none() {
+            self.attributes = Some(LinkedHashMap::new());
+        }
+
+        if let Some(attributes) = &mut self.attributes {
+            attributes.insert(name.clone(), Attribute { name, value } );
+        }
+
+        true
     }
 
     fn dump(&self) -> String {
@@ -266,6 +415,10 @@ impl XMLNode for Attribute {
         self.value.clone()
     }
 
+    fn add_attribute(&mut self, name: QName, value: String) -> bool {
+        false
+    }
+
     fn dump(&self) -> String {
         format!("Attribute {{ name={:?}; value={}; }}", self.name, self.value)
     }
@@ -289,6 +442,10 @@ impl XMLNode for PI {
 
     fn typed_value(&self) -> String {
         self.content.clone()
+    }
+
+    fn add_attribute(&mut self, name: QName, value: String) -> bool {
+        false
     }
 
     fn dump(&self) -> String {
@@ -315,6 +472,10 @@ impl XMLNode for Text {
         self.content.clone()
     }
 
+    fn add_attribute(&mut self, name: QName, value: String) -> bool {
+        false
+    }
+
     fn dump(&self) -> String {
         format!("Text {{ id={}; content={} }}", self.id, self.content)
     }
@@ -337,6 +498,10 @@ impl XMLNode for Comment {
 
     fn typed_value(&self) -> String {
         self.content.clone()
+    }
+
+    fn add_attribute(&mut self, name: QName, value: String) -> bool {
+        false
     }
 
     fn dump(&self) -> String {

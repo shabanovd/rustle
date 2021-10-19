@@ -43,14 +43,14 @@ impl DynamicContext {
     }
 }
 
-pub(crate) fn eval_statements(statements: Vec<Statement>, env: Box<Environment>) -> EvalResult {
+pub(crate) fn eval_statements<'a>(statements: Vec<Statement>, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
 
     let mut result = Object::Empty;
 
     let mut current_env = env;
 
     for statement in statements {
-        let (new_env, new_result) = eval_statement(statement, current_env)?;
+        let (new_env, new_result) = eval_statement(statement, current_env, context)?;
         current_env = new_env;
 
         result = new_result;
@@ -63,10 +63,10 @@ pub(crate) fn eval_statements(statements: Vec<Statement>, env: Box<Environment>)
     Ok((current_env, result))
 }
 
-fn eval_statement(statement: Statement, env: Box<Environment>) -> EvalResult {
+fn eval_statement<'a>(statement: Statement, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
     match statement {
         Statement::Prolog(exprs) => eval_prolog(exprs, env),
-        Statement::Program(expr) => expr.eval(env, &DynamicContext::nothing()),
+        Statement::Program(expr) => expr.eval(env, context),
     }
 }
 
@@ -106,13 +106,18 @@ fn step_and_test<'a>(step: Axis, test: &Box<dyn NodeTest>, env: Box<Environment<
         Object::Node(rf) => {
             match step {
                 Axis::ForwardChild => {
-                    let mut result = vec![];
-                    for child in rf.children(&env) {
-                        if test.test_node(&env, &child) {
-                            result.push(Object::Node(child))
+                    match rf.children(&env) {
+                        Ok(children) => {
+                            let mut result = vec![];
+                            for child in children {
+                                if test.test_node(&env, &child) {
+                                    result.push(Object::Node(child))
+                                }
+                            }
+                            relax(env, result)
                         }
+                        Err(msg) => Err((ErrorCode::TODO, msg))
                     }
-                    relax(env, result)
                 },
                 Axis::ForwardAttribute => {
                     let mut result = vec![];
@@ -299,7 +304,7 @@ mod tests {
 
             let env = Environment::create();
 
-            let (new_env, result) = eval_statements(program, env).unwrap();
+            let (new_env, result) = eval_statements(program, env, &DynamicContext::nothing()).unwrap();
 
             assert_eq!(
                 result,

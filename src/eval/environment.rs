@@ -30,7 +30,7 @@ impl<'a> Environment<'a> {
 
                 static_base_uri: None,
 
-                xml_tree: Rc::new(Mutex::new(Box::new(InMemoryXMLTree::create(1)))),
+                xml_tree: InMemoryXMLTree::create(1),
 
                 namespaces: Namespaces::new(),
                 vars: HashMap::new(),
@@ -48,7 +48,7 @@ impl<'a> Environment<'a> {
 
                 static_base_uri: None,
 
-                xml_tree: Rc::new(Mutex::new(Box::new(InMemoryXMLTree::create(sequence)))),
+                xml_tree: InMemoryXMLTree::create(sequence),
 
                 namespaces: Namespaces::new(),
                 vars: HashMap::new(),
@@ -68,12 +68,8 @@ impl<'a> Environment<'a> {
     pub fn xml_writer<F>(&mut self, mutation: F) -> Reference
         where F: FnOnce(&mut MutexGuard<Box<dyn XMLTreeWriter>>) -> Reference
     {
-        let rf = {
-            let mut w = self.xml_tree.lock().unwrap();
-            mutation(&mut w)
-        };
-        let storage = self.xml_tree.clone();
-        Reference { storage: Some(storage), storage_id: rf.storage_id, id: rf.id, attr_name: rf.attr_name }
+        let mut w = self.xml_tree.lock().unwrap();
+        mutation(&mut w)
     }
 
     pub fn xml_tree_id(&self) -> usize {

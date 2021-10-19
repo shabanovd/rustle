@@ -1,6 +1,6 @@
 [package]
 name = "rustle"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Dmitriy Shabanov <shabanovd@gmail.com>"]
 edition = "2018"
 

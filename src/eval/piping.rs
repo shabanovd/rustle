@@ -6,7 +6,6 @@ use crate::eval::prolog::*;
 use crate::eval::expression::Expression;
 use crate::fns::object_to_bool;
 use crate::parser::errors::ErrorCode;
-use crate::tree::Reference;
 
 struct SequenceIterator<'a> {
     name: &'a QNameResolved,

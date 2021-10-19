@@ -46,6 +46,7 @@ pub fn _object_to_string(env: &Box<Environment>, object: &Object, ref_resolving:
                 _ => panic!("unexpected {:?}", reference)
             }
         },
+        Object::Atomic(Type::Boolean(b)) => b.to_string(),
         Object::Atomic(Type::Untyped(str)) => str.clone(),
         Object::Atomic(Type::AnyURI(str)) => str.clone(),
         Object::Atomic(Type::String(str)) => str.clone(),
