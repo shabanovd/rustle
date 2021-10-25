@@ -86,7 +86,7 @@ pub(crate) fn fn_node_name<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>
     match item {
         Object::Empty => Ok((env, Object::Empty)),
         Object::Node(rf) => {
-            if let Some(name) = rf.name(&env) {
+            if let Some(name) = rf.name() {
                 Ok((env, Object::Atomic(Type::QName {
                     url: name.url.clone(),
                     prefix: name.prefix.clone(),

@@ -188,6 +188,8 @@ impl<'a> FunctionsRegister<'a> {
         instance.register(XPATH_FUNCTIONS.url, "string-join", 2, strings::fn_string_join);
         instance.register(XPATH_FUNCTIONS.url, "string-length", 0, strings::fn_string_length);
         instance.register(XPATH_FUNCTIONS.url, "string-length", 1, strings::fn_string_length);
+        instance.register(XPATH_FUNCTIONS.url, "normalize-space", 0, strings::fn_normalize_space);
+        instance.register(XPATH_FUNCTIONS.url, "normalize-space", 1, strings::fn_normalize_space);
         instance.register(XPATH_FUNCTIONS.url, "upper-case", 1, strings::fn_upper_case);
         instance.register(XPATH_FUNCTIONS.url, "lower-case", 1, strings::fn_lower_case);
         instance.register(XPATH_FUNCTIONS.url, "string-to-codepoints", 1, strings::fn_string_to_codepoints);
@@ -298,8 +300,8 @@ pub(crate) fn call<'a, 'b>(env: Box<Environment<'a>>, name: QNameResolved, argum
     } else {
         let fun: Option<FUNCTION> = fn_env.functions.get(&name, arguments.len());
 
-        if fun.is_some() {
-            let (new_env, result) = fun.unwrap()(fn_env, arguments, context)?;
+        if let Some(fun) = fun {
+            let (new_env, result) = fun(fn_env, arguments, context)?;
             let env = new_env.prev();
 
             Ok((env, result))

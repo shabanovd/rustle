@@ -321,7 +321,7 @@ impl Debug for Object {
             }
             Object::Node(node) => {
                 f.debug_tuple("Node")
-                    // .field(node)
+                    .field(node)
                     .finish()
             }
             Object::Array(items) => {

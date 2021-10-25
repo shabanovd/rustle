@@ -1,14 +1,12 @@
-use std::rc::Rc;
-use std::sync::Mutex;
-use crate::eval::{Object, Environment, Type, eval_statements, object_to_iterator, comparison, EvalResult, DynamicContext};
+use crate::eval::{Object, Environment, Type, eval_statements, object_to_iterator, comparison, EvalResult, DynamicContext, Axis};
 use crate::eval::helpers::relax;
 use crate::parser::parse;
-use crate::values::{resolve_element_qname, QName};
+use crate::values::{resolve_element_qname, QName, QNameResolved};
 use crate::serialization::object_to_string;
 use crate::fns::object_to_bool;
 use crate::parser::errors::ErrorCode;
 use crate::serialization::to_xml::object_to_xml;
-use crate::tree::{InMemoryXMLTree, Reference, XMLTreeReader};
+use crate::tree::InMemoryXMLTree;
 
 
 pub(crate) fn eval_on_spec<'a>(spec: &str, sources: Vec<(&str, &str)>, input: &str) -> EvalResult<'a> {
@@ -41,6 +39,15 @@ pub(crate) fn eval<'a>(sources: Vec<(&str, &str)>, input: &str) -> EvalResult<'a
                     context.item = Object::Node(rf);
                     context.position = Some(1)
                 }
+            } else if name.starts_with("$") {
+                let writer = tree.lock().unwrap();
+                if let Some(rf) = writer.as_reader().first() {
+                    let var_name = QNameResolved { url: "".to_string(), local_part: name[1..].to_string() };
+                    env.set(var_name, Object::Node(rf));
+                }
+
+            } else {
+                panic!("unknown source name {}", name);
             }
         }
 
@@ -188,8 +195,7 @@ pub(crate) fn bool_check_assert_xml<'a>(result: &'a EvalResult<'a>, check: &str)
         let writer = tree.lock().unwrap();
         let reader = writer.as_reader();
         let rf = reader.first().unwrap();
-        let mut refs = reader.children(&rf).unwrap();
-        for rf in refs {
+        for rf in reader.forward(&rf, &None, &Axis::ForwardChild) {
             items.push(Object::Node(rf))
         }
         relax(tmp_env, items).unwrap()

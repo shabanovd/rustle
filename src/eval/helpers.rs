@@ -91,8 +91,8 @@ pub(crate) fn relax_sequences(result: &mut Vec<Object>, seq: Vec<Object>) {
 }
 
 pub fn sort_and_dedup(seq: &mut Vec<Object>) {
-    println!("sort_and_dedup before {:?}", seq);
+    // println!("sort_and_dedup before {:?}", seq);
     seq.sort();
     seq.dedup();
-    println!("sort_and_dedup after {:?}", seq);
+    // println!("sort_and_dedup after {:#?}", seq);
 }

@@ -29,7 +29,7 @@ impl fmt::Debug for dyn Expression {
 dyn_clone::clone_trait_object!(Expression);
 
 pub(crate) trait NodeTest: DynClone + DynDebug {
-    fn test_node(&self, env: &Box<Environment>, rf: &Reference) -> bool;
+    fn test_node(&self, rf: &Reference) -> bool;
 }
 
 impl fmt::Debug for dyn NodeTest {

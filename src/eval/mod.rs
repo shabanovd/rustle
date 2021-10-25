@@ -20,14 +20,24 @@ pub(crate) mod sequence_type;
 pub(crate) mod helpers;
 use helpers::*;
 use crate::eval::expression::{Expression, NodeTest};
+use crate::tree::Reference;
 
 pub type ErrorInfo = (ErrorCode, String);
 // pub type EvalResult<'a> = Result<(Box<Environment<'a>>, Iter<'a, Answer>), (ErrorCode, String)>;
 // pub type EvalResult<'a> = Result<(Box<Environment<'a>>, Answer), (ErrorCode, String)>;
 pub type EvalResult<'a> = Result<(Box<Environment<'a>>, Object), ErrorInfo>;
 
+// initial_node_sequence
+#[derive(Debug, Clone, PartialEq)]
+pub enum INS {
+    Root,
+    RootDescendantOrSelf,
+    DescendantOrSelf,
+}
+
 #[derive(Debug, Clone)]
 pub struct DynamicContext {
+    pub initial_node_sequence: Option<INS>,
     pub item: Object,
     pub position: Option<usize>,
     pub last: Option<usize>,
@@ -36,6 +46,7 @@ pub struct DynamicContext {
 impl DynamicContext {
     pub(crate) fn nothing() -> Self {
         Self {
+            initial_node_sequence: None,
             item: Object::Nothing,
             position: None,
             last: None,
@@ -81,58 +92,81 @@ pub(crate) fn eval_prolog(exprs: Vec<Box<dyn Expression>>, env: Box<Environment>
     Ok((current_env, Object::Nothing))
 }
 
-#[allow(dead_code)]
-enum Axis {
+#[derive(Clone, Debug, PartialEq)]
+pub enum Axis {
+    // forward navigation
+    ForwardSelf,
+    ForwardAttribute,
     ForwardChild,
     ForwardDescendant,
-    ForwardAttribute,
-    ForwardSelf,
     ForwardDescendantOrSelf,
-    ForwardFollowingSibling,
     ForwardFollowing,
+    ForwardFollowingSibling,
 
+    // reverse navigation
     ReverseParent,
     ReverseAncestor,
-    ReversePrecedingSibling,
-    ReversePreceding,
     ReverseAncestorOrSelf,
+    ReversePreceding,
+    ReversePrecedingSibling,
 }
 
-fn step_and_test<'a>(step: Axis, test: &Box<dyn NodeTest>, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+fn step_and_test<'a>(step: &Axis, test: &Box<dyn NodeTest>, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
     match &context.item {
-        Object::Nothing => {
-            panic!("XPDY0002")
-        },
+        Object::Nothing => Err((ErrorCode::XPDY0002, String::from("TODO"))),
+        Object::Empty => Ok((env, Object::Empty)),
         Object::Node(rf) => {
-            match step {
-                Axis::ForwardChild => {
-                    match rf.children(&env) {
-                        Ok(children) => {
-                            let mut result = vec![];
-                            for child in children {
-                                if test.test_node(&env, &child) {
-                                    result.push(Object::Node(child))
-                                }
-                            }
-                            relax(env, result)
-                        }
-                        Err(msg) => Err((ErrorCode::TODO, msg))
-                    }
-                },
-                Axis::ForwardAttribute => {
-                    let mut result = vec![];
-                    for attribute in rf.attributes(&env) {
-                        if test.test_node(&env, &attribute) {
-                            result.push(Object::Node(attribute))
-                        }
-                    }
-                    relax(env, result)
-                }
-                _ => todo!()
-            }
+            let mut result = vec![];
+            step_and_test_for_node(step, test, rf, context, &mut result)?;
+            // println!("RESULT {} {:#?}", result.len(), result);
+            sort_and_dedup(&mut result);
+            relax(env, result)
         },
-        _ => Ok((env, Object::Empty))
+        Object::Sequence(items) => {
+            let mut result = vec![];
+            for item in items {
+                match item {
+                    Object::Nothing => {
+                        return Err((ErrorCode::XPDY0002, String::from("TODO")));
+                    },
+                    Object::Node(rf) => {
+                        step_and_test_for_node(step, test, rf, context, &mut result)?;
+                    }
+                    _ => panic!()
+                }
+            }
+            //println!("RESULT {} {:#?}", result.len(), result);
+            sort_and_dedup(&mut result);
+            relax(env, result)
+        },
+        _ => Err((ErrorCode::XPTY0019, String::from("TODO")))
     }
+}
+
+fn step_and_test_for_node<'a>(axis: &Axis, test: &Box<dyn NodeTest>, rf: &Reference, context: &DynamicContext, result: &mut Vec<Object>) -> Result<(), ErrorInfo> {
+    match axis {
+        Axis::ForwardSelf |
+        Axis::ForwardChild |
+        Axis::ForwardAttribute |
+        Axis::ForwardDescendant |
+        Axis::ForwardDescendantOrSelf => {
+            for child in rf.forward(&context.initial_node_sequence, axis) {
+                if test.test_node(&child) {
+                    result.push(Object::Node(child))
+                }
+            }
+        }
+        Axis::ReverseParent => {
+            if let Some(parent) = rf.parent() {
+                if test.test_node(&parent) {
+                    result.push(Object::Node(parent))
+                }
+            }
+        }
+        _ => todo!()
+    }
+
+    Ok(())
 }
 
 
@@ -304,7 +338,7 @@ mod tests {
 
             let env = Environment::create();
 
-            let (new_env, result) = eval_statements(program, env, &DynamicContext::nothing()).unwrap();
+            let (_, result) = eval_statements(program, env, &DynamicContext::nothing()).unwrap();
 
             assert_eq!(
                 result,

@@ -332,7 +332,7 @@ impl State for TestCaseState {
 
         if let Some(state) = &mut self.environment {
             if state.event(token, generated) {
-                if let Some(env) = state.to_data("".to_string()) {
+                if let Some(env) = state.to_data(self.dir.clone()) {
                     if let Some(name) = env.reference {
                         if let Some(env) = self.envs.get(&name) {
                             self.env = Some(env.clone());
@@ -424,7 +424,7 @@ impl TestState {
                 for source in &env.sources {
                     generated.push_str("        sources.push((\"");
                     generated.push_str(source.role.as_str());
-                    generated.push_str("\",\"");
+                    generated.push_str("\",\"./qt3tests/");
                     generated.push_str(env.path.as_str());
                     generated.push_str(source.file.as_str());
                     generated.push_str("\"));\n");
@@ -766,7 +766,7 @@ mod tests {
 
         if let Some(env) = &mut environment {
             if env.event(token, &mut generated) {
-                if let Some(env) = env.to_data("./qt3tests/".to_string()) {
+                if let Some(env) = env.to_data(dir.clone()) {
                     envs.insert(env.name.as_ref().unwrap().clone(), env);
                 }
                 environment = None;
@@ -846,7 +846,7 @@ pub fn generate() {
 
         if let Some(env) = &mut environment {
             if env.event(token, &mut String::new()) {
-                if let Some(env) = env.to_data("./qt3tests/".to_string()) {
+                if let Some(env) = env.to_data("".to_string()) {
                     envs.insert(env.name.as_ref().unwrap().clone(), env);
                 }
                 environment = None;

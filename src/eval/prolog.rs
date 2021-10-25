@@ -1,11 +1,11 @@
 use core::fmt;
 use crate::eval::expression::{Expression, NodeTest};
-use crate::parser::op::{Representation, OperatorArithmetic, OperatorComparison, OneOrMore};
+use crate::parser::op::{Representation, OperatorArithmetic, OperatorComparison};
 use bigdecimal::BigDecimal;
 use ordered_float::OrderedFloat;
 use crate::values::{QName, resolve_function_qname, resolve_element_qname};
 use crate::fns::{Param, call, object_to_bool};
-use crate::eval::{Environment, DynamicContext, EvalResult, Object, Type, eval_predicates, Axis, step_and_test, object_to_qname, object_to_iterator, object_owned_to_sequence, object_to_integer, ErrorInfo};
+use crate::eval::{Environment, DynamicContext, EvalResult, Object, Type, eval_predicates, Axis, step_and_test, object_to_qname, object_to_iterator, object_owned_to_sequence, object_to_integer, ErrorInfo, INS};
 use crate::serialization::{object_to_string};
 use crate::serialization::to_string::object_to_string_xml;
 use crate::eval::helpers::{relax, relax_sequences, sort_and_dedup, process_items, join_sequences};
@@ -325,7 +325,17 @@ pub(crate) struct Root {}
 
 impl Expression for Root {
     fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
-        todo!()
+        match &context.item {
+            Object::Empty => Ok((env, Object::Empty)),
+            Object::Node(rf) => {
+                if let Some(node) = rf.root() {
+                    Ok((env, Object::Node(node)))
+                } else {
+                    Err((ErrorCode::TODO, String::from("TODO")))
+                }
+            },
+            _ => Err((ErrorCode::TODO, String::from("TODO")))
+        }
     }
 
     fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
@@ -357,6 +367,7 @@ impl Expression for Steps {
             current_env = new_env;
 
             current_context = DynamicContext {
+                initial_node_sequence: None,
                 item: value,
                 position: None,
                 last: None,
@@ -376,14 +387,20 @@ impl Expression for Steps {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct InitialPath { pub(crate) steps: OneOrMore, pub(crate) expr: Box<dyn Expression> }
+pub(crate) struct InitialPath {
+    pub(crate) initial_node_sequence: INS,
+    pub(crate) expr: Box<dyn Expression>
+}
 
 impl Expression for InitialPath {
     fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
-        let obj = context.item.clone();
+        // TODO: handle steps
+        // "/"  (fn:root(self::node()) treat as document-node())/
+        // "//" (fn:root(self::node()) treat as document-node())/descendant-or-self::node()/
 
         let context = DynamicContext {
-            item: obj,
+            initial_node_sequence: Some(self.initial_node_sequence.clone()),
+            item: context.item.clone(),
             position: None,
             last: None,
         };
@@ -402,14 +419,21 @@ impl Expression for InitialPath {
 
 #[derive(Clone, Debug)]
 pub(crate) struct Path {
-    pub(crate) steps: OneOrMore,
+    pub(crate) initial_node_sequence: Option<INS>,
     pub(crate) expr: Box<dyn Expression>
 }
 
 impl Expression for Path {
     fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
-        // TODO handle steps
-        self.expr.eval(env, context)
+        // TODO: optimize
+        let context = DynamicContext {
+            initial_node_sequence: self.initial_node_sequence.clone(),
+            item: context.item.clone(),
+            position: context.position.clone(),
+            last: context.last.clone(),
+        };
+
+        self.expr.eval(env, &context)
     }
 
     fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
@@ -453,15 +477,11 @@ impl Expression for AxisStep {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct ForwardStep { pub(crate) attribute: bool, pub(crate) test: Box<dyn NodeTest> }
+pub(crate) struct ForwardStep { pub(crate) axis: Axis, pub(crate) test: Box<dyn NodeTest> }
 
 impl Expression for ForwardStep {
     fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
-        if self.attribute {
-            step_and_test(Axis::ForwardAttribute, &self.test, env, context)
-        } else {
-            step_and_test(Axis::ForwardChild, &self.test, env, context)
-        }
+        step_and_test(&self.axis, &self.test, env, context)
     }
 
     fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
@@ -1453,6 +1473,7 @@ impl Expression for Comparison {
         for item in it {
             position += 1;
             let context = DynamicContext {
+                initial_node_sequence: None,
                 item, position: Some(position), last
             };
 
@@ -1593,7 +1614,31 @@ impl Expression for Call {
     }
 
     fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
-        todo!()
+        let mut current_env = env;
+
+        let items = object_owned_to_sequence(value);
+
+        let mut evaluated = vec![];
+
+        let last = Some(items.len());
+        let mut position = 0;
+        for item in items {
+            position += 1;
+            let context = DynamicContext {
+                initial_node_sequence: None,
+                item, position: Some(position), last
+            };
+
+            let (new_env, result) = self.eval(current_env, &context)?;
+            current_env = new_env;
+
+            let v = object_to_bool(&result)?;
+            if v {
+                evaluated.push(context.item)
+            }
+        }
+
+        relax(current_env, evaluated)
     }
 
     fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1846,6 +1891,7 @@ impl Expression for SimpleMap {
                 for item in it {
                     position += 1;
                     let current_context = DynamicContext {
+                        initial_node_sequence: None,
                         item, position: Some(position), last
                     };
                     let (new_env, evaluated) = expr.eval(current_env, &current_context)?;

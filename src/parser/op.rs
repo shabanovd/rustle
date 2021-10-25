@@ -32,22 +32,6 @@ pub enum Statement {
     Program(Box<dyn Expression>),
 }
 
-#[derive(Clone, Debug)]
-pub enum OneOrMore {
-    One,
-    More,
-}
-
-impl OneOrMore {
-    pub(crate) fn from(str: &str) -> Self {
-        match str {
-            "/" => OneOrMore::One,
-            "//" => OneOrMore::More,
-            _ => panic!("error")
-        }
-    }
-}
-
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Representation {
     Hexadecimal,

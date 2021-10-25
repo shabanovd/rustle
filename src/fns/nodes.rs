@@ -19,7 +19,7 @@ pub(crate) fn fn_local_name<'a>(env: Box<Environment<'a>>, arguments: Vec<Object
     match item {
         Object::Empty => Ok((env, Object::Atomic(Type::String(String::new())))),
         Object::Node(rf) => {
-            if let Some(name) = rf.name(&env) {
+            if let Some(name) = rf.name() {
                 Ok((env, Object::Atomic(Type::String(name.local_part))))
             } else {
                 Ok((env, Object::Atomic(Type::String(String::new()))))

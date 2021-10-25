@@ -205,6 +205,8 @@ impl<I> From<nom::Err<CustomError<I>>> for CustomError<I> {
 
 pub trait IResultExt<I, O, E> {
     fn or_failure(self, error: CustomError<I>) -> IResult<I, O, E>;
+
+    fn or_error(self, error: CustomError<I>) -> IResult<I, O, E>;
 }
 
 impl<I, O> IResultExt<I, O, CustomError<I>> for IResult<I, O, CustomError<I>> {
@@ -221,11 +223,21 @@ impl<I, O> IResultExt<I, O, CustomError<I>> for IResult<I, O, CustomError<I>> {
             }
             Err(nom::Err::Failure(error))
         }
-        // match self {
-        //     Ok(res) => Ok(res),
-        //     Err(..) => Err(nom::Err::Failure(error)),
-        //     // Err(..) => Err(nom::Err::Error(nom::error::ParseError::from_char("", ' '))),
-        // }
+    }
+
+    fn or_error(self, error: CustomError<I>) -> IResult<I, O, CustomError<I>> {
+        if self.is_ok() {
+            self
+        } else {
+            match self {
+                Err(nom::Err::Error(CustomError::Nom(i,t))) |
+                Err(nom::Err::Failure(CustomError::Nom(i,t))) => {
+                    println!("ERROR: {:?}", t);
+                }
+                _ => {}
+            }
+            Err(nom::Err::Error(error))
+        }
     }
 }
 

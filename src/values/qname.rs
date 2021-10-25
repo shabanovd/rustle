@@ -102,6 +102,14 @@ impl QName {
         }
     }
 
+    pub(crate) fn cmp(&self, other: &QName) -> Ordering {
+        if self.local_part == other.local_part && self.url == other.url {
+            Ordering::Equal
+        } else {
+            self.local_part.cmp(&other.local_part)
+        }
+    }
+
     pub fn len(&self) -> usize {
         if let Some(prefix) = &self.prefix {
             prefix.len() + 1 + self.local_part.len()
@@ -138,9 +146,9 @@ impl Expression for QName {
 impl fmt::Debug for QName {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if let Some(prefix) = &self.prefix {
-            write!(f, "QName {{ {}:{} }}", prefix, self.local_part)
+            write!(f, "QN{{{}:{}}}", prefix, self.local_part)
         } else {
-            write!(f, "QName {{ {} }}", self.local_part)
+            write!(f, "QN{{{}}}", self.local_part)
         }
     }
 }

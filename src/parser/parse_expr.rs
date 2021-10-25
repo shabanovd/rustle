@@ -3,7 +3,13 @@ use crate::parse_one_of_;
 use crate::parser::errors::CustomError;
 use crate::eval::prolog::*;
 
-use nom::{branch::alt, bytes::complete::tag, character::complete::one_of, error::Error, IResult};
+use nom::{branch::alt, bytes::complete::tag, error::Error, IResult};
+use nom::bytes::complete::is_not;
+use nom::sequence::{preceded, delimited, tuple, terminated};
+use nom::multi::separated_list1;
+use nom::combinator::{map, opt, peek};
+use nom::character::complete::{one_of, digit1};
+use crate::eval::{Axis, INS};
 
 use crate::parser::helper::*;
 use crate::fns::Param;
@@ -11,14 +17,10 @@ use crate::values::QName;
 use crate::parser::parse_literal::{parse_literal, parse_integer_literal, parse_string_literal};
 use crate::parser::parse_xml::parse_node_constructor;
 use crate::parser::parse_names::{parse_eqname, parse_ncname, parse_ncname_expr};
-use crate::parser::op::{found_expr, Statement, OperatorComparison, OperatorArithmetic, OneOrMore};
-use nom::sequence::{preceded, delimited, tuple};
+use crate::parser::op::{found_expr, Statement, OperatorComparison, OperatorArithmetic};
 use crate::eval::expression::{Expression, NodeTest};
-use nom::multi::separated_list1;
-use nom::combinator::{map, opt};
 use crate::eval::sequence_type::*;
 use crate::eval::navigation::NodeParent;
-use nom::bytes::complete::is_not;
 
 const DEBUG: bool = false;
 
@@ -647,7 +649,9 @@ fn parse_additive_expr(input: &str) -> IResult<&str, Box<dyn Expression>, Custom
     loop {
         let check = alt((
             preceded(ws, tag("+")),
-            preceded(ws1, tag("-"))
+            preceded(ws1, tag("-")),
+            // lookahead for '-' and digits after without whitespace before it
+            terminated(tag("-"), peek(digit1))
         ))(current_input);
         if check.is_ok() {
             let (input, sign) = check?;
@@ -903,7 +907,13 @@ fn parse_path_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomErro
         let check = parse_relative_path_expr(input);
         if check.is_ok() {
             let (input, expr) = check?;
-            return found_expr(input, Box::new(InitialPath { steps: OneOrMore::from(steps), expr }))
+
+            let initial_node_sequence = match steps {
+                "/" => INS::Root,
+                "//" => INS::RootDescendantOrSelf,
+                _ => panic!("internal error")
+            };
+            return found_expr(input, Box::new(InitialPath { initial_node_sequence, expr }))
         } else {
             if steps == "/" {
                 return found_expr(input, Box::new(Root {} ))
@@ -915,6 +925,11 @@ fn parse_path_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomErro
 }
 
 // [109]    	RelativePathExpr 	   ::=    	StepExpr (("/" | "//") StepExpr)*
+// [110]    	StepExpr 	   ::=    	PostfixExpr | AxisStep
+fn parse_step_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
+    alt((parse_postfix_expr, parse_axis_step))(input)
+}
+
 fn parse_relative_path_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
     let mut exprs = vec![];
 
@@ -929,10 +944,16 @@ fn parse_relative_path_expr(input: &str) -> IResult<&str, Box<dyn Expression>, C
             let (input, steps) = check?;
             current_input = input;
 
+            let initial_node_sequence = match steps {
+                "/" => None,
+                "//" => Some(INS::DescendantOrSelf),
+                _ => panic!("internal error")
+            };
+
             let (input, expr) = parse_step_expr(current_input)?;
             current_input = input;
 
-            exprs.push(Box::new(Path { steps: OneOrMore::from(steps), expr }))
+            exprs.push(Box::new(Path { initial_node_sequence, expr }))
         } else {
             break
         }
@@ -946,11 +967,6 @@ fn parse_relative_path_expr(input: &str) -> IResult<&str, Box<dyn Expression>, C
     }
 }
 
-// [110]    	StepExpr 	   ::=    	PostfixExpr | AxisStep
-fn parse_step_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
-    alt((parse_postfix_expr, parse_axis_step))(input)
-}
-
 // [111]    	AxisStep 	   ::=    	(ReverseStep | ForwardStep) PredicateList
 fn parse_axis_step(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
     map(
@@ -962,29 +978,111 @@ fn parse_axis_step(input: &str) -> IResult<&str, Box<dyn Expression>, CustomErro
     )(input)
 }
 
-// [112]    	ForwardStep 	   ::=    	TODO (ForwardAxis NodeTest) | AbbrevForwardStep
+// [112]    	ForwardStep 	   ::=    	(ForwardAxis NodeTest) | AbbrevForwardStep
 fn parse_forward_step(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
-    parse_abbrev_forward_step(input)
+    let check = parse_forward_axis(input);
+    if check.is_ok() {
+        let (input, axis) = check?;
+        let (input, test) = parse_node_test(input)?;
+
+        found_expr(input, Box::new(ForwardStep { axis, test } ))
+    } else {
+        parse_abbrev_forward_step(input)
+    }
+}
+
+// [113]    	ForwardAxis 	   ::=    	("child" "::")
+// | ("descendant" "::")
+// | ("attribute" "::")
+// | ("self" "::")
+// | ("descendant-or-self" "::")
+// | ("following-sibling" "::")
+// | ("following" "::")
+fn parse_forward_axis(input: &str) -> IResult<&str, Axis, CustomError<&str>> {
+    map(
+        terminated(
+            alt((
+                tag("self"),
+                tag("attribute"),
+                tag("child"),
+                tag("descendant-or-self"),
+                tag("descendant"),
+                tag("following-sibling"),
+                tag("following"),
+            )),
+            tag("::")
+        ),
+        |axis| {
+            match axis {
+                "self" => Axis::ForwardSelf,
+                "attribute" => Axis::ForwardAttribute,
+                "child" => Axis::ForwardChild,
+                "descendant-or-self" => Axis::ForwardDescendantOrSelf,
+                "descendant" => Axis::ForwardDescendant,
+                "following-sibling" => Axis::ForwardFollowingSibling,
+                "following" => Axis::ForwardFollowing,
+                _ => panic!("internal error")
+            }
+        }
+    )(input)
 }
 
 // [114]    	AbbrevForwardStep 	   ::=    	"@"? NodeTest
 fn parse_abbrev_forward_step(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
     let check = tag("@")(input);
-    let (input, attribute) = if check.is_ok() {
+    let (input, axis) = if check.is_ok() {
         let (input, _) = check?;
-        (input, true)
+        (input, Axis::ForwardAttribute)
     } else {
-        (input, false)
+        (input, Axis::ForwardChild)
     };
 
     let (input, test) = parse_node_test(input)?;
 
-    found_expr(input, Box::new(ForwardStep { attribute, test } ))
+    found_expr(input, Box::new(ForwardStep { axis, test } ))
 }
 
-// [115]    	ReverseStep 	   ::=    	TODO (ReverseAxis NodeTest) | AbbrevReverseStep
+// [115]    	ReverseStep 	   ::=    	(ReverseAxis NodeTest) | AbbrevReverseStep
 fn parse_reverse_step(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
-    parse_abbrev_reverse_step(input)
+    let check = parse_reverse_axis(input);
+    if check.is_ok() {
+        let (input, axis) = check?;
+        let (input, test) = parse_node_test(input)?;
+
+        found_expr(input, Box::new(ForwardStep { axis, test } ))
+    } else {
+        parse_abbrev_reverse_step(input)
+    }
+}
+
+// [116]    	ReverseAxis 	   ::=    	("parent" "::")
+// | ("ancestor" "::")
+// | ("preceding-sibling" "::")
+// | ("preceding" "::")
+// | ("ancestor-or-self" "::")
+fn parse_reverse_axis(input: &str) -> IResult<&str, Axis, CustomError<&str>> {
+    map(
+        terminated(
+            alt((
+                tag("parent"),
+                tag("ancestor"),
+                tag("preceding-sibling"),
+                tag("preceding"),
+                tag("ancestor-or-self"),
+            )),
+            tag("::")
+        ),
+        |axis| {
+            match axis {
+                "parent" => Axis::ReverseParent,
+                "ancestor" => Axis::ReverseAncestor,
+                "preceding-sibling" => Axis::ReversePrecedingSibling,
+                "preceding" => Axis::ReversePreceding,
+                "ancestor-or-self" => Axis::ReverseAncestorOrSelf,
+                _ => panic!("internal error")
+            }
+        }
+    )(input)
 }
 
 // [117]    	AbbrevReverseStep 	   ::=    	".."
@@ -1035,10 +1133,6 @@ fn parse_name_test(input: &str) -> IResult<&str, Box<dyn NodeTest>, CustomError<
 
 // [121]    	PostfixExpr 	   ::=    	PrimaryExpr (Predicate | TODO: ArgumentList | Lookup)*
 fn parse_postfix_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
-    if DEBUG {
-        println!("parse_postfix_expr {:?}", input);
-    }
-
     let (input, _) = ws(input)?;
     let (input, primary) = parse_primary_expr(input)?;
 
@@ -1140,7 +1234,6 @@ parse_one_of!(parse_primary_expr,
     parse_function_item_expr,
     parse_map_constructor,
     parse_array_constructor,
-    //
 );
 
 // [131]    	VarRef 	   ::=    	"$" VarName

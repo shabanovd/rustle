@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::fmt::{Debug, Formatter};
 use std::rc::Rc;
 use std::sync::Mutex;
 use dyn_clone::DynClone;
@@ -9,7 +10,7 @@ mod in_memory;
 
 pub use dln::DLN;
 pub use in_memory::InMemoryXMLTree;
-use crate::eval::Environment;
+use crate::eval::{Axis, Environment, INS};
 
 #[derive(Clone)]
 pub struct Reference {
@@ -19,8 +20,24 @@ pub struct Reference {
 }
 
 impl Reference {
-    pub fn name(&self, env: &Box<Environment>) -> Option<QName> {
-        todo!()
+    pub fn name(&self) -> Option<QName> {
+        let storage = self.storage.lock().unwrap();
+        storage.as_reader().name(self)
+    }
+
+    pub fn is_namespace(&self) -> bool {
+        let storage = self.storage.lock().unwrap();
+        storage.as_reader().is_namespace(self)
+    }
+
+    pub fn is_text(&self) -> bool {
+        let storage = self.storage.lock().unwrap();
+        storage.as_reader().is_text(self)
+    }
+
+    pub fn is_comment(&self) -> bool {
+        let storage = self.storage.lock().unwrap();
+        storage.as_reader().is_comment(self)
     }
 
     pub fn to_string(&self, env: &Box<Environment>) -> Result<String, String> {
@@ -33,26 +50,73 @@ impl Reference {
 
     pub fn to_typed_value(&self, env: &Box<Environment>) -> Result<String, String> {
         let storage = self.storage.lock().unwrap();
-        storage.as_reader().typed_value_of_node(&self)
+        storage.as_reader().typed_value_of_node(self)
     }
 
     pub fn cmp(&self, other: &Reference) -> Ordering {
-        todo!()
+        let self_storage_id = self.storage.lock().unwrap().id();
+        let other_storage_id = other.storage.lock().unwrap().id();
+        let cmp = self_storage_id.cmp(&other_storage_id);
+        if cmp == Ordering::Equal {
+            let cmp = self.id.cmp(&other.id);
+            if cmp == Ordering::Equal {
+                if let Some(self_attr_name) = &self.attr_name {
+                    if let Some(other_attr_name) = &other.attr_name {
+                        self_attr_name.cmp(other_attr_name)
+                    } else {
+                        Ordering::Greater
+                    }
+                } else {
+                    if let Some(..) = &other.attr_name {
+                        Ordering::Less
+                    } else {
+                        Ordering::Equal
+                    }
+                }
+            } else {
+                cmp
+            }
+        } else {
+            cmp
+        }
     }
 
-    pub(crate) fn attributes(&self, env: &Box<Environment>) -> Vec<Reference> {
-        todo!()
-    }
-
-    pub(crate) fn children(&self, env: &Box<Environment>) -> Result<Vec<Reference>, String> {
+    pub(crate) fn root(&self) -> Option<Reference> {
         let storage = self.storage.lock().unwrap();
-        storage.as_reader().children(&self)
+        storage.as_reader().root(&self)
     }
+
+    pub(crate) fn attributes(&self) -> Option<Vec<Reference>> {
+        let storage = self.storage.lock().unwrap();
+        storage.as_reader().attributes(&self)
+    }
+
+    pub(crate) fn parent(&self) -> Option<Reference> {
+        let storage = self.storage.lock().unwrap();
+        storage.as_reader().parent(&self)
+    }
+
+    pub(crate) fn forward(&self, initial_node_sequence: &Option<INS>, axis: &Axis) -> Vec<Reference> {
+        let storage = self.storage.lock().unwrap();
+        storage.as_reader().forward(&self, initial_node_sequence, axis)
+    }
+
+    pub(crate) fn dump(&self) -> String {
+        let storage = self.storage.lock().unwrap();
+        storage.as_reader().dump(&self)
+    }
+}
+
+impl Debug for Reference {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.dump())
+    }
+
 }
 
 impl PartialEq for Reference {
     fn eq(&self, other: &Self) -> bool {
-        todo!()
+        self.cmp(other) == Ordering::Equal
     }
 }
 
@@ -64,6 +128,12 @@ pub trait XMLNode: DynClone {
     fn typed_value(&self) -> String;
 
     fn add_attribute(&mut self, name: QName, value: String) -> bool;
+    fn get_attributes(&self) -> Option<Vec<QName>>;
+
+    // tests
+    fn is_namespace(&self) -> bool;
+    fn is_text(&self) -> bool;
+    fn is_comment(&self) -> bool;
 
     fn dump(&self) -> String;
 
@@ -106,8 +176,6 @@ pub trait XMLTreeWriter: DynClone {
     fn text(&mut self, content: String) -> Reference;
 
     fn comment(&mut self, content: String) -> Reference;
-
-    fn dump(&self) -> String;
 }
 
 dyn_clone::clone_trait_object!(XMLTreeWriter);
@@ -123,7 +191,16 @@ pub trait XMLTreeReader: DynClone {
 
     fn first(&self) -> Option<Reference>;
 
-    fn children(&self, rf: &Reference) -> Result<Vec<Reference>, String>;
+    // navigation
+    fn root(&self, rf: &Reference) -> Option<Reference>;
+    fn parent(&self, rf: &Reference) -> Option<Reference>;
+    fn forward(&self, rf: &Reference, initial_node_sequence: &Option<INS>, axis: &Axis) -> Vec<Reference>;
+    fn attributes(&self, rf: &Reference) -> Option<Vec<Reference>>;
+
+    // tests
+    fn is_namespace(&self, rf: &Reference) -> bool;
+    fn is_text(&self, rf: &Reference) -> bool;
+    fn is_comment(&self, rf: &Reference) -> bool;
 
     fn cmp(&self, other: Box<&dyn XMLTreeReader>, left: &Reference, right: &Reference) -> Ordering;
 
@@ -132,6 +209,8 @@ pub trait XMLTreeReader: DynClone {
     //
     // fn next_sibling(&self) -> Box<dyn XMLNode>;
     // fn preceding_sibling(&self) -> Box<dyn XMLNode>;
+
+    fn dump(&self, rf: &Reference) -> String;
 }
 
 dyn_clone::clone_trait_object!(XMLTreeReader);

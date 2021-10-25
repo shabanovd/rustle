@@ -1,10 +1,12 @@
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::Read;
 use std::rc::Rc;
 use std::sync::Mutex;
 use linked_hash_map::LinkedHashMap;
 use xmlparser::{ElementEnd, Token};
+use crate::eval::{Axis, INS};
 use crate::tree::dln::DLN;
 use crate::tree::{Reference, XMLNode, XMLTreeReader, XMLTreeWriter};
 use crate::values::QName;
@@ -123,30 +125,64 @@ impl InMemoryXMLTree {
         if let Some((k,v)) = self.items.last_key_value() {
             k.get_level_id(0)
         } else {
-            1
+            0
         }
+    }
+
+    fn next_top_id(&mut self) -> DLN {
+        let next_id = self.last_id() + 1;
+        let id = DLN::level_id(next_id);
+        self.stack.push(id.clone());
+        id
     }
 
     fn prepare_child(&mut self) -> DLN {
-        if let Some(id) = self.stack.last() {
-            let child = id.first_child();
-            self.stack.push(child.clone());
-            child
+        let next = if let Some(id) = self.stack.last() {
+            id.zero_child()
         } else {
-            let next_id = self.last_id() + 1;
-            DLN::level_id(next_id)
-        }
+            self.next_top_id().zero_child()
+        };
+        self.stack.push(next.clone());
+        next
     }
 
     fn next_sibling(&mut self) -> DLN {
-        if let Some(id) = self.stack.pop() {
-            let next = id.next_sibling();
-            self.stack.push(next.clone());
-            next
+        let next = if let Some(id) = self.stack.pop() {
+            id.next_sibling()
         } else {
-            let next_id = self.last_id() + 1;
-            DLN::level_id(next_id)
+            self.next_top_id().next_sibling()
+        };
+        self.stack.push(next.clone());
+        next
+    }
+
+    fn children(&self, rf: Reference, include_self: bool, all: bool) -> Vec<Reference> {
+        let mut result = vec![];
+        let level = rf.id.count_levels() + 1;
+
+        for (k, v) in self.items.range(&rf.id..) {
+            if k == &rf.id {
+                if include_self {
+                    result.push(self.reference(k.clone(), None));
+                }
+            } else if k.start_with(&rf.id) {
+                if all || k.count_levels() == level {
+                    result.push(self.reference(k.clone(), None));
+                }
+            } else {
+                break;
+            }
         }
+        result
+    }
+
+    fn dump(&self) -> String {
+        let mut buf = String::with_capacity(100_100);
+        for (id, node) in &self.items {
+            buf.push_str(node.dump().as_str());
+            buf.push_str("\n");
+        }
+        buf
     }
 }
 
@@ -175,7 +211,6 @@ impl XMLTreeReader for InMemoryXMLTree {
     fn typed_value_of_node(&self, rf: &Reference) -> Result<String, String> {
         let mut result = vec![];
         for (k,v) in self.items.range(&rf.id..) {
-            if k == &rf.id { continue; }
             if k.start_with(&rf.id) {
                 result.push(v.typed_value());
             } else {
@@ -194,21 +229,175 @@ impl XMLTreeReader for InMemoryXMLTree {
         }
     }
 
-    fn children(&self, rf: &Reference) -> Result<Vec<Reference>, String> {
-        let mut result = vec![];
-        for (k,v) in self.items.range(&rf.id..) {
-            if k == &rf.id { continue; }
-            if k.start_with(&rf.id) {
-                result.push(rf.clone() );
-            } else {
-                break;
-            }
+    fn root(&self, rf: &Reference) -> Option<Reference> {
+        let top = rf.id.get_level_id(0);
+        let id = DLN::level_id(top);
+        if let Some(..) = self.items.get(&id) {
+            Some(self.reference(id, None))
+        } else {
+            None
         }
-        Ok(result)
+    }
+
+    fn parent(&self, rf: &Reference) -> Option<Reference> {
+        if let Some(id) = rf.id.parent() {
+            if let Some(..) = self.items.get(&id) {
+                Some(self.reference(id, None))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    fn forward(&self, rf: &Reference, initial_node_sequence: &Option<INS>, axis: &Axis) -> Vec<Reference> {
+        println!("forward {:?} {:?}", initial_node_sequence, axis);
+
+        let (rf, all) = if let Some(initial_node) = initial_node_sequence {
+            match initial_node {
+                INS::Root |
+                INS::RootDescendantOrSelf => {
+                    if let Some(doc) = self.root(rf) {
+                        (doc, initial_node == &INS::RootDescendantOrSelf)
+                    } else {
+                        panic!("XPDY0050")
+                    }
+                },
+                INS::DescendantOrSelf => {
+                    (rf.clone(), true)
+                }
+            }
+        } else {
+            (rf.clone(), false)
+        };
+
+        if rf.attr_name.is_some() {
+            let mut result = Vec::with_capacity(1);
+            if axis == &Axis::ForwardSelf || axis == &Axis::ForwardDescendantOrSelf {
+                result.push(self.reference(rf.id.clone(), rf.attr_name.clone()));
+            }
+            return result;
+        }
+
+        match axis {
+            Axis::ForwardSelf => {
+                if all {
+                    let mut rfs = Vec::with_capacity(17);
+                    let level = rf.id.count_levels() + 1;
+
+                    for (k, node) in self.items.range(&rf.id..) {
+                        println!("{} {:?} {}", k, k, k.start_with(&rf.id));
+                        if k.start_with(&rf.id) {
+                            if all || k.count_levels() == level {
+                                rfs.push(self.reference(k.clone(), None))
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    rfs
+                } else {
+                    let mut rfs = Vec::with_capacity(1);
+                    rfs.push(rf);
+                    rfs
+                }
+            }
+            Axis::ForwardAttribute => {
+                if all {
+                    let mut rfs = Vec::with_capacity(17);
+                    let level = rf.id.count_levels() + 1;
+
+                    for (k, node) in self.items.range(&rf.id..) {
+                        println!("{} {:?} {}", k, k, k.start_with(&rf.id));
+                        if k.start_with(&rf.id) {
+                            if all || k.count_levels() == level {
+                                if let Some(names) = node.get_attributes() {
+                                    for name in names {
+                                        rfs.push(self.reference(k.clone(), Some(name)))
+                                    }
+                                }
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    rfs
+                } else {
+                    if let Some(node) = self.items.get(&rf.id) {
+                        if let Some(names) = node.get_attributes() {
+                            let mut rfs = Vec::with_capacity(names.len());
+                            for name in names {
+                                rfs.push(self.reference(rf.id.clone(), Some(name)))
+                            }
+                            rfs
+                        } else {
+                            vec![]
+                        }
+                    } else {
+                        vec![]
+                    }
+                }
+            }
+            Axis::ForwardChild => self.children(rf, false, all),
+            Axis::ForwardDescendant => self.children(rf, false, true),
+            Axis::ForwardDescendantOrSelf => self.children(rf, true, true),
+            Axis::ForwardFollowing => todo!(),
+            Axis::ForwardFollowingSibling => todo!(),
+            _ => panic!("internal error")
+        }
+    }
+
+    fn attributes(&self, rf: &Reference) -> Option<Vec<Reference>> {
+        if let Some(node) = self.items.get(&rf.id) {
+            if let Some(names) = node.get_attributes() {
+                let mut rfs = Vec::with_capacity(names.len());
+                for name in names {
+                    rfs.push(self.reference(rf.id.clone(), Some(name)));
+                }
+                Some(rfs)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    fn is_namespace(&self, rf: &Reference) -> bool {
+        if let Some(node) = self.items.get(&rf.id) {
+            node.is_namespace()
+        } else {
+            false
+        }
+    }
+
+    fn is_text(&self, rf: &Reference) -> bool {
+        if let Some(node) = self.items.get(&rf.id) {
+            node.is_text()
+        } else {
+            false
+        }
+    }
+
+    fn is_comment(&self, rf: &Reference) -> bool {
+        if let Some(node) = self.items.get(&rf.id) {
+            node.is_comment()
+        } else {
+            false
+        }
     }
 
     fn cmp(&self, other: Box<&dyn XMLTreeReader>, left: &Reference, right: &Reference) -> Ordering {
         todo!()
+    }
+
+    fn dump(&self, rf: &Reference) -> String {
+        if let Some(node) = self.items.get(&rf.id) {
+            node.dump()
+        } else {
+            "".to_string()
+        }
     }
 }
 
@@ -229,17 +418,19 @@ impl XMLTreeWriter for InMemoryXMLTree {
     }
 
     fn start_document(&mut self) -> Reference {
-        let id = self.prepare_child();
-        let node = Box::new(Document { id: id.clone() });
+        let id = self.next_top_id();
 
-        self.items.insert(id.clone(), node);
         self.prepare_child();
+
+        let node = Box::new(Document { id: id.clone() });
+        self.items.insert(id.clone(), node);
 
         self.reference(id, None)
     }
 
     fn end_document(&mut self) -> Option<Reference> {
-        match self.stack.pop() {
+        let id = self.stack.pop();
+        match id {
             Some(id) => Some(self.reference(id, None)),
             None => None
         }
@@ -247,12 +438,11 @@ impl XMLTreeWriter for InMemoryXMLTree {
 
     fn start_element(&mut self, name: QName) -> Reference {
         let id = self.next_sibling();
-        self.stack.push(id.clone());
+        self.prepare_child();
 
         let node = Box::new(Element { id: id.clone(), name, attributes: None });
 
         self.items.insert(id.clone(), node);
-        self.prepare_child();
 
         self.reference(id, None)
     }
@@ -309,15 +499,6 @@ impl XMLTreeWriter for InMemoryXMLTree {
 
         self.reference(id, None)
     }
-
-    fn dump(&self) -> String {
-        let mut buf = String::with_capacity(100_100);
-        for (id, node) in &self.items {
-            buf.push_str(node.dump().as_str());
-            buf.push_str("\n");
-        }
-        buf
-    }
 }
 
 #[derive(Clone)]
@@ -339,6 +520,22 @@ impl XMLNode for Document {
     }
 
     fn add_attribute(&mut self, name: QName, value: String) -> bool {
+        false
+    }
+
+    fn get_attributes(&self) -> Option<Vec<QName>> {
+        None
+    }
+
+    fn is_namespace(&self) -> bool {
+        false
+    }
+
+    fn is_text(&self) -> bool {
+        false
+    }
+
+    fn is_comment(&self) -> bool {
         false
     }
 
@@ -377,6 +574,30 @@ impl XMLNode for Element {
         }
 
         true
+    }
+
+    fn get_attributes(&self) -> Option<Vec<QName>> {
+        if let Some(attributes) = &self.attributes {
+            let mut result = Vec::with_capacity(attributes.len());
+            for name in attributes.keys() {
+                result.push(name.clone())
+            }
+            Some(result)
+        } else {
+            None
+        }
+    }
+
+    fn is_namespace(&self) -> bool {
+        false
+    }
+
+    fn is_text(&self) -> bool {
+        false
+    }
+
+    fn is_comment(&self) -> bool {
+        false
     }
 
     fn dump(&self) -> String {
@@ -419,6 +640,22 @@ impl XMLNode for Attribute {
         false
     }
 
+    fn get_attributes(&self) -> Option<Vec<QName>> {
+        None
+    }
+
+    fn is_namespace(&self) -> bool {
+        false
+    }
+
+    fn is_text(&self) -> bool {
+        false
+    }
+
+    fn is_comment(&self) -> bool {
+        false
+    }
+
     fn dump(&self) -> String {
         format!("Attribute {{ name={:?}; value={}; }}", self.name, self.value)
     }
@@ -445,6 +682,22 @@ impl XMLNode for PI {
     }
 
     fn add_attribute(&mut self, name: QName, value: String) -> bool {
+        false
+    }
+
+    fn get_attributes(&self) -> Option<Vec<QName>> {
+        None
+    }
+
+    fn is_namespace(&self) -> bool {
+        false
+    }
+
+    fn is_text(&self) -> bool {
+        false
+    }
+
+    fn is_comment(&self) -> bool {
         false
     }
 
@@ -476,6 +729,22 @@ impl XMLNode for Text {
         false
     }
 
+    fn get_attributes(&self) -> Option<Vec<QName>> {
+        None
+    }
+
+    fn is_namespace(&self) -> bool {
+        false
+    }
+
+    fn is_text(&self) -> bool {
+        true
+    }
+
+    fn is_comment(&self) -> bool {
+        false
+    }
+
     fn dump(&self) -> String {
         format!("Text {{ id={}; content={} }}", self.id, self.content)
     }
@@ -502,6 +771,22 @@ impl XMLNode for Comment {
 
     fn add_attribute(&mut self, name: QName, value: String) -> bool {
         false
+    }
+
+    fn get_attributes(&self) -> Option<Vec<QName>> {
+        None
+    }
+
+    fn is_namespace(&self) -> bool {
+        false
+    }
+
+    fn is_text(&self) -> bool {
+        false
+    }
+
+    fn is_comment(&self) -> bool {
+        true
     }
 
     fn dump(&self) -> String {

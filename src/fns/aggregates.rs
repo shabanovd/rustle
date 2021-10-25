@@ -34,6 +34,9 @@ pub(crate) fn fn_count<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _c
                 }
             }
             Ok((env, Object::Atomic(Type::Integer(count))))
+        },
+        [Object::Node(..)] => {
+            Ok((env, Object::Atomic(Type::Integer(1))))
         }
         _ => panic!("error {:?}", arguments)
     }

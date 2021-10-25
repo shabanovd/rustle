@@ -1,4 +1,4 @@
-use crate::eval::{Environment, ErrorInfo, Object, Type};
+use crate::eval::{ErrorInfo, Object, Type};
 use crate::values::*;
 use crate::eval::expression::{NodeTest, Expression};
 use crate::tree::Reference;
@@ -74,8 +74,8 @@ impl AnyKindTest {
 }
 
 impl NodeTest for AnyKindTest {
-    fn test_node(&self, env: &Box<Environment>, rf: &Reference) -> bool {
-        todo!()
+    fn test_node(&self, rf: &Reference) -> bool {
+        true
     }
 }
 
@@ -91,7 +91,7 @@ impl DocumentTest {
 }
 
 impl NodeTest for DocumentTest {
-    fn test_node(&self, env: &Box<Environment>, rf: &Reference) -> bool {
+    fn test_node(&self, rf: &Reference) -> bool {
         todo!()
     }
 }
@@ -107,8 +107,8 @@ impl TextTest {
 }
 
 impl NodeTest for TextTest {
-    fn test_node(&self, env: &Box<Environment>, rf: &Reference) -> bool {
-        todo!()
+    fn test_node(&self, rf: &Reference) -> bool {
+        rf.is_text()
     }
 }
 
@@ -123,8 +123,8 @@ impl CommentTest {
 }
 
 impl NodeTest for CommentTest {
-    fn test_node(&self, env: &Box<Environment>, rf: &Reference) -> bool {
-        todo!()
+    fn test_node(&self, rf: &Reference) -> bool {
+        rf.is_comment()
     }
 }
 
@@ -139,8 +139,8 @@ impl NamespaceNodeTest {
 }
 
 impl NodeTest for NamespaceNodeTest {
-    fn test_node(&self, env: &Box<Environment>, rf: &Reference) -> bool {
-        todo!()
+    fn test_node(&self, rf: &Reference) -> bool {
+        rf.is_namespace()
     }
 }
 
@@ -156,7 +156,7 @@ impl PITest {
 }
 
 impl NodeTest for PITest {
-    fn test_node(&self, env: &Box<Environment>, rf: &Reference) -> bool {
+    fn test_node(&self, rf: &Reference) -> bool {
         todo!()
     }
 }
@@ -172,7 +172,7 @@ impl ElementTest {
 }
 
 impl NodeTest for ElementTest {
-    fn test_node(&self, env: &Box<Environment>, rf: &Reference) -> bool {
+    fn test_node(&self, rf: &Reference) -> bool {
         todo!()
     }
 }
@@ -188,7 +188,7 @@ impl AttributeTest {
 }
 
 impl NodeTest for AttributeTest {
-    fn test_node(&self, env: &Box<Environment>, rf: &Reference) -> bool {
+    fn test_node(&self, rf: &Reference) -> bool {
         todo!()
     }
 }
@@ -205,7 +205,7 @@ impl SchemaElementTest {
 }
 
 impl NodeTest for SchemaElementTest {
-    fn test_node(&self, env: &Box<Environment>, rf: &Reference) -> bool {
+    fn test_node(&self, rf: &Reference) -> bool {
         todo!()
     }
 }
@@ -222,7 +222,7 @@ impl SchemaAttributeTest {
 }
 
 impl NodeTest for SchemaAttributeTest {
-    fn test_node(&self, env: &Box<Environment>, rf: &Reference) -> bool {
+    fn test_node(&self, rf: &Reference) -> bool {
         todo!()
     }
 }
@@ -237,8 +237,8 @@ impl NameTest {
 }
 
 impl NodeTest for NameTest {
-    fn test_node(&self, env: &Box<Environment>, rf: &Reference) -> bool {
-        if let Some(name) = rf.name(env) {
+    fn test_node(&self, rf: &Reference) -> bool {
+        if let Some(name) = rf.name() {
             (self.name.local_part == "*" || self.name.local_part == name.local_part)
                 && (self.name.url == Some(String::from("*")) || self.name.url == name.url)
         } else {

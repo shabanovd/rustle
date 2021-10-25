@@ -70,9 +70,23 @@ pub(crate) fn fn_string_length<'a>(env: Box<Environment<'a>>, arguments: Vec<Obj
 
     let str = object_to_string(&env, item);
 
-    println!("{:?} {:?}", str, str.len());
-
     Ok((env, Object::Atomic(Type::Integer(str.len() as i128))))
+}
+
+pub(crate) fn fn_normalize_space<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
+
+    let item = if arguments.len() == 0 {
+        &context.item
+    } else {
+        arguments.get(0).unwrap()
+    };
+
+    let mut str = object_to_string(&env, item);
+    str = str.trim().to_string();
+
+    // TODO replacing sequences of one or more adjacent whitespace characters with a single space
+
+    Ok((env, Object::Atomic(Type::String(str))))
 }
 
 pub(crate) fn fn_string_to_codepoints<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {

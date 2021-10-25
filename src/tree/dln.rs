@@ -153,7 +153,7 @@ impl DLN {
         let mut new_bits = bits.split_at(len).0.to_vec();
 
         if remainder > 0 {
-            let last = new_bits.remove(len);
+            let last = new_bits.remove(len - 1);
             let mut new_last = 0;
             for i in 0..remainder {
                 if last & (1 << (i & 7)) != 0 {
@@ -202,6 +202,12 @@ impl DLN {
         }
     }
 
+    pub fn zero_child(&self) -> Self {
+        let mut child = self.clone();
+        child.add_level_id(0, false);
+        child
+    }
+
     pub fn first_child(&self) -> Self {
         let mut child = self.clone();
         child.add_level_id(1, false);
@@ -237,8 +243,8 @@ impl DLN {
 
     fn level_id_from_string(&mut self, data: &String, is_sub: bool) -> Result<(), String> {
         match data.as_str().parse::<usize>() {
-            Ok(levelId) => {
-                self.add_level_id(levelId, is_sub);
+            Ok(level_id) => {
+                self.add_level_id(level_id, is_sub);
                 Ok(())
             },
             Err(..) => return Err(format!("can't get level id '{}'", data.as_str()))
@@ -313,7 +319,24 @@ impl DLN {
         id
     }
 
-    fn last_level_offset(&self) -> usize {
+    pub(crate) fn count_levels(&self) -> usize {
+        let mut count = 0;
+        let mut pos = 0;
+        while self.pos >= pos {
+            if pos > 0 {
+                if self.bits[pos >> SHIFT] & (1 << (pos & 7)) == LEVEL_UP {
+                    count += 1;
+                }
+                pos += 1;
+            }
+            let units = self.units_used(pos);
+            pos += units as usize * BITS_PER_UNIT as usize;
+        }
+
+        count
+    }
+
+    pub(crate) fn last_level_offset(&self) -> usize {
         let mut pos = 0;
         let mut offset = 0;
         while self.pos >= pos {
@@ -386,7 +409,7 @@ impl DLN {
     fn units_used(&self, offset: usize) -> u8 {
         let mut offset = offset;
         let mut units = 1;
-        while (self.bits[offset >> SHIFT] & bit(offset)) != LEVEL_UP {
+        while self.bits[offset >> SHIFT] & bit(offset) != LEVEL_UP {
             units += 1;
             offset += 1;
         }
@@ -394,7 +417,7 @@ impl DLN {
     }
 
     pub(crate) fn start_with(&self, other: &DLN) -> bool {
-        if self.pos > other.pos {
+        if self.pos >= other.pos {
             let number_of_bytes = other.pos / 8;
             for i in 0..number_of_bytes {
                 if self.bits[i] != other.bits[i] {
@@ -491,6 +514,15 @@ mod tests {
     }
 
     #[test]
+    fn after() {
+        let n1 = create("1");
+        let n11 = n1.first_child();
+
+        assert_eq!(true, n11.start_with(&n1));
+        assert_eq!(true, n11.start_with(&n1));
+    }
+
+    #[test]
     fn experiment() {
         // 1 = 00010000 [4]
         let n1 = create("1");
@@ -516,9 +548,9 @@ mod tests {
         assert_eq!(n70.cmp(&n71), Ordering::Less);
 
         // 1.1 = 0001000010000000 [9]
-        let n1_1 = create("1.1");
+        let n11 = create("1.1");
         // 1.2 = 0001000100000000 [9]
-        let n1_2 = create("1.2");
+        let n12 = create("1.2");
         // 1.2/1 = 0001000101000100 [14]
         let n121 = create("1.2/1");
         // 1.2/2 = 0001000101001000 [14]
@@ -526,13 +558,18 @@ mod tests {
         // 1.2/2.1 = 000100010100100000100000 [19]
         let n1221 = create("1.2/2.1");
 
+        assert_eq!(0, n1.count_levels());
+        assert_eq!(1, n11.count_levels());
+        assert_eq!(1, n121.count_levels());
+        assert_eq!(2, n1221.count_levels());
+
         assert_eq!(n122.cmp(&n1221), Ordering::Less);
         assert_eq!(n1.cmp(&n1221), Ordering::Less);
 
         assert_eq!(1, n1221.get_level_id(0));
-        assert_eq!(2, n1221.get_level_id(1));
-        assert_eq!(2, n1221.get_level_id(2));
-        assert_eq!(1, n1221.get_level_id(3));
+        assert_eq!(2, n1221.get_level_id(1 * SHIFT as usize));
+        assert_eq!(2, n1221.get_level_id(2 * SHIFT as usize));
+        assert_eq!(1, n1221.get_level_id(3 * SHIFT as usize));
     }
 
     const ITEMS_TO_TEST: usize = 1_000_000;
