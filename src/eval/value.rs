@@ -433,7 +433,7 @@ pub(crate) fn atomization(env: &Box<Environment>, obj: Object) -> Result<Object,
     match obj {
         Object::Atomic(..) => Ok(obj),
         Object::Node(rf) => {
-            match rf.to_typed_value(env) {
+            match rf.to_typed_value() {
                 Ok(data) => Ok(Object::Atomic(Type::Untyped(data))),
                 Err(msg) => Err((ErrorCode::TODO, msg))
             }
@@ -463,7 +463,7 @@ pub(crate) fn sequence_atomization(env: &Box<Environment>, obj: Object) -> Resul
         Object::Sequence(..) |
         Object::Atomic(..) => Ok(obj),
         Object::Node(rf) => {
-            match rf.to_typed_value(env) {
+            match rf.to_typed_value() {
                 Ok(data) => Ok(Object::Atomic(Type::Untyped(data))),
                 Err(msg) => Err((ErrorCode::TODO, msg))
             }

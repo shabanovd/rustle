@@ -238,7 +238,7 @@ pub(crate) fn object_to_integer(env: &Box<Environment>, object: Object) -> Resul
             }
         },
         Object::Node(rf) => {
-            match rf.to_typed_value(env) {
+            match rf.to_typed_value() {
                 Ok(num) => {
                     match num.parse() {
                         Ok(v) => Ok(v),

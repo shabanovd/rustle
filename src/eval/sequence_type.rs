@@ -179,17 +179,39 @@ impl NodeTest for ElementTest {
 
 #[derive(Clone, Debug)]
 pub(crate) struct AttributeTest {
+    name: Option<QName>,
+    type_name: Option<QName>,
 }
 
 impl AttributeTest {
     pub(crate) fn boxed() -> Box<dyn NodeTest> {
-        Box::new(AttributeTest { })
+        Box::new(AttributeTest { name: None, type_name: None })
+    }
+
+    pub(crate) fn boxed_with(name: QName, type_name: Option<QName>) -> Box<dyn NodeTest> {
+        Box::new(AttributeTest { name: Some(name), type_name })
     }
 }
 
 impl NodeTest for AttributeTest {
     fn test_node(&self, rf: &Reference) -> bool {
-        todo!()
+        if let Some(rf_name) = &rf.attr_name {
+            if let Some(name) = &self.name {
+                if rf_name == name {
+                    if let Some(type_name) = &self.type_name {
+                        todo!()
+                    } else {
+                        true
+                    }
+                } else {
+                    false
+                }
+            } else {
+                true
+            }
+        } else {
+            false
+        }
     }
 }
 

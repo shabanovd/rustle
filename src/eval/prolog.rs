@@ -319,6 +319,35 @@ impl Expression for Body {
     }
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct EnclosedExpr {
+    pub(crate) expr: Box<dyn Expression>
+}
+
+impl EnclosedExpr {
+    pub(crate) fn new(expr: Box<dyn Expression>) -> Box<dyn Expression> {
+        Box::new(EnclosedExpr { expr })
+    }
+}
+
+impl Expression for EnclosedExpr {
+    fn eval<'a>(&self, mut env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+        let new_env = env.next();
+        let (new_env, value) = self.expr.eval(new_env, context)?;
+        env = new_env.prev();
+
+        Ok((env, value))
+    }
+
+    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+        todo!()
+    }
+
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 //navigation
 #[derive(Clone, Debug)]
 pub(crate) struct Root {}
@@ -1095,7 +1124,11 @@ impl Expression for NodeElement {
                     for item in items {
                         let id = current_env.next_id();
                         match item {
-                            Object::Node(rf) => todo!(),
+                            Object::Node(rf) => {
+                                if current_env.xml_tree_id() != rf.xml_tree_id() {
+                                    current_env.xml_writer(|w| w.link_node(&rf));
+                                }
+                            },
                             Object::Atomic(..) => {
                                 let mut content = object_to_string_xml(&current_env, &item);
                                 if add_space {
@@ -1111,10 +1144,9 @@ impl Expression for NodeElement {
                     }
                 },
                 Object::Node(rf) => {
-                    // TODO
-                    // if current_env.xml_tree_id() != rf.storage_id {
-                    //     todo!()
-                    // }
+                    if current_env.xml_tree_id() != rf.xml_tree_id() {
+                        current_env.xml_writer(|w| w.link_node(&rf));
+                    }
                 },
                 Object::Atomic(..) => {
                     let content = object_to_string(&current_env, &evaluated_child);

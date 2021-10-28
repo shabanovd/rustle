@@ -97,7 +97,7 @@ pub fn _object_to_string(env: &Box<Environment>, object: &Object, ref_resolving:
             data
         },
         Object::Node(rf) => {
-            match rf.to_typed_value(env) {
+            match rf.to_typed_value() {
                 Ok(data) => data,
                 Err(msg) => panic!(msg)
             }

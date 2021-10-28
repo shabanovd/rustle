@@ -25,6 +25,11 @@ impl Reference {
         storage.as_reader().name(self)
     }
 
+    pub fn xml_tree_id(&self) -> usize {
+        let storage = self.storage.lock().unwrap();
+        storage.id()
+    }
+
     pub fn is_namespace(&self) -> bool {
         let storage = self.storage.lock().unwrap();
         storage.as_reader().is_namespace(self)
@@ -45,10 +50,11 @@ impl Reference {
     }
 
     pub fn to_xml(&self, env: &Box<Environment>) -> Result<String, String> {
-        todo!()
+        let storage = self.storage.lock().unwrap();
+        storage.as_reader().to_xml(self, env)
     }
 
-    pub fn to_typed_value(&self, env: &Box<Environment>) -> Result<String, String> {
+    pub fn to_typed_value(&self) -> Result<String, String> {
         let storage = self.storage.lock().unwrap();
         storage.as_reader().typed_value_of_node(self)
     }
@@ -79,6 +85,11 @@ impl Reference {
         } else {
             cmp
         }
+    }
+
+    pub(crate) fn attribute_value(&self, name: &QName) -> Option<String> {
+        let storage = self.storage.lock().unwrap();
+        storage.as_reader().attribute_value(&self, name)
     }
 
     pub(crate) fn root(&self) -> Option<Reference> {
@@ -120,6 +131,12 @@ impl PartialEq for Reference {
     }
 }
 
+pub enum NodeType {
+    Document,
+    Element,
+
+}
+
 pub trait XMLNode: DynClone {
     fn id(&self) -> DLN;
 
@@ -127,6 +144,7 @@ pub trait XMLNode: DynClone {
 
     fn typed_value(&self) -> String;
 
+    fn attribute_value(&self, name: &QName) -> Option<String>;
     fn add_attribute(&mut self, name: QName, value: String) -> bool;
     fn get_attributes(&self) -> Option<Vec<QName>>;
 
@@ -134,6 +152,11 @@ pub trait XMLNode: DynClone {
     fn is_namespace(&self) -> bool;
     fn is_text(&self) -> bool;
     fn is_comment(&self) -> bool;
+
+    fn to_xml_open(&self, env: &Box<Environment>) -> String;
+    fn to_xml_start_children(&self) -> String;
+    fn to_xml_close_empty(&self) -> String;
+    fn to_xml_close(&self) -> String;
 
     fn dump(&self) -> String;
 
@@ -161,6 +184,8 @@ pub trait XMLTreeWriter: DynClone {
 
     fn as_reader(&self) -> Box<&dyn XMLTreeReader>;
 
+    fn link_node(&mut self, rf: &Reference) -> Reference;
+
     fn start_document(&mut self) -> Reference;
 
     fn end_document(&mut self) -> Option<Reference>;
@@ -185,11 +210,13 @@ pub trait XMLTreeReader: DynClone {
 
     fn to_string(&self, rf: &Reference) -> Result<String, String>;
 
-    fn to_xml(&self, rf: &Reference) -> Result<String, String>;
+    fn to_xml(&self, rf: &Reference, env: &Box<Environment>) -> Result<String, String>;
 
     fn typed_value_of_node(&self, rf: &Reference) -> Result<String, String>;
 
     fn first(&self) -> Option<Reference>;
+
+    fn attribute_value(&self, rf: &Reference, name: &QName) -> Option<String>;
 
     // navigation
     fn root(&self, rf: &Reference) -> Option<Reference>;

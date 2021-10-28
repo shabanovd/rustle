@@ -74,10 +74,18 @@ impl QName {
     }
 
     pub fn new(prefix: String, local_part: String) -> Self {
-        QName {
-            prefix: Some(prefix),
-            url: None,
-            local_part,
+        if prefix.len() == 0 {
+            QName {
+                prefix: None,
+                url: None,
+                local_part,
+            }
+        } else {
+            QName {
+                prefix: Some(prefix),
+                url: None,
+                local_part,
+            }
         }
     }
 

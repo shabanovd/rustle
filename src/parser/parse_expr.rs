@@ -307,7 +307,7 @@ pub(crate) fn parse_enclosed_expr(input: &str) -> IResult<&str, Box<dyn Expressi
 
     let (input, _) = ws_tag_ws("}", input)?;
 
-    Ok((input, expr))
+    Ok((input, EnclosedExpr::new(expr)))
 }
 
 // [38]    	QueryBody 	   ::=    	Expr
@@ -1687,10 +1687,20 @@ fn parse_attribute_test(input: &str) -> IResult<&str, Box<dyn NodeTest>, CustomE
     map(
         delimited(
             tuple((ws, tag("attribute"), ws, tag("("), ws)),
-            opt(tuple((parse_attrib_name_or_wildcard, opt(tuple((ws, tag(","), parse_type_name)))))),
+            opt(tuple((
+                parse_attrib_name_or_wildcard,
+                opt(preceded(tuple((ws, tag(","))), parse_type_name))
+            ))),
             tuple((ws, tag(")")))
         ),
-        |name| AttributeTest::boxed()
+        |param| {
+            match param {
+                Some((name, type_name)) => {
+                    AttributeTest::boxed_with(name, type_name)
+                },
+                None => AttributeTest::boxed()
+            }
+        }
     )(input)
 }
 

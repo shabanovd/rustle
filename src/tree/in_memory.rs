@@ -1,12 +1,11 @@
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::Read;
 use std::rc::Rc;
 use std::sync::Mutex;
 use linked_hash_map::LinkedHashMap;
 use xmlparser::{ElementEnd, Token};
-use crate::eval::{Axis, INS};
+use crate::eval::{Axis, Environment, INS};
 use crate::tree::dln::DLN;
 use crate::tree::{Reference, XMLNode, XMLTreeReader, XMLTreeWriter};
 use crate::values::QName;
@@ -178,7 +177,8 @@ impl InMemoryXMLTree {
 
     fn dump(&self) -> String {
         let mut buf = String::with_capacity(100_100);
-        for (id, node) in &self.items {
+        buf.push_str(format!("storage: {}\n", self.id).as_str());
+        for (_, node) in &self.items {
             buf.push_str(node.dump().as_str());
             buf.push_str("\n");
         }
@@ -204,21 +204,73 @@ impl XMLTreeReader for InMemoryXMLTree {
         todo!()
     }
 
-    fn to_xml(&self, rf: &Reference) -> Result<String, String> {
-        todo!()
-    }
+    fn to_xml(&self, rf: &Reference, env: &Box<Environment>) -> Result<String, String> {
+        let mut ids: Vec<(usize, &DLN, &Box<dyn XMLNode>)> = vec![];
 
-    fn typed_value_of_node(&self, rf: &Reference) -> Result<String, String> {
-        let mut result = vec![];
-        for (k,v) in self.items.range(&rf.id..) {
+        let mut count = 0;
+
+        let mut buf = String::new();
+        for (k,node) in self.items.range(&rf.id..) {
+            while let Some((c, last, n)) = ids.last() {
+                if k.start_with(last) {
+                    if c+1 == count {
+                        buf.push_str(n.to_xml_start_children().as_str());
+                    }
+                    break;
+                } else {
+                    if c + 1 == count {
+                        buf.push_str(n.to_xml_close_empty().as_str());
+                    } else {
+                        buf.push_str(n.to_xml_close().as_str());
+                    }
+                    ids.pop();
+                }
+            }
+
             if k.start_with(&rf.id) {
-                result.push(v.typed_value());
+                buf.push_str(node.to_xml_open(env).as_str());
+
+                ids.push((count, k, node));
+                count += 1;
             } else {
                 break;
             }
         }
-        let data = result.join("");
-        Ok(data)
+
+        while let Some((c, _, node)) = ids.pop() {
+            if c+1 == count {
+                buf.push_str(node.to_xml_close_empty().as_str());
+            } else {
+                buf.push_str(node.to_xml_close().as_str());
+            }
+        }
+
+        Ok(buf)
+    }
+
+    fn typed_value_of_node(&self, rf: &Reference) -> Result<String, String> {
+        if let Some(name) = &rf.attr_name {
+            if let Some(node) = self.items.get(&rf.id) {
+                if let Some(value) = node.attribute_value(name) {
+                    Ok(value)
+                } else {
+                    panic!("IO error")
+                }
+            } else {
+                panic!("IO error")
+            }
+        } else {
+            let mut result = vec![];
+            for (k, v) in self.items.range(&rf.id..) {
+                if k.start_with(&rf.id) {
+                    result.push(v.typed_value());
+                } else {
+                    break;
+                }
+            }
+            let data = result.join("");
+            Ok(data)
+        }
     }
 
     fn first(&self) -> Option<Reference> {
@@ -227,6 +279,18 @@ impl XMLTreeReader for InMemoryXMLTree {
         } else {
             None
         }
+    }
+
+    fn attribute_value(&self, rf: &Reference, name: &QName) -> Option<String> {
+        if let Some(attr_name) = &rf.attr_name {
+            if attr_name != name {
+                return None;
+            }
+            if let Some(node) = self.items.get(&rf.id) {
+                return node.attribute_value(name);
+            }
+        }
+        None
     }
 
     fn root(&self, rf: &Reference) -> Option<Reference> {
@@ -240,7 +304,9 @@ impl XMLTreeReader for InMemoryXMLTree {
     }
 
     fn parent(&self, rf: &Reference) -> Option<Reference> {
-        if let Some(id) = rf.id.parent() {
+        if rf.attr_name.is_some() {
+            Some(self.reference(rf.id.clone(), None))
+        } else if let Some(id) = rf.id.parent() {
             if let Some(..) = self.items.get(&id) {
                 Some(self.reference(id, None))
             } else {
@@ -394,7 +460,7 @@ impl XMLTreeReader for InMemoryXMLTree {
 
     fn dump(&self, rf: &Reference) -> String {
         if let Some(node) = self.items.get(&rf.id) {
-            node.dump()
+            format!("{{ storage: {}; {} }}", self.id, node.dump())
         } else {
             "".to_string()
         }
@@ -415,6 +481,24 @@ impl XMLTreeWriter for InMemoryXMLTree {
 
     fn as_reader(&self) -> Box<&dyn XMLTreeReader> {
         Box::new(self)
+    }
+
+    fn link_node(&mut self, rf: &Reference) -> Reference {
+        let other = rf.storage.lock().unwrap();
+        let other = other.as_reader();
+        if let Some(name) = &rf.attr_name {
+            let value = other.typed_value_of_node(rf).unwrap();
+            self.attribute(name.clone(), value)
+        } else {
+            let id = self.next_sibling();
+            // self.prepare_child();
+
+            let node = Box::new(LinkedNode { id: id.clone(), rf: rf.clone() });
+
+            self.items.insert(id.clone(), node);
+
+            self.reference(id, None)
+        }
     }
 
     fn start_document(&mut self) -> Reference {
@@ -519,6 +603,10 @@ impl XMLNode for Document {
         String::new()
     }
 
+    fn attribute_value(&self, name: &QName) -> Option<String> {
+        None
+    }
+
     fn add_attribute(&mut self, name: QName, value: String) -> bool {
         false
     }
@@ -537,6 +625,22 @@ impl XMLNode for Document {
 
     fn is_comment(&self) -> bool {
         false
+    }
+
+    fn to_xml_open(&self, env: &Box<Environment>) -> String {
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>".to_string()
+    }
+
+    fn to_xml_start_children(&self) -> String {
+        String::new()
+    }
+
+    fn to_xml_close_empty(&self) -> String {
+        String::new()
+    }
+
+    fn to_xml_close(&self) -> String {
+        String::new()
     }
 
     fn dump(&self) -> String {
@@ -562,6 +666,15 @@ impl XMLNode for Element {
 
     fn typed_value(&self) -> String {
         String::new()
+    }
+
+    fn attribute_value(&self, name: &QName) -> Option<String> {
+        if let Some(attributes) = &self.attributes {
+            if let Some(attribute) = attributes.get(&name) {
+                return Some(attribute.value.clone());
+            }
+        }
+        None
     }
 
     fn add_attribute(&mut self, name: QName, value: String) -> bool {
@@ -600,6 +713,39 @@ impl XMLNode for Element {
         false
     }
 
+    fn to_xml_open(&self, env: &Box<Environment>) -> String {
+        let mut buf = String::new();
+        buf.push_str("<");
+        buf.push_str(self.name.string().as_str());
+
+        if let Some(attrs) = &self.attributes {
+            for (name, attr) in attrs {
+                buf.push_str(" ");
+                buf.push_str(name.string().as_str());
+                buf.push_str("=\"");
+                buf.push_str(attr.value.as_str());
+                buf.push_str("\"")
+            }
+        }
+        buf
+    }
+
+    fn to_xml_start_children(&self) -> String {
+        ">".to_string()
+    }
+
+    fn to_xml_close_empty(&self) -> String {
+        "/>".to_string()
+    }
+
+    fn to_xml_close(&self) -> String {
+        let mut buf = String::new();
+        buf.push_str("</");
+        buf.push_str(self.name.string().as_str());
+        buf.push_str(">");
+        buf
+    }
+
     fn dump(&self) -> String {
         let attributes = if let Some(attrs) = &self.attributes {
             let mut buf = String::new();
@@ -636,6 +782,14 @@ impl XMLNode for Attribute {
         self.value.clone()
     }
 
+    fn attribute_value(&self, name: &QName) -> Option<String> {
+        if &self.name == name {
+            Some(self.value.clone())
+        } else {
+            None
+        }
+    }
+
     fn add_attribute(&mut self, name: QName, value: String) -> bool {
         false
     }
@@ -654,6 +808,22 @@ impl XMLNode for Attribute {
 
     fn is_comment(&self) -> bool {
         false
+    }
+
+    fn to_xml_open(&self, env: &Box<Environment>) -> String {
+        todo!()
+    }
+
+    fn to_xml_start_children(&self) -> String {
+        todo!()
+    }
+
+    fn to_xml_close_empty(&self) -> String {
+        todo!()
+    }
+
+    fn to_xml_close(&self) -> String {
+        todo!()
     }
 
     fn dump(&self) -> String {
@@ -681,6 +851,10 @@ impl XMLNode for PI {
         self.content.clone()
     }
 
+    fn attribute_value(&self, name: &QName) -> Option<String> {
+        None
+    }
+
     fn add_attribute(&mut self, name: QName, value: String) -> bool {
         false
     }
@@ -699,6 +873,22 @@ impl XMLNode for PI {
 
     fn is_comment(&self) -> bool {
         false
+    }
+
+    fn to_xml_open(&self, env: &Box<Environment>) -> String {
+        todo!()
+    }
+
+    fn to_xml_start_children(&self) -> String {
+        todo!()
+    }
+
+    fn to_xml_close_empty(&self) -> String {
+        todo!()
+    }
+
+    fn to_xml_close(&self) -> String {
+        todo!()
     }
 
     fn dump(&self) -> String {
@@ -725,6 +915,10 @@ impl XMLNode for Text {
         self.content.clone()
     }
 
+    fn attribute_value(&self, name: &QName) -> Option<String> {
+        None
+    }
+
     fn add_attribute(&mut self, name: QName, value: String) -> bool {
         false
     }
@@ -745,8 +939,24 @@ impl XMLNode for Text {
         false
     }
 
+    fn to_xml_open(&self, env: &Box<Environment>) -> String {
+        self.content.clone()
+    }
+
+    fn to_xml_start_children(&self) -> String {
+        String::new()
+    }
+
+    fn to_xml_close_empty(&self) -> String {
+        String::new()
+    }
+
+    fn to_xml_close(&self) -> String {
+        String::new()
+    }
+
     fn dump(&self) -> String {
-        format!("Text {{ id={}; content={} }}", self.id, self.content)
+        format!("Text {{ id={}; content={:?} }}", self.id, self.content)
     }
 }
 
@@ -769,6 +979,10 @@ impl XMLNode for Comment {
         self.content.clone()
     }
 
+    fn attribute_value(&self, name: &QName) -> Option<String> {
+        None
+    }
+
     fn add_attribute(&mut self, name: QName, value: String) -> bool {
         false
     }
@@ -789,7 +1003,90 @@ impl XMLNode for Comment {
         true
     }
 
+    fn to_xml_open(&self, env: &Box<Environment>) -> String {
+        todo!()
+    }
+
+    fn to_xml_start_children(&self) -> String {
+        todo!()
+    }
+
+    fn to_xml_close_empty(&self) -> String {
+        todo!()
+    }
+
+    fn to_xml_close(&self) -> String {
+        todo!()
+    }
+
     fn dump(&self) -> String {
-        format!("Comment {{ id={}; content={} }}", self.id, self.content)
+        format!("Comment {{ id={}; content={:?} }}", self.id, self.content)
+    }
+}
+
+#[derive(Clone)]
+struct LinkedNode {
+    id: DLN,
+    rf: Reference,
+}
+
+impl XMLNode for LinkedNode {
+    fn id(&self) -> DLN {
+        self.id.clone()
+    }
+
+    fn name(&self) -> Option<QName> {
+        self.rf.name()
+    }
+
+    fn typed_value(&self) -> String {
+        self.rf.to_typed_value().unwrap()
+    }
+
+    fn attribute_value(&self, name: &QName) -> Option<String> {
+        self.rf.attribute_value(name)
+    }
+
+    fn add_attribute(&mut self, name: QName, value: String) -> bool {
+        todo!()
+    }
+
+    fn get_attributes(&self) -> Option<Vec<QName>> {
+        todo!()
+    }
+
+    fn is_namespace(&self) -> bool {
+        todo!()
+    }
+
+    fn is_text(&self) -> bool {
+        todo!()
+    }
+
+    fn is_comment(&self) -> bool {
+        todo!()
+    }
+
+    fn to_xml_open(&self, env: &Box<Environment>) -> String {
+        // println!("{} {:?}", self.id, self.rf);
+        // println!("{}", self.rf.to_xml(env).unwrap());
+        self.rf.to_xml(env).unwrap()
+        // String::new()
+    }
+
+    fn to_xml_start_children(&self) -> String {
+        String::new()
+    }
+
+    fn to_xml_close_empty(&self) -> String {
+        String::new()
+    }
+
+    fn to_xml_close(&self) -> String {
+        String::new()
+    }
+
+    fn dump(&self) -> String {
+        format!("LinkedNode {{ id={}; rf={:?} }}", self.id, self.rf)
     }
 }

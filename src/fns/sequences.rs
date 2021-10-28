@@ -26,7 +26,7 @@ fn data<'a>(env: Box<Environment<'a>>, obj: Object, result: &mut Vec<Object>) ->
             Ok(env)
         },
         Object::Node(rf) => {
-            match rf.to_typed_value(&env) {
+            match rf.to_typed_value() {
                 Ok(data) => {
                     let item = Object::Atomic(Type::Untyped(data));
                     result.push(item);
