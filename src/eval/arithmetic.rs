@@ -824,7 +824,7 @@ pub fn object_to_items(object: &Object) -> Vec<Object> {
     }
 }
 
-pub fn eval_arithmetic<'a>(env: Box<Environment<'a>>, operator: OperatorArithmetic, left: Object, right: Object) -> EvalResult<'a> {
+pub fn eval_arithmetic<'a>(env: Box<Environment>, operator: OperatorArithmetic, left: Object, right: Object) -> EvalResult {
 
     let mut current_env = env;
     let mut result = vec![];
@@ -845,7 +845,7 @@ pub fn eval_arithmetic<'a>(env: Box<Environment<'a>>, operator: OperatorArithmet
     relax(current_env, result)
 }
 
-pub fn eval_arithmetic_item<'a>(env: Box<Environment<'a>>, operator: OperatorArithmetic, left: Object, right: Object) -> EvalResult<'a> {
+pub fn eval_arithmetic_item<'a>(env: Box<Environment>, operator: OperatorArithmetic, left: Object, right: Object) -> EvalResult {
     let left = match atomization(&env, left) {
         Ok(v) => v,
         Err(e) => return Err(e)

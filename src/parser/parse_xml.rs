@@ -263,7 +263,7 @@ pub(crate) fn parse_cdata_section(input: &str) -> IResult<&str, Box<dyn Expressi
 // [157]    	CompElemConstructor 	   ::=    	"element" (EQName | ("{" Expr "}")) EnclosedContentExpr
 // [158]    	EnclosedContentExpr 	   ::=    	EnclosedExpr
 // [159]    	CompAttrConstructor 	   ::=    	"attribute" (EQName | ("{" Expr "}")) EnclosedExpr
-// TODO [160]    	CompNamespaceConstructor 	   ::=    	"namespace" (Prefix | EnclosedPrefixExpr) EnclosedURIExpr
+// [160]    	CompNamespaceConstructor 	   ::=    	"namespace" (Prefix | EnclosedPrefixExpr) EnclosedURIExpr
 // [161]    	Prefix 	   ::=    	NCName
 // [162]    	EnclosedPrefixExpr 	   ::=    	EnclosedExpr
 // [163]    	EnclosedURIExpr 	   ::=    	EnclosedExpr
@@ -338,7 +338,18 @@ pub(crate) fn parse_computed_constructor(input: &str) -> IResult<&str, Box<dyn E
         }
         "namespace" => {
             // "namespace" (Prefix | EnclosedPrefixExpr) EnclosedURIExpr
-            todo!()
+            let check = parse_ws1_ncname(input);
+            let (input, prefix) = if check.is_ok() {
+                let (input, name) = check?;
+
+                (input, StringExpr::new(name))
+            } else {
+                parse_enclosed_expr(input)?
+            };
+
+            let (input, url) = parse_enclosed_expr(input)?;
+
+            (input, NodeNS::boxed(prefix, url))
         }
         "processing-instruction" => {
             // "processing-instruction" (NCName | ("{" Expr "}")) EnclosedExpr
@@ -400,6 +411,38 @@ pub(crate) fn parse_refs(input: &str) -> IResult<&str, Box<dyn Expression>, Cust
     }
 }
 
+pub(crate) fn parse_refs_as_char(input: &str) -> IResult<&str, char, CustomError<&str>> {
+    let must_have: Result<(&str, &str), nom::Err<Error<&str>>> = tag("&")(input);
+
+    let check = parse_predefined_entity_ref_as_char(input);
+    match check {
+        Ok(r) => {
+            return Ok(r);
+        },
+        Err(nom::Err::Failure(e)) => {
+            return Err(nom::Err::Failure(e));
+        },
+        _ => {}
+    }
+
+    let check = parse_char_ref_as_char(input);
+    match check {
+        Ok(r) => {
+            return Ok(r);
+        },
+        Err(nom::Err::Failure(e)) => {
+            return Err(nom::Err::Failure(e));
+        },
+        _ => {}
+    }
+
+    if must_have.is_ok() {
+        Err(nom::Err::Failure(CustomError::XPST0003))
+    } else {
+        Err(nom::Err::Error(ParseError::from_char(input, '&')))
+    }
+}
+
 // [66]   	CharRef	   ::=   	'&#' [0-9]+ ';' | '&#x' [0-9a-fA-F]+ ';'
 
 // https://www.w3.org/TR/xml/#NT-Char
@@ -444,6 +487,44 @@ pub(crate) fn parse_char_ref(input: &str) -> IResult<&str, Box<dyn Expression>, 
     }
 }
 
+pub(crate) fn parse_char_ref_as_char(input: &str) -> IResult<&str, char, CustomError<&str>> {
+    let (input, _) = tag("&#")(input)?;
+
+    let check = tag("x")(input);
+    let (input, reference, representation) = if check.is_ok() {
+        let (input, _) = check?;
+
+        let (input, code) = take_while1(is_0_9a_f)(input).or_failure(CustomError::XPST0003)?;
+
+        let (input, _) = tag(";")(input).or_failure(CustomError::XPST0003)?;
+
+        (input, u32::from_str_radix(code, 16), Representation::Hexadecimal)
+
+    } else {
+        let (input, code) = take_while1(is_digits)(input).or_failure(CustomError::XPST0003)?;
+
+        let (input, _) = tag(";")(input).or_failure(CustomError::XPST0003)?;
+
+        (input, u32::from_str_radix(code, 10), Representation::Decimal)
+    };
+
+    if reference.is_ok() {
+        let reference = reference.unwrap();
+        if reference == 0x9
+            || reference == 0xA
+            || reference == 0xD
+            || (reference >= 0x20 && reference <= 0xD7FF)
+            || (reference >= 0xE000 && reference <= 0xFFFD)
+            || (reference >= 0x10000 && reference <= 0x10FFFF)
+        {
+            if let Some(ch) = char::from_u32(reference) {
+                return Ok((input, ch))
+            }
+        }
+    }
+    Err(nom::Err::Failure(CustomError::XQST0090))
+}
+
 // [225]    	PredefinedEntityRef 	   ::=    	"&" ("lt" | "gt" | "amp" | "quot" | "apos") ";"
 pub(crate) fn parse_predefined_entity_ref(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
     let (input, _) = tag("&")(input)?;
@@ -458,7 +539,32 @@ pub(crate) fn parse_predefined_entity_ref(input: &str) -> IResult<&str, Box<dyn 
 
     let (input, _) = tag(";")(input).or_failure(CustomError::XPST0003)?;
 
-    found_expr(input, Box::new(EntityRef::from(name)))
+    found_expr(input, EntityRef::boxed(name))
+}
+
+pub(crate) fn parse_predefined_entity_ref_as_char(input: &str) -> IResult<&str, char, CustomError<&str>> {
+    let (input, _) = tag("&")(input)?;
+
+    let (input, name) = alt((
+        tag("lt"),
+        tag("gt"),
+        tag("amp"),
+        tag("quot"),
+        tag("apos")
+    ))(input)?;
+
+    let (input, _) = tag(";")(input).or_failure(CustomError::XPST0003)?;
+
+    let ch = match name {
+        "lt" => '<',
+        "gt" => '>',
+        "amp" => '&',
+        "quot" => '"',
+        "apos" => '\'',
+        _ => panic!("internal error")
+    };
+
+    Ok((input, ch))
 }
 
 // [228]    	ElementContentChar 	   ::=    	(Char - [{}<&])

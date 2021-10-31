@@ -4,15 +4,15 @@ use crate::eval::Environment;
 use bigdecimal::Zero;
 use crate::parser::errors::ErrorCode;
 
-pub(crate) fn fn_true<'a>(env: Box<Environment<'a>>, _arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_true(env: Box<Environment>, _arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     Ok((env, Object::Atomic(Type::Boolean(true))))
 }
 
-pub(crate) fn fn_false<'a>(env: Box<Environment<'a>>, _arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_false(env: Box<Environment>, _arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     Ok((env, Object::Atomic(Type::Boolean(false))))
 }
 
-pub(crate) fn fn_not<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_not(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     let result = match arguments.as_slice() {
         [object] => {
             object_to_bool(object)
@@ -26,7 +26,7 @@ pub(crate) fn fn_not<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _con
     }
 }
 
-pub(crate) fn fn_boolean<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_boolean(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     let item = arguments.get(0).unwrap();
 
     match object_to_bool(item) {

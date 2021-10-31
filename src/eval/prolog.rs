@@ -5,28 +5,30 @@ use bigdecimal::BigDecimal;
 use ordered_float::OrderedFloat;
 use crate::values::{QName, resolve_function_qname, resolve_element_qname};
 use crate::fns::{Param, call, object_to_bool};
-use crate::eval::{Environment, DynamicContext, EvalResult, Object, Type, eval_predicates, Axis, step_and_test, object_to_qname, object_to_iterator, object_owned_to_sequence, object_to_integer, ErrorInfo, INS};
+use crate::eval::{Environment, DynamicContext, EvalResult, Object, Type, eval_predicates, Axis, step_and_test, object_to_qname, object_owned_to_sequence, object_to_integer, ErrorInfo, INS};
 use crate::serialization::{object_to_string};
 use crate::serialization::to_string::object_to_string_xml;
 use crate::eval::helpers::{relax, relax_sequences, sort_and_dedup, process_items, join_sequences};
 use std::collections::HashMap;
+use std::fmt::Formatter;
 use crate::eval::arithmetic::{eval_unary, eval_arithmetic};
 use crate::eval::comparison::{eval_comparison, eval_comparison_item};
 use crate::eval::piping::{Pipe, eval_pipe};
-use crate::parser::errors::ErrorCode;
+use crate::parser::errors::{CustomError, ErrorCode};
 use crate::eval::sequence_type::SequenceType;
 use linked_hash_map::LinkedHashMap;
+use crate::namespaces::Namespace;
 
 //internal
 #[derive(Clone, Debug)]
 pub(crate) struct Literals { pub(crate) exprs: Vec<Box<dyn Expression>> }
 
 impl Expression for Literals {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         todo!()
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -39,11 +41,11 @@ impl Expression for Literals {
 pub(crate) struct CharRef { pub(crate) representation: Representation, pub(crate) reference: u32 }
 
 impl Expression for CharRef {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         Ok((env, Object::CharRef { representation: self.representation.clone(), reference: self.reference.clone() }))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -57,18 +59,18 @@ pub(crate) struct EntityRef {
     pub(crate) reference: String
 }
 
-impl From<&str> for EntityRef {
-    fn from(name: &str) -> Self {
-        EntityRef { reference: String::from(name) }
+impl EntityRef {
+    pub(crate) fn boxed(name: &str) -> Box<dyn Expression> {
+        Box::new(EntityRef { reference: String::from(name) })
     }
 }
 
 impl Expression for EntityRef {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         Ok((env, Object::EntityRef(self.reference.clone())))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -81,11 +83,11 @@ impl Expression for EntityRef {
 pub(crate) struct EscapeQuot {}
 
 impl Expression for EscapeQuot {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         Ok((env, Object::Atomic(Type::String(String::from("\"")))))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -98,11 +100,121 @@ impl Expression for EscapeQuot {
 pub(crate) struct EscapeApos {}
 
 impl Expression for EscapeApos {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         Ok((env, Object::Atomic(Type::String(String::from("'")))))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
+        todo!()
+    }
+
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct VersionDecl {
+    encoding: Option<String>,
+    version: Option<String>,
+}
+
+impl VersionDecl {
+    pub(crate) fn boxed<I>(encoding: Option<String>, version: Option<String>) -> Result<Box<dyn Expression>, (CustomError<I>, String)> {
+        if let Some(version) = &version {
+            match version.as_str() {
+                "1.0" | "3.0" | "3.1" => {
+                    // TODO
+                }
+                _ => return Err((CustomError::XQST0031, format!("unsupported version {}", version)))
+            }
+        }
+        if let Some(encoding) = &encoding {
+            match encoding.to_uppercase().replace("&#X2D;", "-").as_str() {
+                "US-ASCII" |
+                "ISO-8859-1" |
+                "UTF-8" => {
+                    // TODO
+                },
+                _ => return Err((CustomError::XQST0087, format!("unsupported encoding {}", encoding)))
+            }
+        }
+        Ok(Box::new(VersionDecl { encoding, version }))
+    }
+}
+
+impl Expression for VersionDecl {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
+        todo!()
+    }
+
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
+        todo!()
+    }
+
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum BoundarySpace {
+    Preserve,
+    Strip
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct DeclareBoundarySpace {
+    mode: BoundarySpace,
+}
+
+impl DeclareBoundarySpace {
+    pub(crate) fn boxed(mode: BoundarySpace) -> Box<dyn Expression> {
+        Box::new(DeclareBoundarySpace { mode })
+    }
+}
+
+impl Expression for DeclareBoundarySpace {
+    fn eval<'a>(&self, mut env: Box<Environment>, context: &DynamicContext) -> EvalResult {
+        if env.boundary_space.is_some() {
+            Err((ErrorCode::XQST0068, String::from("TODO")))
+        } else {
+            env.boundary_space = Some(self.mode.clone());
+            Ok((env, Object::Nothing))
+        }
+    }
+
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
+        todo!()
+    }
+
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct DeclareDefaultCollation {
+    uri: String,
+}
+
+impl DeclareDefaultCollation {
+    pub(crate) fn boxed(uri: String) -> Box<dyn Expression> {
+        Box::new(DeclareDefaultCollation { uri })
+    }
+}
+
+impl Expression for DeclareDefaultCollation {
+    fn eval<'a>(&self, mut env: Box<Environment>, context: &DynamicContext) -> EvalResult {
+        if env.default_collation.is_some() {
+            Err((ErrorCode::XQST0038, String::from("TODO")))
+        } else {
+            env.default_collation = Some(self.uri.clone());
+            Ok((env, Object::Nothing))
+        }
+    }
+
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -123,7 +235,7 @@ impl DeclareBaseURI {
 }
 
 impl Expression for DeclareBaseURI {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let (mut new_env, uri) = self.uri.eval(env, context)?;
 
         let uri = object_to_string(&new_env, &uri);
@@ -133,7 +245,220 @@ impl Expression for DeclareBaseURI {
         Ok((new_env, Object::Nothing))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
+        todo!()
+    }
+
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum ConstructionMode {
+    Strip,
+    Preserve
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct DeclareConstruction {
+    mode: ConstructionMode,
+}
+
+impl DeclareConstruction {
+    pub(crate) fn boxed(mode: ConstructionMode) -> Box<dyn Expression> {
+        Box::new(DeclareConstruction { mode })
+    }
+}
+
+impl Expression for DeclareConstruction {
+    fn eval<'a>(&self, mut env: Box<Environment>, context: &DynamicContext) -> EvalResult {
+        if env.construction_mode.is_some() {
+            Err((ErrorCode::XQST0067, String::from("TODO")))
+        } else {
+            env.construction_mode = Some(self.mode.clone());
+            Ok((env, Object::Nothing))
+        }
+    }
+
+    fn predicate(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
+        todo!()
+    }
+
+    fn dump(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum OrderingMode {
+    Ordered,
+    Unordered,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct DeclareOrderingMode {
+    mode: OrderingMode,
+}
+
+impl DeclareOrderingMode {
+    pub(crate) fn boxed(mode: OrderingMode) -> Box<dyn Expression> {
+        Box::new(DeclareOrderingMode { mode })
+    }
+}
+
+impl Expression for DeclareOrderingMode {
+    fn eval<'a>(&self, mut env: Box<Environment>, context: &DynamicContext) -> EvalResult {
+        if env.ordering_mode.is_some() {
+            Err((ErrorCode::XQST0065, String::from("TODO")))
+        } else {
+            env.ordering_mode = Some(self.mode.clone());
+            Ok((env, Object::Nothing))
+        }
+    }
+
+    fn predicate(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
+        todo!()
+    }
+
+    fn dump(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum EmptyOrderMode {
+    Greatest,
+    Least,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct DeclareEmptyOrder {
+    mode: EmptyOrderMode,
+}
+
+impl DeclareEmptyOrder {
+    pub(crate) fn boxed(mode: EmptyOrderMode) -> Box<dyn Expression> {
+        Box::new(DeclareEmptyOrder { mode })
+    }
+}
+
+impl Expression for DeclareEmptyOrder {
+    fn eval<'a>(&self, mut env: Box<Environment>, context: &DynamicContext) -> EvalResult {
+        if env.empty_order_mode.is_some() {
+            Err((ErrorCode::XQST0069, String::from("TODO")))
+        } else {
+            env.empty_order_mode = Some(self.mode.clone());
+            Ok((env, Object::Nothing))
+        }
+    }
+
+    fn predicate(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
+        todo!()
+    }
+
+    fn dump(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum PreserveMode {
+    Preserve,
+    NoPreserve
+}
+
+#[derive(Clone, Debug)]
+pub enum InheritMode {
+    Inherit,
+    NoInherit
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct DeclareCopyNamespaces {
+    preserve_mode: PreserveMode,
+    inherit_mode: InheritMode,
+}
+
+impl DeclareCopyNamespaces {
+    pub(crate) fn boxed(preserve_mode: PreserveMode, inherit_mode: InheritMode) -> Box<dyn Expression> {
+        Box::new(DeclareCopyNamespaces { preserve_mode, inherit_mode })
+    }
+}
+
+impl Expression for DeclareCopyNamespaces {
+    fn eval<'a>(&self, mut env: Box<Environment>, context: &DynamicContext) -> EvalResult {
+        if env.copy_namespaces.is_some() {
+            Err((ErrorCode::XQST0055, String::from("TODO")))
+        } else {
+            env.copy_namespaces = Some((self.preserve_mode.clone(), self.inherit_mode.clone()));
+            Ok((env, Object::Nothing))
+        }
+    }
+
+    fn predicate(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
+        todo!()
+    }
+
+    fn dump(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct DeclareDecimalFormat {
+    format: Option<QName>,
+    properties: Vec<(String, String)>,
+}
+
+impl DeclareDecimalFormat {
+    pub(crate) fn boxed(format: Option<QName>, properties: Vec<(String, String)>) -> Box<dyn Expression> {
+        Box::new(DeclareDecimalFormat { format, properties })
+    }
+}
+
+impl Expression for DeclareDecimalFormat {
+    fn eval<'a>(&self, mut env: Box<Environment>, context: &DynamicContext) -> EvalResult {
+        todo!()
+    }
+
+    fn predicate(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
+        todo!()
+    }
+
+    fn dump(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct DeclareNamespace {
+    prefix: Box<dyn Expression>,
+    uri: Box<dyn Expression>,
+}
+
+impl DeclareNamespace {
+    pub(crate) fn boxed(prefix: Box<dyn Expression>, uri: Box<dyn Expression>) -> Box<dyn Expression> {
+        Box::new(DeclareNamespace { prefix, uri })
+    }
+}
+
+impl Expression for DeclareNamespace {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
+        let (new_env, prefix) = self.prefix.eval(env, context)?;
+        let prefix = object_to_string(&new_env, &prefix);
+
+        let (mut new_env, uri) = self.uri.eval(new_env, context)?;
+        let uri = object_to_string(&new_env, &uri);
+
+        let ns = Namespace { prefix, uri };
+
+        new_env.namespaces.add(&ns);
+
+        Ok((new_env, Object::Nothing))
+    }
+
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -155,7 +480,7 @@ impl DeclareDefaultNamespace {
 }
 
 impl Expression for DeclareDefaultNamespace {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let (mut new_env, uri) = self.uri.eval(env, context)?;
 
         let uri = object_to_string(&new_env, &uri);
@@ -173,7 +498,7 @@ impl Expression for DeclareDefaultNamespace {
         Ok((new_env, Object::Nothing))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -190,12 +515,12 @@ pub(crate) struct AnnotatedDecl {
 }
 
 impl Expression for AnnotatedDecl {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         // TODO handle annotations
         self.decl.eval(env, context)
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -213,7 +538,7 @@ pub(crate) struct VarDecl {
 }
 
 impl Expression for VarDecl {
-    fn eval<'a>(&self, mut env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, mut env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let name = resolve_element_qname(&self.name, &env);
 
         let new_env = (*env.clone()).next(); // TODO fix it
@@ -230,7 +555,7 @@ impl Expression for VarDecl {
         Ok((env, Object::Nothing))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -249,7 +574,7 @@ pub(crate) struct FunctionDecl {
 }
 
 impl Expression for FunctionDecl {
-    fn eval<'a>(&self, mut env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, mut env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let name = resolve_function_qname(&self.name, &env);
 
         // TODO: handle typeDeclaration
@@ -264,7 +589,35 @@ impl Expression for FunctionDecl {
         Ok((env, Object::Nothing))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
+        todo!()
+    }
+
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct DeclareOption {
+    pub(crate) name: QName,
+    pub(crate) value: String,
+}
+
+impl DeclareOption {
+    pub(crate) fn boxed(name: QName, value: String) -> Box<dyn Expression> {
+        Box::new(DeclareOption { name, value })
+    }
+}
+
+impl Expression for DeclareOption {
+    fn eval<'a>(&self, mut env: Box<Environment>, context: &DynamicContext) -> EvalResult {
+        env.set_option(self.name.clone(), self.value.clone());
+
+        Ok((env, Object::Nothing))
+    }
+
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -289,7 +642,7 @@ impl Body {
 }
 
 impl Expression for Body {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         if self.exprs.len() == 0 {
             Ok((env, Object::Empty))
         } else {
@@ -310,7 +663,7 @@ impl Expression for Body {
         }
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -331,7 +684,7 @@ impl EnclosedExpr {
 }
 
 impl Expression for EnclosedExpr {
-    fn eval<'a>(&self, mut env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, mut env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let new_env = env.next();
         let (new_env, value) = self.expr.eval(new_env, context)?;
         env = new_env.prev();
@@ -339,7 +692,7 @@ impl Expression for EnclosedExpr {
         Ok((env, value))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -353,7 +706,7 @@ impl Expression for EnclosedExpr {
 pub(crate) struct Root {}
 
 impl Expression for Root {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         match &context.item {
             Object::Empty => Ok((env, Object::Empty)),
             Object::Node(rf) => {
@@ -367,7 +720,7 @@ impl Expression for Root {
         }
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -388,7 +741,7 @@ impl Steps {
 }
 
 impl Expression for Steps {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let mut current_env = env;
         let mut current_context = context.clone();
         for step in &self.steps {
@@ -406,7 +759,7 @@ impl Expression for Steps {
         Ok((current_env, current_context.item))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -422,7 +775,7 @@ pub(crate) struct InitialPath {
 }
 
 impl Expression for InitialPath {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         // TODO: handle steps
         // "/"  (fn:root(self::node()) treat as document-node())/
         // "//" (fn:root(self::node()) treat as document-node())/descendant-or-self::node()/
@@ -437,7 +790,7 @@ impl Expression for InitialPath {
         self.expr.eval(env, &context)
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -453,7 +806,7 @@ pub(crate) struct Path {
 }
 
 impl Expression for Path {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         // TODO: optimize
         let context = DynamicContext {
             initial_node_sequence: self.initial_node_sequence.clone(),
@@ -465,7 +818,7 @@ impl Expression for Path {
         self.expr.eval(env, &context)
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -487,7 +840,7 @@ impl AxisStep {
 }
 
 impl Expression for AxisStep {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let mut current_env = env;
 
         let (new_env, value) = self.step.eval(current_env, context)?;
@@ -496,7 +849,7 @@ impl Expression for AxisStep {
         eval_predicates(&self.predicates, current_env, value, context)
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -509,11 +862,11 @@ impl Expression for AxisStep {
 pub(crate) struct ForwardStep { pub(crate) axis: Axis, pub(crate) test: Box<dyn NodeTest> }
 
 impl Expression for ForwardStep {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         step_and_test(&self.axis, &self.test, env, context)
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -527,11 +880,11 @@ impl Expression for ForwardStep {
 pub(crate) struct Ident { pub(crate) value: String }
 
 impl Expression for Ident {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         todo!()
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -544,11 +897,11 @@ impl Expression for Ident {
 pub(crate) struct Boolean { pub(crate) bool: bool }
 
 impl Expression for Boolean {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         Ok((env, Object::Atomic(Type::Boolean(self.bool))))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -561,11 +914,11 @@ impl Expression for Boolean {
 pub(crate) struct Integer { pub(crate) number: i128 }
 
 impl Expression for Integer {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         Ok((env, Object::Atomic(Type::Integer(self.number))))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         let pos = self.number;
         if pos <= 0 {
             Ok((env, Object::Empty))
@@ -610,11 +963,11 @@ impl Expression for Integer {
 pub(crate) struct Decimal { pub(crate) number: BigDecimal }
 
 impl Expression for Decimal {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         Ok((env, Object::Atomic(Type::Decimal(self.number.clone()))))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -627,11 +980,11 @@ impl Expression for Decimal {
 pub(crate) struct Double { pub(crate) number: OrderedFloat<f64> }
 
 impl Expression for Double {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         Ok((env, Object::Atomic(Type::Double(self.number))))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -652,7 +1005,7 @@ impl StringComplex {
 }
 
 impl Expression for StringComplex {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let mut current_env = env;
 
         let mut strings = Vec::with_capacity(self.exprs.len());
@@ -667,7 +1020,7 @@ impl Expression for StringComplex {
         Ok((current_env, Object::Atomic(Type::String(strings.join("")))))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -704,11 +1057,11 @@ impl From<String> for StringExpr {
 }
 
 impl Expression for StringExpr {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         Ok((env, Object::Atomic(Type::String(self.string.clone()))))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -721,11 +1074,11 @@ impl Expression for StringExpr {
 pub(crate) struct Item {}
 
 impl Expression for Item {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         todo!()
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -738,11 +1091,11 @@ impl Expression for Item {
 pub(crate) struct ContextItem {}
 
 impl Expression for ContextItem {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         Ok((env, context.item.clone()))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -765,7 +1118,7 @@ impl Sequence {
 }
 
 impl Expression for Sequence {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let (new_env, value) = self.expr.eval(env, context)?;
 
         let mut items = object_owned_to_sequence(value);
@@ -774,7 +1127,7 @@ impl Expression for Sequence {
         relax(new_env, result)
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -787,11 +1140,11 @@ impl Expression for Sequence {
 pub(crate) struct SequenceEmpty {}
 
 impl Expression for SequenceEmpty {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         Ok((env, Object::Empty))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -804,7 +1157,7 @@ impl Expression for SequenceEmpty {
 pub(crate) struct Range { pub(crate) from: Box<dyn Expression>, pub(crate) till: Box<dyn Expression> }
 
 impl Expression for Range {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let mut current_env = env;
 
         let (new_env, evaluated_from) = self.from.eval(current_env, context)?;
@@ -842,7 +1195,7 @@ impl Expression for Range {
         }
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -861,7 +1214,7 @@ pub(crate) struct InstanceOf {
 }
 
 impl Expression for InstanceOf {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let mut current_env = env;
 
         let (new_env, object) = self.expr.eval(current_env, context)?;
@@ -875,7 +1228,7 @@ impl Expression for InstanceOf {
         })
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -891,7 +1244,7 @@ pub(crate) struct Treat {
 }
 
 impl Expression for Treat {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let mut current_env = env;
 
         let (new_env, object) = self.expr.eval(current_env, context)?;
@@ -910,7 +1263,7 @@ impl Expression for Treat {
         })
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -923,7 +1276,7 @@ impl Expression for Treat {
 pub(crate) struct Castable { pub(crate) expr: Box<dyn Expression>, pub(crate) st: SequenceType }
 
 impl Expression for Castable {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let (new_env, object) = self.expr.eval(env, context)?;
 
         println!("st {:?}", self.st);
@@ -931,7 +1284,7 @@ impl Expression for Castable {
         Ok((new_env, object))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -944,11 +1297,11 @@ impl Expression for Castable {
 pub(crate) struct Cast { pub(crate) expr: Box<dyn Expression>, pub(crate) st: SequenceType }
 
 impl Expression for Cast {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         todo!()
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -961,13 +1314,13 @@ impl Expression for Cast {
 pub(crate) struct Postfix { pub(crate) primary: Box<dyn Expression>, pub(crate) suffix: Vec<Predicate> }
 
 impl Expression for Postfix {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let (new_env, value) = self.primary.eval(env, context)?;
 
         eval_predicates(&self.suffix, new_env, value, context)
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -980,7 +1333,7 @@ impl Expression for Postfix {
 pub(crate) struct Union { pub(crate) exprs: Vec<Box<dyn Expression>> }
 
 impl Expression for Union {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let mut current_env = env;
 
         let mut result = Vec::with_capacity(self.exprs.len());
@@ -997,7 +1350,7 @@ impl Expression for Union {
         relax(current_env, result)
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -1010,11 +1363,11 @@ impl Expression for Union {
 pub(crate) struct IntersectExcept { pub(crate) left: Box<dyn Expression>, pub(crate) is_intersect: bool, pub(crate) right: Box<dyn Expression> }
 
 impl Expression for IntersectExcept {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         todo!()
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -1036,11 +1389,43 @@ impl NodeDocument {
 }
 
 impl Expression for NodeDocument {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
-        todo!()
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
+        let mut current_env = env.next();
+        let rf = current_env.xml_writer(|w| w.start_document());
+
+        let (new_env, obj) = self.expr.eval(current_env, context)?;
+        current_env = new_env;
+
+        match obj {
+            Object::Empty => {},
+            Object::Sequence(items) => {
+                for item in items {
+                    match item {
+                        Object::Node(rf) => {
+                            if current_env.xml_tree_id() != rf.xml_tree_id() {
+                                current_env.xml_writer(|w| w.link_node(&rf));
+                            }
+                        },
+                        _ => panic!("unexpected object {:?}", item) //TODO: better error
+                    }
+                }
+            },
+            Object::Node(rf) => {
+                if current_env.xml_tree_id() != rf.xml_tree_id() {
+                    current_env.xml_writer(|w| w.link_node(&rf));
+                }
+            },
+            _ => panic!("unexpected object {:?}", obj) //TODO: better error
+        };
+
+        current_env.xml_writer(|w| w.start_document());
+
+        current_env = current_env.prev();
+
+        Ok((current_env, Object::Node(rf)))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -1092,7 +1477,7 @@ impl NodeElement {
 }
 
 impl Expression for NodeElement {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let mut current_env = env;
 
         let (new_env, evaluated_name) = self.name.eval(current_env, context)?;
@@ -1122,7 +1507,6 @@ impl Expression for NodeElement {
                 Object::Sequence(items) => {
                     let mut add_space = false;
                     for item in items {
-                        let id = current_env.next_id();
                         match item {
                             Object::Node(rf) => {
                                 if current_env.xml_tree_id() != rf.xml_tree_id() {
@@ -1160,7 +1544,7 @@ impl Expression for NodeElement {
         Ok((current_env, Object::Node(rf) ))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -1179,7 +1563,7 @@ impl NodeAttribute {
 }
 
 impl Expression for NodeAttribute {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let mut current_env = env;
 
         let (new_env, evaluated_name) = self.name.eval(current_env, context)?;
@@ -1197,7 +1581,7 @@ impl Expression for NodeAttribute {
         Ok((current_env, Object::Node(rf) ))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -1218,7 +1602,7 @@ impl NodeText {
 }
 
 impl Expression for NodeText {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let (mut new_env, evaluated) = self.content.eval(env, context)?;
 
         let content = object_to_string(&new_env, &evaluated);
@@ -1228,7 +1612,7 @@ impl Expression for NodeText {
         Ok((new_env, Object::Node(pointer) ))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -1254,7 +1638,7 @@ impl From<&str> for NodeComment {
 }
 
 impl Expression for NodeComment {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let (mut new_env, evaluated) = self.content.eval(env, context)?;
 
         let content = object_to_string(&new_env, &evaluated);
@@ -1264,7 +1648,7 @@ impl Expression for NodeComment {
         Ok((new_env, Object::Node(rf) ))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -1286,7 +1670,7 @@ impl NodePI {
 }
 
 impl Expression for NodePI {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let mut current_env= env;
 
         let (new_env, evaluated_target) = self.target.eval(current_env, context)?;
@@ -1304,7 +1688,47 @@ impl Expression for NodePI {
         Ok(( current_env, Object::Node(rf) ))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
+        todo!()
+    }
+
+    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct NodeNS {
+    pub(crate) prefix: Box<dyn Expression>,
+    pub(crate) url: Box<dyn Expression>
+}
+
+impl NodeNS {
+    pub(crate) fn boxed(prefix: Box<dyn Expression>, url: Box<dyn Expression>) -> Box<dyn Expression> {
+        Box::new(NodeNS { prefix, url })
+    }
+}
+
+impl Expression for NodeNS {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
+        let mut current_env= env;
+
+        let (new_env, prefix) = self.prefix.eval(current_env, context)?;
+        current_env = new_env;
+
+        let prefix = object_to_string(&current_env, &prefix);
+
+        let (new_env, url) = self.url.eval(current_env, context)?;
+        current_env = new_env;
+
+        let url = object_to_string(&current_env, &url);
+
+        let rf = current_env.xml_writer(|w| w.ns(prefix, url));
+
+        Ok(( current_env, Object::Node(rf) ))
+    }
+
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -1317,7 +1741,7 @@ impl Expression for NodePI {
 pub(crate) struct Map { pub(crate) entries: Vec<MapEntry> } // Expr because can't use MapEntry here
 
 impl Expression for Map {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let mut current_env = env;
 
         let mut map = HashMap::new();
@@ -1340,7 +1764,7 @@ impl Expression for Map {
         Ok((current_env, Object::Map(map)))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -1353,11 +1777,11 @@ impl Expression for Map {
 pub(crate) struct MapEntry { pub(crate) key: Box<dyn Expression>, pub(crate) value: Box<dyn Expression> }
 
 impl Expression for MapEntry {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         todo!()
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -1370,7 +1794,7 @@ impl Expression for MapEntry {
 pub(crate) struct SquareArrayConstructor { pub(crate) items: Vec<Box<dyn Expression>> }
 
 impl Expression for SquareArrayConstructor {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let mut current_env = env;
 
         let mut values = Vec::with_capacity(self.items.len());
@@ -1384,7 +1808,7 @@ impl Expression for SquareArrayConstructor {
         Ok((current_env, Object::Array(values)))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -1397,7 +1821,7 @@ impl Expression for SquareArrayConstructor {
 pub(crate) struct CurlyArrayConstructor { pub(crate) expr: Box<dyn Expression> }
 
 impl Expression for CurlyArrayConstructor {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let (new_env, evaluated) = self.expr.eval(env, context)?;
 
         let values = match evaluated {
@@ -1408,7 +1832,7 @@ impl Expression for CurlyArrayConstructor {
         Ok((new_env, Object::Array(values)))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -1421,7 +1845,7 @@ impl Expression for CurlyArrayConstructor {
 pub(crate) struct Unary { pub(crate) expr: Box<dyn Expression>, pub(crate) sign_is_positive: bool }
 
 impl Expression for Unary {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let mut current_env = env;
 
         let (new_env, evaluated) = self.expr.eval(current_env, context)?;
@@ -1435,7 +1859,7 @@ impl Expression for Unary {
         })
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -1448,7 +1872,7 @@ impl Expression for Unary {
 pub(crate) struct Binary { pub(crate) left: Box<dyn Expression>, pub(crate) operator: OperatorArithmetic, pub(crate) right: Box<dyn Expression> }
 
 impl Expression for Binary {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let mut current_env = env;
 
         let (new_env, left_result) = self.left.eval(current_env, context)?;
@@ -1464,7 +1888,7 @@ impl Expression for Binary {
         }
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -1481,7 +1905,7 @@ pub(crate) struct Comparison {
 }
 
 impl Expression for Comparison {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let mut current_env = env;
 
         let (new_env, left_result) = self.left.eval(current_env, context)?;
@@ -1493,10 +1917,10 @@ impl Expression for Comparison {
         eval_comparison(current_env, self.operator.clone(), left_result, right_result)
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         let mut current_env = env;
 
-        let it = object_to_iterator(&value);
+        let it = object_owned_to_sequence(value);
 
         let mut evaluated = vec![];
 
@@ -1541,7 +1965,7 @@ pub(crate) struct If {
 }
 
 impl Expression for If {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let mut current_env = env;
 
         let (new_env, evaluated) = self.condition.eval(current_env, context)?;
@@ -1564,7 +1988,7 @@ impl Expression for If {
         })
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -1580,11 +2004,11 @@ pub(crate) struct Function {
 }
 
 impl Expression for Function {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         Ok((env, Object::Function { parameters: self.arguments.clone(), body: self.body.clone() }))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -1600,7 +2024,7 @@ pub(crate) struct Call {
 }
 
 impl Expression for Call {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let mut current_env = env;
 
         let name = resolve_function_qname(&self.function, &current_env);
@@ -1645,7 +2069,7 @@ impl Expression for Call {
         Ok((current_env, result))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         let mut current_env = env;
 
         let items = object_owned_to_sequence(value);
@@ -1685,7 +2109,7 @@ pub(crate) struct NamedFunctionRef {
 }
 
 impl Expression for NamedFunctionRef {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let mut current_env = env;
 
         let (new_env, arity) = self.arity.eval(current_env, context)?;
@@ -1707,7 +2131,7 @@ impl Expression for NamedFunctionRef {
         Ok((current_env, Object::FunctionRef { name, arity }))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -1723,11 +2147,11 @@ pub(crate) struct Annotation {
 }
 
 impl Expression for Annotation {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         todo!()
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -1740,7 +2164,7 @@ impl Expression for Annotation {
 pub(crate) struct VarRef { pub(crate) name: QName }
 
 impl Expression for VarRef {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let name = resolve_element_qname(&self.name, &env);
 
         if let Some(value) = env.get(&name) {
@@ -1750,7 +2174,7 @@ impl Expression for VarRef {
         }
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -1763,7 +2187,7 @@ impl Expression for VarRef {
 pub(crate) struct Or { pub(crate) exprs: Vec<Box<dyn Expression>> }
 
 impl Expression for Or {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         if self.exprs.len() == 0 {
             Ok((env, Object::Empty))
         } else {
@@ -1796,7 +2220,7 @@ impl Expression for Or {
         }
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -1809,7 +2233,7 @@ impl Expression for Or {
 pub(crate) struct And { pub(crate) exprs: Vec<Box<dyn Expression>> }
 
 impl Expression for And {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let mut current_env = env;
 
         let result = if self.exprs.len() == 0 {
@@ -1848,7 +2272,7 @@ impl Expression for And {
         Ok((current_env, result))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -1861,7 +2285,7 @@ impl Expression for And {
 pub(crate) struct StringConcat { pub(crate) exprs: Vec<Box<dyn Expression>> }
 
 impl Expression for StringConcat {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let mut current_env = env;
 
         if self.exprs.len() == 0 {
@@ -1890,7 +2314,7 @@ impl Expression for StringConcat {
         }
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -1903,7 +2327,7 @@ impl Expression for StringConcat {
 pub(crate) struct SimpleMap { pub(crate) exprs: Vec<Box<dyn Expression>> }
 
 impl Expression for SimpleMap {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let mut current_env = env;
 
         let mut result = Object::Empty;
@@ -1917,7 +2341,7 @@ impl Expression for SimpleMap {
             } else {
                 let mut sequence = vec![];
 
-                let it = object_to_iterator(&result);
+                let it = object_owned_to_sequence(result);
                 let last = Some(it.len());
                 let mut position = 0;
                 for item in it {
@@ -1940,7 +2364,7 @@ impl Expression for SimpleMap {
         Ok((current_env, result))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -1966,7 +2390,7 @@ pub(crate) enum Binding {
 pub(crate) struct FLWOR { pub(crate) clauses: Vec<Clause>, pub(crate) return_expr: Box<dyn Expression> }
 
 impl Expression for FLWOR {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let mut current_env = env;
 
         // TODO: new env?
@@ -1997,7 +2421,7 @@ impl Expression for FLWOR {
         Ok((current_env, answer))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 

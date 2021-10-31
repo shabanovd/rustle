@@ -1,34 +1,47 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Mutex, MutexGuard};
-use crate::values::QNameResolved;
+use crate::values::{QName, QNameResolved};
 use crate::eval::Object;
+use crate::eval::prolog::{BoundarySpace, ConstructionMode, EmptyOrderMode, InheritMode, OrderingMode, PreserveMode};
 use crate::fns::{Function, FunctionsRegister};
 use crate::namespaces::*;
 use crate::tree::{InMemoryXMLTree, Reference, XMLTreeWriter};
 
 #[derive(Clone)]
-pub struct Environment<'a> {
-    prev: Option<Box<Environment<'a>>>,
+pub struct Environment {
+    prev: Option<Box<Environment>>,
 
+    pub boundary_space: Option<BoundarySpace>,
+    pub default_collation: Option<String>,
     pub static_base_uri: Option<String>,
+    pub construction_mode: Option<ConstructionMode>,
+    pub ordering_mode: Option<OrderingMode>,
+    pub empty_order_mode: Option<EmptyOrderMode>,
+    pub copy_namespaces: Option<(PreserveMode, InheritMode)>,
 
     pub xml_tree: Rc<Mutex<Box<dyn XMLTreeWriter>>>,
 
-    pub namespaces: Namespaces<'a>,
+    pub namespaces: Namespaces,
     vars: HashMap<QNameResolved, Object>,
-    pub functions: FunctionsRegister<'a>,
+    pub functions: FunctionsRegister,
 
     sequence: usize,
 }
 
-impl<'a> Environment<'a> {
+impl Environment {
     pub fn create() -> Box<Self> {
         Box::new(
             Environment {
                 prev: None,
 
+                boundary_space: None,
+                default_collation: None,
                 static_base_uri: None,
+                construction_mode: None,
+                ordering_mode: None,
+                empty_order_mode: None,
+                copy_namespaces: None,
 
                 xml_tree: InMemoryXMLTree::create(1),
 
@@ -40,13 +53,19 @@ impl<'a> Environment<'a> {
         )
     }
 
-    pub fn next(mut self) -> Box<Environment<'a>> {
+    pub fn next(mut self) -> Box<Environment> {
         let sequence = self.next_id();
         Box::new(
             Environment {
                 prev: Some(Box::new(self)),
 
+                boundary_space: None,
+                default_collation: None,
                 static_base_uri: None,
+                construction_mode: None,
+                ordering_mode: None,
+                empty_order_mode: None,
+                copy_namespaces: None,
 
                 xml_tree: InMemoryXMLTree::create(sequence),
 
@@ -58,7 +77,11 @@ impl<'a> Environment<'a> {
         )
     }
 
-    pub fn prev(self) -> Box<Environment<'a>> {
+    pub fn set_option(&self, name: QName, value: String) {
+        // TODO
+    }
+
+    pub fn prev(self) -> Box<Environment> {
         match self.prev {
             Some(env) => env,
             None => panic!("internal error")
@@ -91,7 +114,14 @@ impl<'a> Environment<'a> {
     }
 
     pub fn get(&self, name: &QNameResolved) -> Option<Object> {
-        self.vars.get(name).map(|val| val.clone())
+        let obj = self.vars.get(name).map(|val| val.clone());
+        if obj.is_some() {
+            obj
+        } else if let Some(prev) = &self.prev {
+            prev.get(name)
+        } else {
+            None
+        }
     }
 
     pub fn declared_functions(&self, qname: &QNameResolved, arity: usize) -> Option<&Function> {

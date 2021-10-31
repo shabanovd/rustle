@@ -46,24 +46,9 @@ pub(crate) fn parse_eqname(input: &str) -> IResult<&str, QName, CustomError<&str
 
         let (input, name2) = parse_ncname(input)?;
 
-        let url = if name1 == String::from(XML.prefix) {
-            Some(String::from(XML.url))
-        } else if name1 == String::from(SCHEMA.prefix) {
-            Some(String::from(SCHEMA.url))
-        } else if name1 == String::from(SCHEMA_INSTANCE.prefix) {
-            Some(String::from(SCHEMA_INSTANCE.url))
-        } else if name1 == String::from(XPATH_FUNCTIONS.prefix) {
-            Some(String::from(XPATH_FUNCTIONS.url))
-        } else if name1 == String::from(XPATH_MAP.prefix) {
-            Some(String::from(XPATH_MAP.url))
-        } else if name1 == String::from(XPATH_ARRAY.prefix) {
-            Some(String::from(XPATH_ARRAY.url))
-        } else if name1 == String::from(XPATH_MATH.prefix) {
-            Some(String::from(XPATH_MATH.url))
-        } else if name1 == String::from(XQUERY_LOCAL.prefix) {
-            Some(String::from(XQUERY_LOCAL.url))
-        } else if name1 == String::from(XQT_ERROR.prefix) {
-            Some(String::from(XQT_ERROR.url))
+        // TODO: remove resolving from here?
+        let url = if let Some(ns) = NSs.get(&name1) {
+            Some(ns.uri.clone())
         } else {
             None
         };

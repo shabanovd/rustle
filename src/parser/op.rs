@@ -3,15 +3,6 @@ use crate::parser::errors::CustomError;
 use crate::values::QName;
 use crate::eval::expression::Expression;
 
-pub(crate) fn found_exprs(input: &str, exprs: Vec<Box<dyn Expression>>) -> IResult<&str, Vec<Box<dyn Expression>>, CustomError<&str>> {
-    // let mut items = Vec::with_capacity(exprs.len());
-    // for expr in exprs {
-    //     items.push(Box::new(expr))
-    // }
-    // Ok((input, items))
-    Ok((input, exprs))
-}
-
 pub(crate) fn found_expr(input: &str, expr: Box<dyn Expression>) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
     // if DEBUG {
     //     println!("\nfound: {:?}\ninput: {:?}", expr, input);

@@ -36,7 +36,7 @@ pub(crate) struct Pipe {
     pub next: Option<Box<Pipe>>,
 }
 
-pub(crate) fn eval_pipe<'a>(pipe: Box<Pipe>, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn eval_pipe<'a>(pipe: Box<Pipe>, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
     let mut current_env = env;
 
     let next = pipe.next;

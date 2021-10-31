@@ -1,7 +1,7 @@
 use crate::eval::{Environment, Object, Type, Time, DynamicContext, EvalResult};
 use chrono::{Datelike, Date, Local, TimeZone};
 
-pub(crate) fn fn_day_from_date<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_day_from_date(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Empty] => {
             Ok((env, Object::Empty))
@@ -13,7 +13,7 @@ pub(crate) fn fn_day_from_date<'a>(env: Box<Environment<'a>>, arguments: Vec<Obj
     }
 }
 
-pub(crate) fn fn_year_from_date<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_year_from_date(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Empty] => {
             Ok((env, Object::Empty))
@@ -25,7 +25,7 @@ pub(crate) fn fn_year_from_date<'a>(env: Box<Environment<'a>>, arguments: Vec<Ob
     }
 }
 
-pub(crate) fn fn_month_from_date<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_month_from_date(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Empty] => {
             Ok((env, Object::Empty))
@@ -37,7 +37,7 @@ pub(crate) fn fn_month_from_date<'a>(env: Box<Environment<'a>>, arguments: Vec<O
     }
 }
 
-pub(crate) fn fn_days_from_duration<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_days_from_duration(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Empty] => {
             Ok((env, Object::Empty))
@@ -57,7 +57,7 @@ pub(crate) fn fn_days_from_duration<'a>(env: Box<Environment<'a>>, arguments: Ve
     }
 }
 
-pub(crate) fn fn_current_date<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_current_date(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     // TODO  deterministic
     let now = Local::now();
     let date = Date::from_utc(now.date().naive_utc(), TimeZone::from_offset(now.offset()));
@@ -65,12 +65,12 @@ pub(crate) fn fn_current_date<'a>(env: Box<Environment<'a>>, arguments: Vec<Obje
     Ok((env, Object::Atomic(Type::Date(date))))
 }
 
-pub(crate) fn fn_current_time<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_current_time(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     // TODO  deterministic
     Ok((env, Object::Atomic(Type::Time(Time::now()))))
 }
 
-pub(crate) fn fn_timezone_from_time<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_timezone_from_time(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Empty] => Ok((env, Object::Empty)),
         [Object::Atomic(Type::Time(time))] => {

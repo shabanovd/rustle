@@ -6,6 +6,7 @@ use std::sync::Mutex;
 use linked_hash_map::LinkedHashMap;
 use xmlparser::{ElementEnd, Token};
 use crate::eval::{Axis, Environment, INS};
+use crate::namespaces::XML;
 use crate::tree::dln::DLN;
 use crate::tree::{Reference, XMLNode, XMLTreeReader, XMLTreeWriter};
 use crate::values::QName;
@@ -52,7 +53,7 @@ impl InMemoryXMLTree {
     }
 
     pub fn from_str(id: usize, data: &str) -> Rc<Mutex<Box<dyn XMLTreeWriter>>> {
-        let mut rf = InMemoryXMLTree::create(id);
+        let rf = InMemoryXMLTree::create(id);
         {
             let mut tree = rf.lock().unwrap();
             tree.start_document();
@@ -189,7 +190,15 @@ impl InMemoryXMLTree {
 impl XMLTreeReader for InMemoryXMLTree {
     fn name(&self, rf: &Reference) -> Option<QName> {
         if let Some(attr_name) = &rf.attr_name {
-            Some(attr_name.clone())
+            if let Some(uri) = &attr_name.url {
+                if uri == &*XML.uri {
+                    Some(QName::local_part(attr_name.local_part.clone()))
+                } else {
+                    Some(attr_name.clone())
+                }
+            } else {
+                Some(attr_name.clone())
+            }
         } else {
             if let Some(node) = self.items.get(&rf.id) {
                 node.name()
@@ -431,8 +440,12 @@ impl XMLTreeReader for InMemoryXMLTree {
     }
 
     fn is_namespace(&self, rf: &Reference) -> bool {
-        if let Some(node) = self.items.get(&rf.id) {
-            node.is_namespace()
+        if let Some(name) = &rf.attr_name {
+            if let Some(uri) = &name.url {
+                uri == &*XML.uri
+            } else {
+                false
+            }
         } else {
             false
         }
@@ -524,16 +537,32 @@ impl XMLTreeWriter for InMemoryXMLTree {
         let id = self.next_sibling();
         self.prepare_child();
 
-        let node = Box::new(Element { id: id.clone(), name, attributes: None });
+        let node = Box::new(Element { id: id.clone(), name: Some(name), attributes: None });
 
         self.items.insert(id.clone(), node);
 
         self.reference(id, None)
     }
 
+    fn ns(&mut self, prefix: String, url: String) -> Reference {
+        let name = QName::ns(&*XML, prefix);
+        self.attribute(name, url)
+    }
+
     fn attribute(&mut self, name: QName, value: String) -> Reference {
         let size = self.stack.len();
-        if size >= 2 {
+        if size == 0 {
+            let id = DLN::level_id(0);
+            self.stack.push(id.clone());
+
+            let mut node = Box::new(Element { id: id.clone(), name: None, attributes: None });
+            if node.add_attribute(name.clone(), value) {
+                self.items.insert(id.clone(), node);
+                return self.reference(id, Some(name));
+            } else {
+                panic!("internal error")
+            }
+        } else if size >= 2 {
             if let Some(id) = self.stack.get(size - 2) {
                 if let Some(node) = self.items.get_mut(id) {
                     if node.add_attribute(name.clone(), value) {
@@ -615,10 +644,6 @@ impl XMLNode for Document {
         None
     }
 
-    fn is_namespace(&self) -> bool {
-        false
-    }
-
     fn is_text(&self) -> bool {
         false
     }
@@ -651,7 +676,7 @@ impl XMLNode for Document {
 #[derive(Clone)]
 struct Element {
     id: DLN,
-    name: QName,
+    name: Option<QName>,
     attributes: Option<LinkedHashMap<QName, Attribute>>,
 }
 
@@ -661,7 +686,7 @@ impl XMLNode for Element {
     }
 
     fn name(&self) -> Option<QName> {
-        Some(self.name.clone())
+        self.name.clone()
     }
 
     fn typed_value(&self) -> String {
@@ -701,10 +726,6 @@ impl XMLNode for Element {
         }
     }
 
-    fn is_namespace(&self) -> bool {
-        false
-    }
-
     fn is_text(&self) -> bool {
         false
     }
@@ -714,20 +735,24 @@ impl XMLNode for Element {
     }
 
     fn to_xml_open(&self, env: &Box<Environment>) -> String {
-        let mut buf = String::new();
-        buf.push_str("<");
-        buf.push_str(self.name.string().as_str());
+        if let Some(name) = &self.name {
+            let mut buf = String::new();
+            buf.push_str("<");
+            buf.push_str(name.string().as_str());
 
-        if let Some(attrs) = &self.attributes {
-            for (name, attr) in attrs {
-                buf.push_str(" ");
-                buf.push_str(name.string().as_str());
-                buf.push_str("=\"");
-                buf.push_str(attr.value.as_str());
-                buf.push_str("\"")
+            if let Some(attrs) = &self.attributes {
+                for (name, attr) in attrs {
+                    buf.push_str(" ");
+                    buf.push_str(name.string().as_str());
+                    buf.push_str("=\"");
+                    buf.push_str(attr.value.as_str());
+                    buf.push_str("\"")
+                }
             }
+            buf
+        } else {
+            String::new()
         }
-        buf
     }
 
     fn to_xml_start_children(&self) -> String {
@@ -739,11 +764,15 @@ impl XMLNode for Element {
     }
 
     fn to_xml_close(&self) -> String {
-        let mut buf = String::new();
-        buf.push_str("</");
-        buf.push_str(self.name.string().as_str());
-        buf.push_str(">");
-        buf
+        if let Some(name) = &self.name {
+            let mut buf = String::new();
+            buf.push_str("</");
+            buf.push_str(name.string().as_str());
+            buf.push_str(">");
+            buf
+        } else {
+            String::new()
+        }
     }
 
     fn dump(&self) -> String {
@@ -796,10 +825,6 @@ impl XMLNode for Attribute {
 
     fn get_attributes(&self) -> Option<Vec<QName>> {
         None
-    }
-
-    fn is_namespace(&self) -> bool {
-        false
     }
 
     fn is_text(&self) -> bool {
@@ -863,10 +888,6 @@ impl XMLNode for PI {
         None
     }
 
-    fn is_namespace(&self) -> bool {
-        false
-    }
-
     fn is_text(&self) -> bool {
         false
     }
@@ -925,10 +946,6 @@ impl XMLNode for Text {
 
     fn get_attributes(&self) -> Option<Vec<QName>> {
         None
-    }
-
-    fn is_namespace(&self) -> bool {
-        false
     }
 
     fn is_text(&self) -> bool {
@@ -991,10 +1008,6 @@ impl XMLNode for Comment {
         None
     }
 
-    fn is_namespace(&self) -> bool {
-        false
-    }
-
     fn is_text(&self) -> bool {
         false
     }
@@ -1052,10 +1065,6 @@ impl XMLNode for LinkedNode {
     }
 
     fn get_attributes(&self) -> Option<Vec<QName>> {
-        todo!()
-    }
-
-    fn is_namespace(&self) -> bool {
         todo!()
     }
 

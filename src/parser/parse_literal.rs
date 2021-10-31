@@ -10,10 +10,11 @@ use nom::{
 };
 
 use crate::parser::op::found_expr;
-use crate::parser::parse_xml::parse_refs;
+use crate::parser::parse_xml::{parse_refs, parse_refs_as_char};
 use crate::parser::helper::ws;
 use ordered_float::OrderedFloat;
 use bigdecimal::BigDecimal;
+use nom::sequence::preceded;
 use crate::eval::expression::Expression;
 use crate::eval::prolog::*;
 
@@ -149,7 +150,6 @@ pub(crate) fn parse_string_literal(input: &str) -> IResult<&str, Box<dyn Express
 
         let check: Result<(&str, &str), nom::Err<Error<&str>>> = tag("&")(current_input);
         if check.is_err() {
-
             let (input, _) = tag(open)(current_input).or_failure(CustomError::XPST0003)?;
             current_input = input;
 
@@ -173,6 +173,57 @@ pub(crate) fn parse_string_literal(input: &str) -> IResult<&str, Box<dyn Express
                 } else {
                     found_expr(current_input, Box::new(StringComplex { exprs: data }))
                 }
+            }
+        }
+    }
+}
+
+pub(crate) fn parse_string_literal_as_string(input: &str) -> IResult<&str, String, CustomError<&str>> {
+    let (input, open) = preceded(ws, alt((tag("\""), tag("'"))))(input)?;
+    let except = if open == "'" { "'&" } else { "\"&" };
+
+    let mut data = String::new();
+
+    let mut current_input = input;
+    loop {
+        let check = parse_refs_as_char(current_input);
+        match check {
+            Ok((input, expr)) => {
+                current_input = input;
+
+                data.push(expr);
+                continue;
+            },
+            Err(nom::Err::Failure(e)) => {
+                return Err(nom::Err::Failure(e));
+            },
+            _ => {}
+        }
+
+        let check = is_not(except)(current_input);
+        current_input = if check.is_ok() {
+            let (input, content) = check?;
+            data.push_str(content);
+
+            input
+        } else {
+            current_input
+        };
+
+        let check: Result<(&str, &str), nom::Err<Error<&str>>> = tag("&")(current_input);
+        if check.is_err() {
+            let (input, _) = tag(open)(current_input).or_failure(CustomError::XPST0003)?;
+            current_input = input;
+
+            // lookahead
+            let check = tag(open)(current_input);
+            if check.is_ok() {
+                let (input, _) = check?;
+                current_input = input;
+
+                data.push_str(open);
+            } else {
+                return Ok((current_input, data));
             }
         }
     }

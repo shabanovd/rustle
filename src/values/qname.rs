@@ -1,16 +1,16 @@
 use core::fmt;
 use crate::eval::{Environment, DynamicContext, EvalResult, Object, Type};
-use crate::namespaces::SCHEMA;
+use crate::namespaces::{Namespace, SCHEMA};
 use std::cmp::Ordering;
 use crate::eval::expression::Expression;
 
 lazy_static! {
-    pub static ref XS_STRING: QName = QName::full("xs", "string", SCHEMA.url);
-    pub static ref XS_INTEGER: QName = QName::full("xs", "integer", SCHEMA.url);
-    pub static ref XS_DECIMAL: QName = QName::full("xs", "decimal", SCHEMA.url);
-    pub static ref XS_FLOAT: QName = QName::full("xs", "float", SCHEMA.url);
-    pub static ref XS_DOUBLE: QName = QName::full("xs", "double", SCHEMA.url);
-    pub static ref XS_UNTYPED_ATOMIC: QName = QName::full("xs", "untypedAtomic", SCHEMA.url);
+    pub static ref XS_STRING: QName = QName::full("xs", "string", &SCHEMA.uri);
+    pub static ref XS_INTEGER: QName = QName::full("xs", "integer", &SCHEMA.uri);
+    pub static ref XS_DECIMAL: QName = QName::full("xs", "decimal", &SCHEMA.uri);
+    pub static ref XS_FLOAT: QName = QName::full("xs", "float", &SCHEMA.uri);
+    pub static ref XS_DOUBLE: QName = QName::full("xs", "double", &SCHEMA.uri);
+    pub static ref XS_UNTYPED_ATOMIC: QName = QName::full("xs", "untypedAtomic", &SCHEMA.uri);
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
@@ -34,7 +34,7 @@ fn resolve_qname(qname: &QName, env: &Box<Environment>, default: &String) -> QNa
         if let Some(prefix) = &qname.prefix {
             if let Some(ns) = env.namespaces.by_prefix(prefix) {
                 QNameResolved {
-                    url: String::from(ns.url),
+                    url: ns.uri.clone(),
                     local_part: qname.local_part.clone(),
                 }
             } else {
@@ -65,11 +65,19 @@ impl QName {
         }
     }
 
-    pub fn full(prefix: &str, local_part: &str, url: &str) -> Self {
+    pub fn full<S: Into<String>>(prefix: S, local_part: S, url: S) -> Self {
         QName {
-            prefix: Some(String::from(prefix)),
-            url: Some(String::from(url)),
-            local_part: String::from(local_part),
+            prefix: Some(prefix.into()),
+            url: Some(url.into()),
+            local_part: local_part.into(),
+        }
+    }
+
+    pub fn ns(ns: &Namespace, local_part: String) -> Self {
+        QName {
+            prefix: Some(ns.prefix.clone()),
+            url: Some(ns.uri.clone()),
+            local_part: local_part.into(),
         }
     }
 
@@ -89,11 +97,11 @@ impl QName {
         }
     }
 
-    pub fn local_part(local_part: &str) -> Self {
+    pub fn local_part<S: Into<String>>(local_part: S) -> Self {
         QName {
             prefix: None,
             url: None,
-            local_part: String::from( local_part ),
+            local_part: local_part.into(),
         }
     }
 
@@ -118,7 +126,7 @@ impl QName {
         }
     }
 
-    pub fn len(&self) -> usize {
+    fn len(&self) -> usize {
         if let Some(prefix) = &self.prefix {
             prefix.len() + 1 + self.local_part.len()
         } else {
@@ -138,11 +146,11 @@ impl QName {
 }
 
 impl Expression for QName {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         Ok((env, Object::Atomic( Type::QName { local_part: self.local_part.clone(), url: self.url.clone(), prefix: self.prefix.clone() } ) ))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 
@@ -173,11 +181,11 @@ impl Name {
 }
 
 impl Expression for Name {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         Ok((env, Object::Atomic( Type::String(self.name.clone()) ) ))
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 

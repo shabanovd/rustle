@@ -1,46 +1,79 @@
 use std::collections::HashMap;
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct Namespace<'a> {
-    pub prefix: &'a str,
-    pub url: &'a str,
+pub struct Namespace {
+    pub prefix: String,
+    pub uri: String,
+}
+
+impl Namespace {
+    fn new<S: Into<String>>(prefix: S, uri: S) -> Self {
+        Namespace {
+            prefix: prefix.into(),
+            uri: uri.into(),
+        }
+    }
 }
 
 // namespaces
-pub const XML: Namespace = Namespace { prefix: "xml", url: "http://www.w3.org/XML/1998/namespace" };
-pub const SCHEMA: Namespace = Namespace { prefix: "xs", url: "http://www.w3.org/2001/XMLSchema" };
-pub const SCHEMA_INSTANCE: Namespace = Namespace { prefix: "xsi", url: "http://www.w3.org/2001/XMLSchema-instance" };
-pub const XPATH_FUNCTIONS: Namespace = Namespace { prefix: "fn", url: "http://www.w3.org/2005/xpath-functions" }; // fns ?
-pub const XPATH_MAP: Namespace = Namespace { prefix: "map", url: "http://www.w3.org/2005/xpath-functions/map" };
-pub const XPATH_ARRAY: Namespace = Namespace { prefix: "array", url: "http://www.w3.org/2005/xpath-functions/array" };
-pub const XPATH_MATH: Namespace = Namespace { prefix: "math", url: "http://www.w3.org/2005/xpath-functions/math" };
-pub const XQUERY_LOCAL: Namespace = Namespace { prefix: "local", url: "http://www.w3.org/2005/xquery-local-functions" };
-pub const XQT_ERROR: Namespace = Namespace { prefix: "err", url: "http://www.w3.org/2005/xqt-errors" };
-// http://www.w3.org/2012/xquery
+lazy_static! {
+    pub static ref XML: Namespace = Namespace::new("xml", "http://www.w3.org/XML/1998/namespace");
+    pub static ref SCHEMA: Namespace = Namespace::new("xs", "http://www.w3.org/2001/XMLSchema");
+    pub static ref SCHEMA_INSTANCE: Namespace = Namespace::new("xsi", "http://www.w3.org/2001/XMLSchema-instance");
+    pub static ref XPATH_FUNCTIONS: Namespace = Namespace::new("fn", "http://www.w3.org/2005/xpath-functions"); // fns ?
+    pub static ref XPATH_MAP: Namespace = Namespace::new("map", "http://www.w3.org/2005/xpath-functions/map");
+    pub static ref XPATH_ARRAY: Namespace = Namespace::new("array", "http://www.w3.org/2005/xpath-functions/array");
+    pub static ref XPATH_MATH: Namespace = Namespace::new("math", "http://www.w3.org/2005/xpath-functions/math");
+    pub static ref XQUERY_LOCAL: Namespace = Namespace::new("local", "http://www.w3.org/2005/xquery-local-functions");
+    pub static ref XQT_ERROR: Namespace = Namespace::new("err", "http://www.w3.org/2005/xqt-errors");
+    // http://www.w3.org/2012/xquery
+}
+
+lazy_static! {
+    pub static ref NSs: HashMap<String, Namespace> = {
+        let mut map = HashMap::new();
+
+        for ns in [
+            &*XML,
+            &*SCHEMA,
+            &*SCHEMA_INSTANCE,
+            &*XPATH_FUNCTIONS,
+            &*XPATH_MAP,
+            &*XPATH_ARRAY,
+            &*XPATH_MATH,
+            &*XQUERY_LOCAL,
+            &*XQT_ERROR
+        ] {
+            map.insert(ns.prefix.clone(), ns.clone());
+        }
+
+        map
+    };
+}
 
 #[derive(Clone)]
-pub struct Namespaces<'a> {
-    prefixes: HashMap<&'a str, Namespace<'a>>,
+pub struct Namespaces {
+    prefixes: HashMap<String, Namespace>,
     pub default_for_element: String,
     pub default_for_function: String,
 }
 
-impl<'a> Namespaces<'a> {
+impl Namespaces {
     pub fn new() -> Self {
         let mut instance = Namespaces {
             prefixes: HashMap::new(),
             default_for_element: "".to_string(),
-            default_for_function: XPATH_FUNCTIONS.url.to_string(),
+            default_for_function: XPATH_FUNCTIONS.uri.to_string(),
         };
 
-        instance.add(XML);
-        instance.add(SCHEMA);
-        instance.add(SCHEMA_INSTANCE);
-        instance.add(XPATH_FUNCTIONS);
-        instance.add(XPATH_MAP);
-        instance.add(XPATH_ARRAY);
-        instance.add(XPATH_MATH);
-        instance.add(XQUERY_LOCAL);
+        instance.add(&*XML);
+        instance.add(&*SCHEMA);
+        instance.add(&*SCHEMA_INSTANCE);
+        instance.add(&*XPATH_FUNCTIONS);
+        instance.add(&*XPATH_MAP);
+        instance.add(&*XPATH_ARRAY);
+        instance.add(&*XPATH_MATH);
+        instance.add(&*XQUERY_LOCAL);
 
         instance
     }
@@ -53,8 +86,8 @@ impl<'a> Namespaces<'a> {
         self.default_for_function.clone()
     }
 
-    pub fn add(&mut self, ns: Namespace<'a>) {
-        self.prefixes.insert(&ns.prefix, ns);
+    pub fn add(&mut self, ns: &Namespace) {
+        self.prefixes.insert(ns.prefix.clone(), ns.clone());
     }
 
     pub fn by_prefix(&self, prefix: &str) -> Option<&Namespace> {

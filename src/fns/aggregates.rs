@@ -1,7 +1,7 @@
 use crate::eval::{Environment, Object, Type, EvalResult, DynamicContext, comparison};
 use bigdecimal::{BigDecimal, FromPrimitive};
 
-pub(crate) fn fn_count<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_count(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Empty] => {
             Ok((env, Object::Atomic(Type::Integer(0))))
@@ -42,7 +42,7 @@ pub(crate) fn fn_count<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _c
     }
 }
 
-pub(crate) fn fn_avg<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_avg(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
 
     match arguments.as_slice() {
         [Object::Empty] => {
@@ -74,7 +74,7 @@ pub(crate) fn fn_avg<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _con
     }
 }
 
-pub(crate) fn fn_max<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_max(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Empty] => {
             Ok((env, Object::Empty))
@@ -104,7 +104,7 @@ pub(crate) fn fn_max<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _con
     }
 }
 
-pub(crate) fn fn_min<'a>(env: Box<Environment<'a>>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_min(env: Box<Environment>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     let arg = arguments.remove(0);
     match arg {
         Object::Empty => {

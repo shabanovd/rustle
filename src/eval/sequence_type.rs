@@ -3,20 +3,21 @@ use crate::values::*;
 use crate::eval::expression::{NodeTest, Expression};
 use crate::tree::Reference;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, Clone)]
 pub enum ItemType {
     SequenceEmpty,
     Item,
     AtomicOrUnionType(QName),
 
     AnyKind,
-    Document(Option<Box<ItemType>>),
-    Element,
-    Attribute,
-    Text,
-    Comment,
-    NamespaceNode,
-    PI,
+    Node(Box<dyn NodeTest>),
+    // Document(Option<Box<ItemType>>),
+    // Element,
+    // Attribute,
+    // Text,
+    // Comment,
+    // NamespaceNode,
+    // PI,
 
     SchemaAttribute(QName),
 }
@@ -29,7 +30,7 @@ pub enum OccurrenceIndicator {
     OneOrMore, // +
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct SequenceType {
     pub(crate) item_type: ItemType,
     pub(crate) occurrence_indicator: OccurrenceIndicator
@@ -163,11 +164,13 @@ impl NodeTest for PITest {
 
 #[derive(Clone, Debug)]
 pub(crate) struct ElementTest {
+    name: Option<QName>,
+    type_annotation: Option<QName>,
 }
 
 impl ElementTest {
-    pub(crate) fn boxed() -> Box<dyn NodeTest> {
-        Box::new(ElementTest { })
+    pub(crate) fn boxed(name: Option<QName>, type_annotation: Option<QName>) -> Box<dyn NodeTest> {
+        Box::new(ElementTest { name, type_annotation })
     }
 }
 
@@ -180,16 +183,12 @@ impl NodeTest for ElementTest {
 #[derive(Clone, Debug)]
 pub(crate) struct AttributeTest {
     name: Option<QName>,
-    type_name: Option<QName>,
+    type_annotation: Option<QName>,
 }
 
 impl AttributeTest {
-    pub(crate) fn boxed() -> Box<dyn NodeTest> {
-        Box::new(AttributeTest { name: None, type_name: None })
-    }
-
-    pub(crate) fn boxed_with(name: QName, type_name: Option<QName>) -> Box<dyn NodeTest> {
-        Box::new(AttributeTest { name: Some(name), type_name })
+    pub(crate) fn boxed(name: Option<QName>, type_annotation: Option<QName>) -> Box<dyn NodeTest> {
+        Box::new(AttributeTest { name: None, type_annotation: None })
     }
 }
 
@@ -198,7 +197,7 @@ impl NodeTest for AttributeTest {
         if let Some(rf_name) = &rf.attr_name {
             if let Some(name) = &self.name {
                 if rf_name == name {
-                    if let Some(type_name) = &self.type_name {
+                    if let Some(type_annotation) = &self.type_annotation {
                         todo!()
                     } else {
                         true

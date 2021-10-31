@@ -149,7 +149,6 @@ pub trait XMLNode: DynClone {
     fn get_attributes(&self) -> Option<Vec<QName>>;
 
     // tests
-    fn is_namespace(&self) -> bool;
     fn is_text(&self) -> bool;
     fn is_comment(&self) -> bool;
 
@@ -197,6 +196,8 @@ pub trait XMLTreeWriter: DynClone {
     fn end_element(&mut self) -> Option<Reference>;
 
     fn pi(&mut self, target: QName, content: String) -> Reference;
+
+    fn ns(&mut self, prefix: String, url: String) -> Reference;
 
     fn text(&mut self, content: String) -> Reference;
 

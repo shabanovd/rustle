@@ -7,7 +7,7 @@ use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use crate::serialization::object_to_string;
 use crate::fns::boolean::object_casting_bool;
 
-pub(crate) fn xs_untyped_atomic_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn xs_untyped_atomic_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     let item = arguments.get(0).unwrap();
 
     let str = object_to_string(&env, item);
@@ -15,7 +15,7 @@ pub(crate) fn xs_untyped_atomic_eval<'a>(env: Box<Environment<'a>>, arguments: V
     Ok((env, Object::Atomic(Type::Untyped(str))))
 }
 
-pub(crate) fn xs_boolean_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn xs_boolean_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     let item = arguments.get(0).unwrap();
 
     match object_casting_bool(item, true) {
@@ -24,7 +24,7 @@ pub(crate) fn xs_boolean_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Obje
     }
 }
 
-pub(crate) fn xs_string_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn xs_string_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     let item = arguments.get(0).unwrap();
 
     let str = object_to_string(&env, item);
@@ -32,7 +32,7 @@ pub(crate) fn xs_string_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Objec
     Ok((env, Object::Atomic(Type::String(str))))
 }
 
-pub(crate) fn xs_ncname_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn xs_ncname_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
 
         [Object::Atomic(Type::String(string))] =>
@@ -42,7 +42,7 @@ pub(crate) fn xs_ncname_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Objec
     }
 }
 
-pub(crate) fn xs_anyuri_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn xs_anyuri_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
 
         [Object::Atomic(Type::String(string))] =>
@@ -52,7 +52,7 @@ pub(crate) fn xs_anyuri_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Objec
     }
 }
 
-pub(crate) fn xs_date_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn xs_date_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Atomic(Type::String(string))] => {
             match string_to_date(string) {
@@ -67,7 +67,7 @@ pub(crate) fn xs_date_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>
     }
 }
 
-pub(crate) fn xs_date_time_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn xs_date_time_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Atomic(Type::String(string))] => {
             match string_to_date_time(string) {
@@ -82,7 +82,7 @@ pub(crate) fn xs_date_time_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Ob
     }
 }
 
-pub(crate) fn xs_duration_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn xs_duration_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Atomic(Type::String(string))] => {
             match string_to_duration(string) {
@@ -97,7 +97,7 @@ pub(crate) fn xs_duration_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Obj
     }
 }
 
-pub(crate) fn xs_day_time_duration_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn xs_day_time_duration_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Atomic(Type::String(string))] => {
             match string_to_dt_duration(string) {
@@ -112,7 +112,7 @@ pub(crate) fn xs_day_time_duration_eval<'a>(env: Box<Environment<'a>>, arguments
     }
 }
 
-pub(crate) fn xs_year_month_duration_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn xs_year_month_duration_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Atomic(Type::String(string))] => {
             match string_to_ym_duration(string) {
@@ -124,7 +124,7 @@ pub(crate) fn xs_year_month_duration_eval<'a>(env: Box<Environment<'a>>, argumen
     }
 }
 
-pub(crate) fn xs_integer_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn xs_integer_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Atomic(Type::String(string))] =>
             Ok((env, Object::Atomic(Type::Integer(string.parse::<i128>().unwrap())))),
@@ -136,55 +136,55 @@ pub(crate) fn xs_integer_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Obje
     }
 }
 
-pub(crate) fn xs_non_positive_integer_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn xs_non_positive_integer_eval(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
     xs_integer_eval(env, arguments, context)
 }
 
-pub(crate) fn xs_negative_integer_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn xs_negative_integer_eval(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
     xs_integer_eval(env, arguments, context)
 }
 
-pub(crate) fn xs_long_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn xs_long_eval(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
     xs_integer_eval(env, arguments, context)
 }
 
-pub(crate) fn xs_int_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn xs_int_eval(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
     xs_integer_eval(env, arguments, context)
 }
 
-pub(crate) fn xs_short_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn xs_short_eval(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
     xs_integer_eval(env, arguments, context)
 }
 
-pub(crate) fn xs_byte_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn xs_byte_eval(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
     xs_integer_eval(env, arguments, context)
 }
 
-pub(crate) fn xs_non_negative_integer_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn xs_non_negative_integer_eval(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
     xs_integer_eval(env, arguments, context)
 }
 
-pub(crate) fn xs_unsigned_long_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn xs_unsigned_long_eval(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
     xs_integer_eval(env, arguments, context)
 }
 
-pub(crate) fn xs_unsigned_int_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn xs_unsigned_int_eval(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
     xs_integer_eval(env, arguments, context)
 }
 
-pub(crate) fn xs_unsigned_short_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn xs_unsigned_short_eval(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
     xs_integer_eval(env, arguments, context)
 }
 
-pub(crate) fn xs_unsigned_byte_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn xs_unsigned_byte_eval(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
     xs_integer_eval(env, arguments, context)
 }
 
-pub(crate) fn xs_positive_integer_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn xs_positive_integer_eval(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
     xs_integer_eval(env, arguments, context)
 }
 
-pub(crate) fn xs_decimal_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn xs_decimal_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Atomic(Type::String(string))] => {
             match string_to_decimal(string) {
@@ -221,7 +221,7 @@ pub(crate) fn xs_decimal_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Obje
     }
 }
 
-pub(crate) fn xs_float_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn xs_float_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Atomic(Type::String(string))] => {
             match string.parse() {
@@ -257,7 +257,7 @@ pub(crate) fn xs_float_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object
     }
 }
 
-pub(crate) fn xs_double_eval<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn xs_double_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
 
         [Object::Atomic(Type::String(string))] => {

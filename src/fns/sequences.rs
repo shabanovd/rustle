@@ -4,7 +4,7 @@ use crate::eval::Environment;
 use crate::eval::helpers::relax;
 use crate::parser::errors::ErrorCode;
 
-pub(crate) fn fn_data<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_data(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
 
     let item = if arguments.len() == 0 {
         &context.item
@@ -15,11 +15,11 @@ pub(crate) fn fn_data<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, con
     let mut result = vec![];
     match data(env, item.clone(), &mut result) {
         Ok(env) => relax(env, result),
-        Err(msg) => Err((ErrorCode::TODO, String::from("TODO")))
+        Err(msg) => Err((ErrorCode::TODO, msg))
     }
 }
 
-fn data<'a>(env: Box<Environment<'a>>, obj: Object, result: &mut Vec<Object>) -> Result<Box<Environment<'a>>, String> {
+fn data(env: Box<Environment>, obj: Object, result: &mut Vec<Object>) -> Result<Box<Environment>, String> {
     match obj {
         Object::Atomic(..) => {
             result.push(obj);
@@ -43,7 +43,7 @@ fn data<'a>(env: Box<Environment<'a>>, obj: Object, result: &mut Vec<Object>) ->
     }
 }
 
-fn data_of_vec<'a>(env: Box<Environment<'a>>, items: Vec<Object>, result: &mut Vec<Object>) -> Result<Box<Environment<'a>>, String> {
+fn data_of_vec(env: Box<Environment>, items: Vec<Object>, result: &mut Vec<Object>) -> Result<Box<Environment>, String> {
     let mut current_env = env;
     for item in items {
         match data(current_env, item, result) {
@@ -54,7 +54,7 @@ fn data_of_vec<'a>(env: Box<Environment<'a>>, items: Vec<Object>, result: &mut V
     Ok(current_env)
 }
 
-pub(crate) fn fn_empty<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_empty(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     let result = match arguments.as_slice() {
         [Object::Empty] => true,
         [Object::Range { min, max}] => {
@@ -66,7 +66,7 @@ pub(crate) fn fn_empty<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _c
     Ok((env, Object::Atomic(Type::Boolean(result))))
 }
 
-pub(crate) fn fn_remove<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_remove(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Empty, ..] => Ok((env, Object::Empty)),
         [Object::Sequence(items), Object::Atomic(Type::Integer(pos))] => {
@@ -83,7 +83,7 @@ pub(crate) fn fn_remove<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _
     }
 }
 
-pub(crate) fn fn_reverse<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_reverse(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Empty] => Ok((env, Object::Empty)),
         [Object::Range { min, max}] => {
@@ -93,7 +93,7 @@ pub(crate) fn fn_reverse<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, 
     }
 }
 
-pub(crate) fn fn_subsequence<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_subsequence(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     println!("arguments {:?}", arguments);
     match arguments.as_slice() {
         [Object::Empty, ..] => Ok((env, Object::Empty)),
@@ -156,7 +156,7 @@ pub(crate) fn fn_subsequence<'a>(env: Box<Environment<'a>>, arguments: Vec<Objec
     }
 }
 
-pub(crate) fn fn_position<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_position(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
     if let Some(position) = context.position {
         Ok((env, Object::Atomic(Type::Integer(position as i128))))
     } else {
@@ -164,7 +164,7 @@ pub(crate) fn fn_position<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>,
     }
 }
 
-pub(crate) fn fn_last<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_last(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
     if let Some(last) = context.last {
         Ok((env, Object::Atomic(Type::Integer(last as i128))))
     } else {
@@ -172,7 +172,7 @@ pub(crate) fn fn_last<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, con
     }
 }
 
-pub(crate) fn fn_zero_or_one<'a>(env: Box<Environment<'a>>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_zero_or_one(env: Box<Environment>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     let arg = arguments.remove(0);
     match arg {
         Object::Empty => Ok((env, Object::Empty)),
@@ -190,7 +190,7 @@ pub(crate) fn fn_zero_or_one<'a>(env: Box<Environment<'a>>, mut arguments: Vec<O
     }
 }
 
-pub(crate) fn fn_one_or_more<'a>(env: Box<Environment<'a>>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_one_or_more(env: Box<Environment>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     let arg = arguments.remove(0);
     match arg {
         Object::Empty => Err((ErrorCode::FORG0004, String::from("TODO"))),
@@ -208,7 +208,7 @@ pub(crate) fn fn_one_or_more<'a>(env: Box<Environment<'a>>, mut arguments: Vec<O
     }
 }
 
-pub(crate) fn fn_exactly_one<'a>(env: Box<Environment<'a>>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_exactly_one(env: Box<Environment>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     let arg = arguments.remove(0);
     match arg {
         Object::Empty => Err((ErrorCode::FORG0005, String::from("TODO"))),

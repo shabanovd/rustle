@@ -4,11 +4,11 @@ use crate::eval::Environment;
 use crate::serialization::object_to_string;
 use crate::parser::errors::ErrorCode;
 
-pub(crate) fn fn_resolve_qname<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_resolve_qname(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     todo!()
 }
 
-pub(crate) fn fn_qname<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_qname(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     let url = arguments.get(0).unwrap();
     let qname = arguments.get(1).unwrap();
 
@@ -40,17 +40,17 @@ pub(crate) fn fn_qname<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _c
     Ok((env, Object::Atomic( Type::QName { url, prefix, local_part } )))
 }
 
-pub(crate) fn fn_prefix_from_qname<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_prefix_from_qname(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     println!("arguments {:?}", arguments);
     todo!()
 }
 
-pub(crate) fn fn_local_name_from_qname<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_local_name_from_qname(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     println!("arguments {:?}", arguments);
     todo!()
 }
 
-pub(crate) fn fn_namespace_uri_from_qname<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_namespace_uri_from_qname(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     println!("arguments {:?}", arguments);
     match arguments.as_slice() {
         [Object::Empty] => Ok((env, Object::Empty)),
@@ -65,17 +65,17 @@ pub(crate) fn fn_namespace_uri_from_qname<'a>(env: Box<Environment<'a>>, argumen
     }
 }
 
-pub(crate) fn fn_namespace_uri_for_prefix<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_namespace_uri_for_prefix(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     println!("arguments {:?}", arguments);
     todo!()
 }
 
-pub(crate) fn fn_in_scope_prefixes<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_in_scope_prefixes(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     println!("arguments {:?}", arguments);
     todo!()
 }
 
-pub(crate) fn fn_node_name<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_node_name(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
     println!("arguments {:?}", arguments);
     let item = if arguments.len() == 0 {
         &context.item

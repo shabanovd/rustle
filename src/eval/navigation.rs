@@ -15,7 +15,7 @@ impl NodeParent {
 }
 
 impl Expression for NodeParent {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         match &context.item {
             Object::Empty => Ok((env, Object::Empty)),
             Object::Node(rf) => {
@@ -44,7 +44,7 @@ impl Expression for NodeParent {
         }
     }
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a> {
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
 

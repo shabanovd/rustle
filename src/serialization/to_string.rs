@@ -22,7 +22,7 @@ pub fn _object_to_string(env: &Box<Environment>, object: &Object, ref_resolving:
 
             buf.join(sep)
         }
-        Object::CharRef { reference, representation } => {
+        Object::CharRef { representation, reference } => {
             if ref_resolving {
                 String::from(ref_to_char(*reference))
             } else {

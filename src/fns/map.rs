@@ -3,7 +3,7 @@ use crate::eval::Environment;
 
 use std::collections::HashMap;
 
-pub(crate) fn map_get<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn map_get(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Map(map), Object::Atomic(k)] => {
 
@@ -20,31 +20,31 @@ pub(crate) fn map_get<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _co
     }
 }
 
-pub(crate) fn map_merge<'a>(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn map_merge(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     todo!()
 }
 
-pub(crate) fn map_size<'a>(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn map_size(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     todo!()
 }
 
-pub(crate) fn map_keys<'a>(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn map_keys(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     todo!()
 }
 
-pub(crate) fn map_contains<'a>(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn map_contains(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     todo!()
 }
 
-pub(crate) fn map_find<'a>(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn map_find(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     todo!()
 }
 
-pub(crate) fn map_put<'a>(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn map_put(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     todo!()
 }
 
-pub(crate) fn map_entry<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn map_entry(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Atomic(k), Object::Atomic(v)] => {
 
@@ -59,10 +59,10 @@ pub(crate) fn map_entry<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _
     }
 }
 
-pub(crate) fn map_remove<'a>(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn map_remove(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     todo!()
 }
 
-pub(crate) fn map_for_each<'a>(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn map_for_each(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     todo!()
 }

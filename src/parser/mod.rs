@@ -1,7 +1,8 @@
+use nom::combinator::opt;
 use crate::parser::errors::CustomError;
 use crate::parser::helper::ws;
 use crate::parser::op::Statement;
-use crate::parser::parse_expr::parse_main_module;
+use crate::parser::parse_expr::{parse_main_module, parse_version_decl};
 
 mod helper;
 pub(crate) mod op;
@@ -15,6 +16,8 @@ pub mod parse_duration;
 
 // [1]    	Module 	   ::=    	TODO: VersionDecl? (LibraryModule | MainModule)
 pub fn parse(input: &str) -> Result<Vec<Statement>, CustomError<&str>> {
+
+    let (input, version_decl) = opt(parse_version_decl)(input)?;
 
     if input.len() == 0 {
         // empty is invalid

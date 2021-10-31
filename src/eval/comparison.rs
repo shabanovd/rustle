@@ -11,9 +11,9 @@ use crate::values::QName;
 use crate::fns::object_to_bool;
 use crate::tree::Reference;
 
-type ObjectInEnv<'a, 'b> = (&'a Box<Environment<'b>>, Object);
-type ObjectRefInEnv<'a, 'b> = (&'a Box<Environment<'b>>, &'a Object);
-type NodeRefInEnv<'a, 'b> = (&'a Box<Environment<'b>>, &'a Reference);
+type ObjectInEnv<'a> = (&'a Box<Environment>, Object);
+type ObjectRefInEnv<'a> = (&'a Box<Environment>, &'a Object);
+type NodeRefInEnv<'a> = (&'a Box<Environment>, &'a Reference);
 
 // TODO: join with eval_arithmetic ?
 pub fn eval_comparison(env: Box<Environment>, operator: OperatorComparison, left: Object, right: Object) -> EvalResult {
@@ -583,7 +583,7 @@ pub(crate) fn deep_eq(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<boo
     }
 }
 
-pub(crate) fn deep_eq_sequence_and_range<'a, 'b>(env: &'a Box<Environment<'b>>, left_items: &'a Vec<Object>, min: i128, max: i128) -> Result<bool, ErrorInfo> {
+pub(crate) fn deep_eq_sequence_and_range<'a>(env: &'a Box<Environment>, left_items: &'a Vec<Object>, min: i128, max: i128) -> Result<bool, ErrorInfo> {
     let (min, max) = if min <= max {
         (min, max)
     } else {

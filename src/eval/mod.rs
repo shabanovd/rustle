@@ -23,9 +23,9 @@ use crate::eval::expression::{Expression, NodeTest};
 use crate::tree::Reference;
 
 pub type ErrorInfo = (ErrorCode, String);
-// pub type EvalResult<'a> = Result<(Box<Environment<'a>>, Iter<'a, Answer>), (ErrorCode, String)>;
-// pub type EvalResult<'a> = Result<(Box<Environment<'a>>, Answer), (ErrorCode, String)>;
-pub type EvalResult<'a> = Result<(Box<Environment<'a>>, Object), ErrorInfo>;
+// pub type EvalResult = Result<(Box<Environment>, Iter<'a, Answer>), (ErrorCode, String)>;
+// pub type EvalResult = Result<(Box<Environment>, Answer), (ErrorCode, String)>;
+pub type EvalResult = Result<(Box<Environment>, Object), ErrorInfo>;
 
 // initial_node_sequence
 #[derive(Debug, Clone, PartialEq)]
@@ -54,7 +54,7 @@ impl DynamicContext {
     }
 }
 
-pub(crate) fn eval_statements<'a>(statements: Vec<Statement>, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn eval_statements(statements: Vec<Statement>, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
 
     let mut result = Object::Empty;
 
@@ -74,7 +74,7 @@ pub(crate) fn eval_statements<'a>(statements: Vec<Statement>, env: Box<Environme
     Ok((current_env, result))
 }
 
-fn eval_statement<'a>(statement: Statement, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+fn eval_statement(statement: Statement, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
     match statement {
         Statement::Prolog(exprs) => eval_prolog(exprs, env),
         Statement::Program(expr) => expr.eval(env, context),
@@ -111,7 +111,7 @@ pub enum Axis {
     ReversePrecedingSibling,
 }
 
-fn step_and_test<'a>(step: &Axis, test: &Box<dyn NodeTest>, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+fn step_and_test(step: &Axis, test: &Box<dyn NodeTest>, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
     match &context.item {
         Object::Nothing => Err((ErrorCode::XPDY0002, String::from("TODO"))),
         Object::Empty => Ok((env, Object::Empty)),
@@ -170,7 +170,7 @@ fn step_and_test_for_node<'a>(axis: &Axis, test: &Box<dyn NodeTest>, rf: &Refere
 }
 
 
-fn eval_predicates<'a>(exprs: &Vec<Predicate>, env: Box<Environment<'a>>, value: Object, context: &DynamicContext) -> EvalResult<'a> {
+fn eval_predicates(exprs: &Vec<Predicate>, env: Box<Environment>, value: Object, context: &DynamicContext) -> EvalResult {
     let mut current_env = env;
     let mut result = value;
 
@@ -255,6 +255,8 @@ pub(crate) fn object_to_integer(env: &Box<Environment>, object: Object) -> Resul
 // TODO: optimize!!!
 pub(crate) fn object_to_iterator(object: &Object) -> Vec<Object> {
     match object {
+        Object::Empty => Vec::new(),
+        Object::Node(..) |
         Object::Atomic(..) => {
             let mut result = Vec::with_capacity(1);
             result.push(object.clone());

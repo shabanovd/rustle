@@ -13,9 +13,9 @@ mod debugging {
 }
 
 pub trait Expression: DynClone + DynDebug {
-    fn eval<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a>;
+    fn eval(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult;
 
-    fn predicate<'a>(&self, env: Box<Environment<'a>>, context: &DynamicContext, value: Object) -> EvalResult<'a>;
+    fn predicate(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult;
 
     fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result;
 }
@@ -28,13 +28,13 @@ impl fmt::Debug for dyn Expression {
 
 dyn_clone::clone_trait_object!(Expression);
 
-pub(crate) trait NodeTest: DynClone + DynDebug {
+pub trait NodeTest: DynClone + DynDebug {
     fn test_node(&self, rf: &Reference) -> bool;
 }
 
 impl fmt::Debug for dyn NodeTest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "NodeTest {{ .. }}")
     }
 }
 

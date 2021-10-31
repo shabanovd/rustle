@@ -175,6 +175,8 @@ pub enum ErrorCode {
 #[derive(Debug, PartialEq, AsRefStr)]
 pub enum CustomError<I> {
     XQST0040,
+    XQST0031,
+    XQST0087,
     XPST0003,
     FOAR0002,
     XQST0090,

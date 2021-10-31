@@ -5,7 +5,7 @@ use bigdecimal::num_traits::float::FloatCore;
 use bigdecimal::{BigDecimal, Signed};
 use bigdecimal::num_bigint::BigInt;
 
-pub(crate) fn fn_abs<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_abs(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
 
     match arguments.as_slice() {
         [Object::Atomic(Type::Integer(number))] => {
@@ -24,7 +24,7 @@ pub(crate) fn fn_abs<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _con
     }
 }
 
-pub(crate) fn fn_floor<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_floor(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Atomic(Type::Integer(number))] => {
             Ok((env, Object::Atomic(Type::Integer(*number))))
@@ -42,7 +42,7 @@ pub(crate) fn fn_floor<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _c
     }
 }
 
-pub(crate) fn fn_round<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_round(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Atomic(Type::Integer(number))] => {
             Ok((env, Object::Atomic(Type::Integer(*number))))
@@ -78,7 +78,7 @@ pub(crate) fn fn_round<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _c
     }
 }
 
-pub(crate) fn fn_round_half_to_even<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn fn_round_half_to_even(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
 
     println!("arguments: {:?}", arguments);
     // TODO precision parameter
