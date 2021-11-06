@@ -8,7 +8,6 @@ use nom::sequence::{preceded, delimited, tuple, terminated, separated_pair};
 use nom::multi::{many0, separated_list1};
 use nom::combinator::{map, opt, peek};
 use nom::character::complete::{one_of, digit1};
-use nom::Err::Failure;
 use crate::eval::{Axis, INS};
 
 use crate::parser::helper::*;
@@ -21,8 +20,6 @@ use crate::parser::op::{found_expr, Statement, OperatorComparison, OperatorArith
 use crate::eval::expression::{Expression, NodeTest};
 use crate::eval::sequence_type::*;
 use crate::eval::navigation::NodeParent;
-
-const DEBUG: bool = false;
 
 // [2]    	VersionDecl 	   ::=    	"xquery" (("encoding" StringLiteral) | ("version" StringLiteral ("encoding" StringLiteral)?)) Separator
 pub fn parse_version_decl(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
@@ -686,9 +683,6 @@ fn parse_for_binding(input: &str) -> IResult<&str, Binding, CustomError<&str>> {
 
 // [48]    	LetClause 	   ::=    	"let" LetBinding ("," LetBinding)*
 fn parse_let_clause(input: &str) -> IResult<&str, Clause, CustomError<&str>> {
-    if DEBUG {
-        println!("parse_let_clause_expr {:?}", input);
-    }
     let (input, _) = ws_tag("let", input)?;
     let mut current_input = input;
 

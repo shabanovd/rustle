@@ -402,6 +402,36 @@ pub(crate) fn gr(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<bool, Er
     }
 }
 
+fn is_untyped(value: &Type) -> bool {
+    match value {
+        Type::Untyped(..) => true,
+        _ => false
+    }
+}
+
+fn is_numeric(value: &Type) -> bool {
+    match value {
+        Type::Integer(..) |
+        Type::Decimal(..) |
+        Type::Float(..) |
+        Type::Double(..) => true,
+        _ => false
+    }
+}
+
+// pub(crate) fn general_eq_for_types(left: &Type, right: &Type) -> Result<bool, ErrorInfo> {
+//     let is_untyped_left = is_untyped(left);
+//     let is_untyped_right = is_untyped(right);
+//     if is_untyped_left != is_untyped_right {
+//         if is_untyped_left {
+//             if is_numeric(right) {
+//                 left = left.convert(Type::Double)
+//
+//             }
+//         }
+//     }
+// }
+
 pub(crate) fn general_eq(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<bool, ErrorInfo> {
     match left.1 {
         Object::Empty => Ok(false),

@@ -1,8 +1,6 @@
 use std::convert::TryFrom;
 use std::fmt;
 use std::cmp::Ordering;
-use rand::prelude::*;
-use chrono::prelude::*;
 
 const LEVEL_UP: u8 = 0;
 
@@ -493,6 +491,8 @@ impl TryFrom<&str> for DLN {
 
 #[cfg(test)]
 mod tests {
+    use chrono::Local;
+    use rand::RngCore;
     use super::*;
 
     #[test]

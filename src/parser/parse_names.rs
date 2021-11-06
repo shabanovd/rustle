@@ -1,5 +1,5 @@
+use crate::namespaces::NS;
 use crate::parser::op::found_qname;
-use crate::namespaces::*;
 use crate::parser::errors::CustomError;
 use crate::values::{QName, Name};
 
@@ -47,7 +47,7 @@ pub(crate) fn parse_eqname(input: &str) -> IResult<&str, QName, CustomError<&str
         let (input, name2) = parse_ncname(input)?;
 
         // TODO: remove resolving from here?
-        let url = if let Some(ns) = NSs.get(&name1) {
+        let url = if let Some(ns) = NS.get(&name1) {
             Some(ns.uri.clone())
         } else {
             None

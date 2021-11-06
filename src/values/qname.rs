@@ -153,10 +153,6 @@ impl Expression for QName {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 impl fmt::Debug for QName {
@@ -186,10 +182,6 @@ impl Expression for Name {
     }
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
-        todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         todo!()
     }
 }

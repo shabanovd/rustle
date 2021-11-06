@@ -99,7 +99,7 @@ pub fn _object_to_string(env: &Box<Environment>, object: &Object, ref_resolving:
         Object::Node(rf) => {
             match rf.to_typed_value() {
                 Ok(data) => data,
-                Err(msg) => panic!(msg)
+                Err(msg) => panic!("{}", msg)
             }
         },
         _ => panic!("TODO object_to_string {:?}", object)

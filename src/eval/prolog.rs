@@ -1,4 +1,3 @@
-use core::fmt;
 use crate::eval::expression::{Expression, NodeTest};
 use crate::parser::op::{Representation, OperatorArithmetic, OperatorComparison};
 use bigdecimal::BigDecimal;
@@ -10,7 +9,6 @@ use crate::serialization::{object_to_string};
 use crate::serialization::to_string::object_to_string_xml;
 use crate::eval::helpers::{relax, relax_sequences, sort_and_dedup, process_items, join_sequences};
 use std::collections::HashMap;
-use std::fmt::Formatter;
 use crate::eval::arithmetic::{eval_unary, eval_arithmetic};
 use crate::eval::comparison::{eval_comparison, eval_comparison_item};
 use crate::eval::piping::{Pipe, eval_pipe};
@@ -31,10 +29,6 @@ impl Expression for Literals {
     fn predicate(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -47,10 +41,6 @@ impl Expression for CharRef {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -73,10 +63,6 @@ impl Expression for EntityRef {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -90,10 +76,6 @@ impl Expression for EscapeQuot {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -106,10 +88,6 @@ impl Expression for EscapeApos {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -151,10 +129,6 @@ impl Expression for VersionDecl {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -187,10 +161,6 @@ impl Expression for DeclareBoundarySpace {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -216,10 +186,6 @@ impl Expression for DeclareDefaultCollation {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -247,10 +213,6 @@ impl Expression for DeclareBaseURI {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -282,10 +244,6 @@ impl Expression for DeclareConstruction {
     }
 
     fn predicate(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
-        todo!()
-    }
-
-    fn dump(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         todo!()
     }
 }
@@ -320,10 +278,6 @@ impl Expression for DeclareOrderingMode {
     fn predicate(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        todo!()
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -354,10 +308,6 @@ impl Expression for DeclareEmptyOrder {
     }
 
     fn predicate(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
-        todo!()
-    }
-
-    fn dump(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         todo!()
     }
 }
@@ -399,10 +349,6 @@ impl Expression for DeclareCopyNamespaces {
     fn predicate(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        todo!()
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -423,10 +369,6 @@ impl Expression for DeclareDecimalFormat {
     }
 
     fn predicate(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
-        todo!()
-    }
-
-    fn dump(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         todo!()
     }
 }
@@ -460,10 +402,6 @@ impl Expression for DeclareNamespace {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -501,10 +439,6 @@ impl Expression for DeclareDefaultNamespace {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 //prolog
@@ -522,10 +456,6 @@ impl Expression for AnnotatedDecl {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -558,10 +488,6 @@ impl Expression for VarDecl {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -592,10 +518,6 @@ impl Expression for FunctionDecl {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -619,10 +541,6 @@ impl Expression for DeclareOption {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -666,10 +584,6 @@ impl Expression for Body {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -695,10 +609,6 @@ impl Expression for EnclosedExpr {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 //navigation
@@ -722,10 +632,6 @@ impl Expression for Root {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -762,10 +668,6 @@ impl Expression for Steps {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -793,10 +695,6 @@ impl Expression for InitialPath {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -820,10 +718,6 @@ impl Expression for Path {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -852,10 +746,6 @@ impl Expression for AxisStep {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -868,10 +758,6 @@ impl Expression for ForwardStep {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -887,10 +773,6 @@ impl Expression for Ident {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -903,10 +785,6 @@ impl Expression for Boolean {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -953,10 +831,6 @@ impl Expression for Integer {
             }
         }
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -970,10 +844,6 @@ impl Expression for Decimal {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -986,10 +856,6 @@ impl Expression for Double {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -1022,10 +888,6 @@ impl Expression for StringComplex {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -1064,10 +926,6 @@ impl Expression for StringExpr {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -1081,10 +939,6 @@ impl Expression for Item {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -1097,10 +951,6 @@ impl Expression for ContextItem {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -1130,10 +980,6 @@ impl Expression for Sequence {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -1146,10 +992,6 @@ impl Expression for SequenceEmpty {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -1198,10 +1040,6 @@ impl Expression for Range {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -1230,10 +1068,6 @@ impl Expression for InstanceOf {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -1266,10 +1100,6 @@ impl Expression for Treat {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -1287,10 +1117,6 @@ impl Expression for Castable {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -1303,10 +1129,6 @@ impl Expression for Cast {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -1322,10 +1144,6 @@ impl Expression for Postfix {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -1353,10 +1171,6 @@ impl Expression for Union {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -1370,10 +1184,6 @@ impl Expression for IntersectExcept {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -1385,7 +1195,6 @@ impl NodeDocument {
     pub(crate) fn new(expr: Box<dyn Expression>) -> Box<dyn Expression> {
         Box::new(NodeDocument { expr })
     }
-
 }
 
 impl Expression for NodeDocument {
@@ -1427,10 +1236,6 @@ impl Expression for NodeDocument {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -1547,10 +1352,6 @@ impl Expression for NodeElement {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -1584,10 +1385,6 @@ impl Expression for NodeAttribute {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -1614,10 +1411,6 @@ impl Expression for NodeText {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -1650,10 +1443,6 @@ impl Expression for NodeComment {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -1691,10 +1480,6 @@ impl Expression for NodePI {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -1731,10 +1516,6 @@ impl Expression for NodeNS {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -1767,10 +1548,6 @@ impl Expression for Map {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -1783,10 +1560,6 @@ impl Expression for MapEntry {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -1811,10 +1584,6 @@ impl Expression for SquareArrayConstructor {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -1834,10 +1603,6 @@ impl Expression for CurlyArrayConstructor {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -1861,10 +1626,6 @@ impl Expression for Unary {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -1890,10 +1651,6 @@ impl Expression for Binary {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -1951,10 +1708,6 @@ impl Expression for Comparison {
 
         relax(current_env, evaluated)
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -1991,10 +1744,6 @@ impl Expression for If {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -2010,10 +1759,6 @@ impl Expression for Function {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -2096,10 +1841,6 @@ impl Expression for Call {
 
         relax(current_env, evaluated)
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -2134,10 +1875,6 @@ impl Expression for NamedFunctionRef {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -2153,10 +1890,6 @@ impl Expression for Annotation {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -2176,10 +1909,6 @@ impl Expression for VarRef {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -2222,10 +1951,6 @@ impl Expression for Or {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -2275,10 +2000,6 @@ impl Expression for And {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
     }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -2316,10 +2037,6 @@ impl Expression for StringConcat {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -2366,10 +2083,6 @@ impl Expression for SimpleMap {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -2423,9 +2136,5 @@ impl Expression for FLWOR {
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }

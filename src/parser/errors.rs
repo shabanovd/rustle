@@ -217,8 +217,8 @@ impl<I, O> IResultExt<I, O, CustomError<I>> for IResult<I, O, CustomError<I>> {
             self
         } else {
             match self {
-                Err(nom::Err::Error(CustomError::Nom(i,t))) |
-                Err(nom::Err::Failure(CustomError::Nom(i,t))) => {
+                Err(nom::Err::Error(CustomError::Nom(_,t))) |
+                Err(nom::Err::Failure(CustomError::Nom(_,t))) => {
                     println!("ERROR: {:?}", t);
                 }
                 _ => {}

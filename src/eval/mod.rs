@@ -9,8 +9,8 @@ use crate::eval::prolog::*;
 
 mod environment;
 pub(crate) mod comparison;
-mod value;
-pub(crate) use value::*;
+
+pub(crate) use crate::values::*;
 
 pub(crate) mod navigation;
 mod arithmetic;

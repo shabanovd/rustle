@@ -74,11 +74,11 @@ pub(crate) fn eval(sources: Vec<(&str, &str)>, input: &str) -> EvalResult {
 }
 
 pub(crate) fn check_assert(result: &EvalResult, check: &str) {
-    let (check_env, check_result) = eval_assert(result, check).unwrap();
+    let (_, check_result) = eval_assert(result, check).unwrap();
     match object_to_bool(&check_result) {
         Ok(check_result) => {
             if !check_result {
-                let (env, obj) = result.as_ref().unwrap();
+                let (_, obj) = result.as_ref().unwrap();
                 assert_eq!(format!("{:?}", obj), check);
             }
         },
@@ -87,7 +87,7 @@ pub(crate) fn check_assert(result: &EvalResult, check: &str) {
 }
 
 pub(crate) fn bool_check_assert(result: &EvalResult, check: &str) -> bool {
-    let (check_env, check_result) = eval_assert(result, check).unwrap();
+    let (_, check_result) = eval_assert(result, check).unwrap();
     match object_to_bool(&check_result) {
         Ok(check_result) => !check_result,
         Err((code, msg)) => {
@@ -139,14 +139,14 @@ pub(crate) fn bool_check_assert_eq(result: &EvalResult, check: &str) -> bool {
 }
 
 pub(crate) fn check_assert_count(result: &EvalResult, check: &str) {
-    let (env, obj) = result.as_ref().unwrap();
+    let (_, obj) = result.as_ref().unwrap();
     let actual = object_to_iterator(obj).len();
     let expected: usize = check.parse().unwrap();
     assert_eq!(expected, actual)
 }
 
 pub(crate) fn bool_check_assert_count(result: &EvalResult, check: &str) -> bool {
-    let (env, obj) = result.as_ref().unwrap();
+    let (_, obj) = result.as_ref().unwrap();
     let actual = object_to_iterator(obj).len();
     let expected: usize = check.parse().unwrap();
     expected == actual
@@ -323,38 +323,38 @@ pub(crate) fn bool_check_assert_string_value(result: &EvalResult, check: &str) -
 }
 
 pub(crate) fn check_assert_empty(result: &EvalResult) {
-    let (env, obj) = result.as_ref().unwrap();
+    let (_, obj) = result.as_ref().unwrap();
     if obj != &Object::Empty {
         assert_eq!("not empty", format!("{:?}", obj));
     }
 }
 
 pub(crate) fn bool_check_assert_empty(result: &EvalResult) -> bool {
-    let (env, obj) = result.as_ref().unwrap();
+    let (_, obj) = result.as_ref().unwrap();
     obj != &Object::Empty
 }
 
 pub(crate) fn check_assert_true(result: &EvalResult) {
-    let (env, obj) = result.as_ref().unwrap();
+    let (_, obj) = result.as_ref().unwrap();
     if obj != &Object::Atomic(Type::Boolean(true)) {
         assert_eq!("not true", format!("{:?}", obj));
     }
 }
 
 pub(crate) fn bool_check_assert_true(result: &EvalResult) -> bool {
-    let (env, obj) = result.as_ref().unwrap();
+    let (_, obj) = result.as_ref().unwrap();
     obj != &Object::Atomic(Type::Boolean(true))
 }
 
 pub(crate) fn check_assert_false(result: &EvalResult) {
-    let (env, obj) = result.as_ref().unwrap();
+    let (_, obj) = result.as_ref().unwrap();
     if obj != &Object::Atomic(Type::Boolean(false)) {
         assert_eq!("not false", format!("{:?}", obj));
     }
 }
 
 pub(crate) fn bool_check_assert_false(result: &EvalResult) -> bool {
-    let (env, obj) = result.as_ref().unwrap();
+    let (_, obj) = result.as_ref().unwrap();
     obj != &Object::Atomic(Type::Boolean(false))
 }
 

@@ -1,4 +1,3 @@
-use std::fmt;
 use crate::eval::expression::Expression;
 use crate::eval::{Environment, DynamicContext, EvalResult, Object};
 use crate::eval::helpers::relax;
@@ -45,10 +44,6 @@ impl Expression for NodeParent {
     }
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
-        todo!()
-    }
-
-    fn dump(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         todo!()
     }
 }

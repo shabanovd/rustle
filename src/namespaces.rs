@@ -30,7 +30,7 @@ lazy_static! {
 }
 
 lazy_static! {
-    pub static ref NSs: HashMap<String, Namespace> = {
+    pub static ref NS: HashMap<String, Namespace> = {
         let mut map = HashMap::new();
 
         for ns in [

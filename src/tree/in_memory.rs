@@ -59,7 +59,7 @@ impl InMemoryXMLTree {
             tree.start_document();
             for token in xmlparser::Tokenizer::from(data) {
                 match token.unwrap() {
-                    Token::Declaration { version, encoding, standalone, .. } => {
+                    Token::Declaration { .. } => {
                         // TODO
                     }
                     Token::ProcessingInstruction { target, content, .. } => {
