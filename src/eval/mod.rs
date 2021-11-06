@@ -21,6 +21,8 @@ pub(crate) mod helpers;
 use helpers::*;
 use crate::eval::expression::{Expression, NodeTest};
 use crate::tree::Reference;
+use crate::values;
+use crate::values::Untyped;
 
 pub type ErrorInfo = (ErrorCode, String);
 // pub type EvalResult = Result<(Box<Environment>, Iter<'a, Answer>), (ErrorCode, String)>;
@@ -216,7 +218,7 @@ impl Iterator for RangeIterator {
         self.next = self.next + self.step;
 
         if (self.step > 0 && curr <= self.till) || (self.step < 0 && curr >= self.till) {
-            Some(Object::Atomic(Type::Integer(curr)))
+            Some(Object::Atomic(Integer::boxed(curr)))
         } else {
             None
         }
@@ -227,8 +229,8 @@ pub(crate) fn object_to_integer(env: &Box<Environment>, object: Object) -> Resul
     match object {
         Object::Atomic(t) => {
             match t {
-                Type::Integer(num) => Ok(num),
-                Type::Untyped(num) => {
+                values::Integer(num) => Ok(num),
+                Untyped(num) => {
                     match num.parse() {
                         Ok(v) => Ok(v),
                         Err(..) => Err((ErrorCode::XPTY0004, format!("can't convert to int {:?}", num)))
@@ -320,7 +322,7 @@ mod tests {
     fn eval1() {
         test_eval(
             "empty(<a/>/a)",
-            Object::Atomic(Type::Boolean(true))
+            Object::Atomic(Boolean(true))
         )
     }
 

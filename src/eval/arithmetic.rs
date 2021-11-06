@@ -1,8 +1,9 @@
-use crate::eval::{Object, EvalResult, atomization, Type, string_to_double, Environment, relax, ErrorInfo};
+use crate::eval::{Object, EvalResult, atomization, string_to_double, Environment, relax, ErrorInfo};
 use crate::parser::errors::ErrorCode;
 use ordered_float::OrderedFloat;
 use bigdecimal::{BigDecimal, ToPrimitive, FromPrimitive, Zero};
 use crate::parser::op::OperatorArithmetic;
+use crate::values::{Decimal, Double, Float, Integer, Untyped};
 
 // XS_DOUBLE    XS_DOUBLE       > DOUBLE_DOUBLE
 // XS_DOUBLE    XS_FLOAT        > DOUBLE_FLOAT
@@ -229,7 +230,7 @@ impl Operand for VDouble {
     fn to_double(&self) -> f64 { self.number }
 
     fn to_atomic(&self) -> Object {
-        Object::Atomic(Type::Double(OrderedFloat::from(self.number)))
+        Object::Atomic(Double::boxed(OrderedFloat::from(self.number)))
     }
 }
 
@@ -399,7 +400,7 @@ impl Operand for VFloat {
     fn to_double(&self) -> f64 { self.number as f64 }
 
     fn to_atomic(&self) -> Object {
-        Object::Atomic(Type::Float(OrderedFloat::from(self.number)))
+        Object::Atomic(Float::boxed(OrderedFloat::from(self.number)))
     }
 }
 
@@ -593,7 +594,7 @@ impl Operand for VDecimal {
     fn to_double(&self) -> f64 { self.number.to_f64().unwrap() } // TODO: code it
 
     fn to_atomic(&self) -> Object {
-        Object::Atomic(Type::Decimal(self.number.normalized()))
+        Object::Atomic(Decimal::boxed(self.number.normalized()))
     }
 }
 
@@ -804,7 +805,7 @@ impl Operand for VInteger {
     fn to_double(&self) -> f64 { self.number as f64 }
 
     fn to_atomic(&self) -> Object {
-        Object::Atomic(Type::Integer(self.number))
+        Object::Atomic(Integer::boxed(self.number))
     }
 }
 
@@ -909,58 +910,58 @@ fn into_type(obj: Object) -> Result<Box<dyn Operand>, ErrorInfo> {
     match obj {
         Object::Atomic(t) => {
             match t {
-                Type::Untyped(str) => {
+                Untyped(str) => {
                     match string_to_double(&str) {
-                        Ok(Object::Atomic(Type::Double(number))) => {
+                        Ok(Object::Atomic(Double::boxed(number))) => {
                             Ok(Box::new(VDouble { number: number.into_inner() }))
                         },
                         _ => Err((ErrorCode::FORG0001, String::from("TODO")))
                     }
                 }
-                // Type::dateTime() => {}
-                // Type::dateTimeStamp() => {}
-                // Type::Date { .. } => {}
-                // Type::Time { .. } => {}
-                // Type::Duration { .. } => {}
-                // Type::YearMonthDuration { .. } => {}
-                // Type::DayTimeDuration { .. } => {}
-                Type::Integer(number) => Ok(Box::new( VInteger { number } )),
-                Type::Decimal(number) => Ok(Box::new( VDecimal { number } )),
-                Type::Float(number) => Ok(Box::new( VFloat { number: number.into_inner() } )),
-                Type::Double(number) => Ok(Box::new( VDouble { number: number.into_inner() } )),
-                // Type::nonPositiveInteger() => {}
-                // Type::negativeInteger() => {}
-                // Type::long() => {}
-                // Type::int() => {}
-                // Type::short() => {}
-                // Type::byte() => {}
-                // Type::nonNegativeInteger() => {}
-                // Type::unsignedLong() => {}
-                // Type::unsignedInt() => {}
-                // Type::unsignedShort() => {}
-                // Type::unsignedByte() => {}
-                // Type::positiveInteger() => {}
-                // Type::gYearMonth() => {}
-                // Type::gYear() => {}
-                // Type::gMonthDay() => {}
-                // Type::gDay() => {}
-                // Type::gMonth() => {}
-                // Type::String(_) => {}
-                // Type::NormalizedString(_) => {}
-                // Type::Token(_) => {}
-                // Type::language(_) => {}
-                // Type::NMTOKEN(_) => {}
-                // Type::Name(_) => {}
-                // Type::NCName(_) => {}
-                // Type::ID(_) => {}
-                // Type::IDREF(_) => {}
-                // Type::ENTITY(_) => {}
-                // Type::Boolean(_) => {}
-                // Type::base64Binary() => {}
-                // Type::hexBinary() => {}
-                // Type::AnyURI(_) => {}
-                // Type::QName() => {}
-                // Type::NOTATION() => {}
+                // dateTime() => {}
+                // dateTimeStamp() => {}
+                // Date { .. } => {}
+                // Time { .. } => {}
+                // Duration { .. } => {}
+                // YearMonthDuration { .. } => {}
+                // DayTimeDuration { .. } => {}
+                Integer(number) => Ok(Box::new( VInteger { number } )),
+                Decimal(number) => Ok(Box::new( VDecimal { number } )),
+                Float(number) => Ok(Box::new( VFloat { number: number.into_inner() } )),
+                Double(number) => Ok(Box::new( VDouble { number: number.into_inner() } )),
+                // nonPositiveInteger() => {}
+                // negativeInteger() => {}
+                // long() => {}
+                // int() => {}
+                // short() => {}
+                // byte() => {}
+                // nonNegativeInteger() => {}
+                // unsignedLong() => {}
+                // unsignedInt() => {}
+                // unsignedShort() => {}
+                // unsignedByte() => {}
+                // positiveInteger() => {}
+                // gYearMonth() => {}
+                // gYear() => {}
+                // gMonthDay() => {}
+                // gDay() => {}
+                // gMonth() => {}
+                // String(_) => {}
+                // NormalizedString(_) => {}
+                // Token(_) => {}
+                // language(_) => {}
+                // NMTOKEN(_) => {}
+                // Name(_) => {}
+                // NCName(_) => {}
+                // ID(_) => {}
+                // IDREF(_) => {}
+                // ENTITY(_) => {}
+                // Boolean(_) => {}
+                // base64Binary() => {}
+                // hexBinary() => {}
+                // AnyURI(_) => {}
+                // QName() => {}
+                // NOTATION() => {}
                 _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
             }
         },

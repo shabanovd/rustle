@@ -957,6 +957,10 @@ fn folder(path: String) -> String {
     path
 }
 
+struct TestIt();
+
 fn main() {
-    generate()
+    let v = TestIt();
+    println!("{} bytes", mem::size_of_value(&v));
+    // generate()
 }

@@ -8,12 +8,12 @@ use nom::{
 use nom::sequence::{terminated, preceded, tuple};
 use nom::combinator::{opt, map, map_res};
 
-use crate::eval::{Type, Time};
 use crate::parser::parse_literal::is_digits;
-use chrono::{Date, NaiveDate, FixedOffset, NaiveTime, DateTime, NaiveDateTime};
 use nom::error::{ParseError, ErrorKind};
 
-pub fn string_to_date(input: &str) -> Result<Type, String> {
+use crate::values::{Date, DateTime, DayTimeDuration, Duration, Time, YearMonthDuration};
+
+pub fn string_to_date(input: &str) -> Result<Date, String> {
     match parse_date(input) {
         Ok((input, dt)) => {
             if input.is_empty() {
@@ -28,7 +28,7 @@ pub fn string_to_date(input: &str) -> Result<Type, String> {
     }
 }
 
-pub fn string_to_date_time(input: &str) -> Result<Type, String> {
+pub fn string_to_date_time(input: &str) -> Result<DateTime, String> {
     match parse_date_time(input) {
         Ok((input, dt)) => {
             if input.is_empty() {
@@ -43,7 +43,7 @@ pub fn string_to_date_time(input: &str) -> Result<Type, String> {
     }
 }
 
-pub fn string_to_duration(input: &str) -> Result<Type, String> {
+pub fn string_to_duration(input: &str) -> Result<Duration, String> {
     match parse_duration(input) {
         Ok((input, dt)) => {
             if input.is_empty() {
@@ -58,7 +58,7 @@ pub fn string_to_duration(input: &str) -> Result<Type, String> {
     }
 }
 
-pub fn string_to_ym_duration(input: &str) -> Result<Type, String> {
+pub fn string_to_ym_duration(input: &str) -> Result<YearMonthDuration, String> {
     match parse_year_month_duration(input) {
         Ok((input, dt)) => {
             if input.is_empty() {
@@ -73,7 +73,7 @@ pub fn string_to_ym_duration(input: &str) -> Result<Type, String> {
     }
 }
 
-pub fn string_to_dt_duration(input: &str) -> Result<Type, String> {
+pub fn string_to_dt_duration(input: &str) -> Result<DayTimeDuration, String> {
     match parse_day_time_duration(input) {
         Ok((input, dt)) => {
             if input.is_empty() {
@@ -88,7 +88,7 @@ pub fn string_to_dt_duration(input: &str) -> Result<Type, String> {
     }
 }
 
-pub fn parse_date(input: &str) -> IResult<&str, Type> {
+pub fn parse_date(input: &str) -> IResult<&str, Date> {
     map_res(
         tuple((
             parse_year,
@@ -100,21 +100,17 @@ pub fn parse_date(input: &str) -> IResult<&str, Type> {
         )),
         |(y, _, m, _, d, z)| {
             let (tz_h, tz_m) = z.unwrap_or((0, 0));
-            if let Some(date) = NaiveDate::from_ymd_opt(y as i32, m, d) {
-                let offset = if tz_h > 0 {
-                    FixedOffset::east(((tz_h * 60) + tz_m) * 60)
-                } else {
-                    FixedOffset::west(((tz_h * 60) + tz_m) * 60)
-                };
-                Ok(Type::Date(Date::from_utc(date, offset)))
+            if let Some(date) = Date::from_ymd_tz(y, m, d, tz_h, tz_m) {
+                Ok(date)
             } else {
                 Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
             }
         }
     )(input)
 }
+
 // 2002-04-02T12:00:00-01:00
-pub fn parse_date_time(input: &str) -> IResult<&str, Type> {
+pub fn parse_date_time(input: &str) -> IResult<&str, DateTime> {
     map_res(
         tuple((
             parse_year,
@@ -132,18 +128,8 @@ pub fn parse_date_time(input: &str) -> IResult<&str, Type> {
         )),
         |(yy, _, mm, _, dd, _, h, _, m, _, s, z)| {
             let (tz_h, tz_m) = z.unwrap_or((0, 0));
-            if let Some(date) = NaiveDate::from_ymd_opt(yy as i32, mm, dd) {
-                if let Some(time) = NaiveTime::from_hms_opt(h, m, s) {
-                    let offset = if tz_h > 0 {
-                        FixedOffset::east(((tz_h * 60) + tz_m) * 60)
-                    } else {
-                        FixedOffset::west(((-tz_h * 60) + tz_m) * 60)
-                    };
-                    let dt = NaiveDateTime::new(date, time - offset);
-                    Ok(Type::DateTime(DateTime::from_utc(dt, offset)))
-                } else {
-                    Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
-                }
+            if let Some(date) = DateTime::from_ymd_hms_tz(yy, mm, dd, h, m, s, tz_h, tz_m) {
+                Ok(date)
             } else {
                 Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
             }
@@ -176,7 +162,7 @@ fn timezone_utc(input: &str) -> IResult<&str, (i32, i32)> {
     map(tag("Z"), |_| (0, 0))(input)
 }
 
-fn parse_duration(input: &str) -> IResult<&str, Type> {
+fn parse_duration(input: &str) -> IResult<&str, Duration> {
     map(
         tuple((
             opt(tag("-")),
@@ -198,7 +184,7 @@ fn parse_duration(input: &str) -> IResult<&str, Type> {
             let days = d.unwrap_or(0);
 
             let (hours, minutes, seconds, microseconds) = match time {
-                Some(Type::Time(time)) => {
+                Some(Time(time)) => {
                     time.hms() // (h, m, s, ms)
                 }
                 _ => (0,0,0,0)
@@ -214,12 +200,12 @@ fn parse_duration(input: &str) -> IResult<&str, Type> {
             let (mm, ay) = norm(month, 12);
             let y = years + ay;
 
-            Type::Duration { positive, years: y, months: mm, days: d, hours: h, minutes: m, seconds: s, microseconds }
+            Duration { positive, years: y, months: mm, days: d, hours: h, minutes: m, seconds: s, microseconds }
         }
     )(input)
 }
 
-pub fn parse_year_month_duration(input: &str) -> IResult<&str, Type> {
+pub fn parse_year_month_duration(input: &str) -> IResult<&str, YearMonthDuration> {
     map(
         tuple((
             opt(tag("-")),
@@ -239,12 +225,12 @@ pub fn parse_year_month_duration(input: &str) -> IResult<&str, Type> {
             let (m, ay) = norm(months, 12);
             let y = years + ay;
 
-            Type::YearMonthDuration { positive, years: y, months: m }
+            YearMonthDuration { positive, years: y, months: m }
         }
     )(input)
 }
 
-pub fn parse_day_time_duration(input: &str) -> IResult<&str, Type> {
+pub fn parse_day_time_duration(input: &str) -> IResult<&str, DayTimeDuration> {
     map(
         tuple((
             opt(tag("-")),
@@ -261,7 +247,7 @@ pub fn parse_day_time_duration(input: &str) -> IResult<&str, Type> {
             let days = d.unwrap_or(0);
 
             let (hours, minutes, seconds, microseconds) = match time {
-                Some(Type::Time(time)) => {
+                Some(Time(time)) => {
                     time.hms() // (h, m, s, ms)
                 }
                 _ => (0,0,0,0)
@@ -274,12 +260,12 @@ pub fn parse_day_time_duration(input: &str) -> IResult<&str, Type> {
 
             let d = days + ad;
 
-            Type::DayTimeDuration { positive, days: d, hours: h, minutes: m, seconds: s, microseconds }
+            DayTimeDuration { positive, days: d, hours: h, minutes: m, seconds: s, microseconds }
         }
     )(input)
 }
 
-fn parse_duration_time(input: &str) -> IResult<&str, Type> {
+fn parse_duration_time(input: &str) -> IResult<&str, Time> {
     map_res(
         tuple((
             opt(terminated(duration_hour, tag("H"))),
@@ -292,8 +278,8 @@ fn parse_duration_time(input: &str) -> IResult<&str, Type> {
 
             let (s, ms) = s.unwrap_or((0,0));
 
-            if let Some(time) = NaiveTime::from_hms_milli_opt(h, m, s, ms) {
-                Ok(Type::Time(Time::from_utc(time)))
+            if let Some(time) = Time::from_hms_ms(h, m, s, ms) {
+                Ok(time)
             } else {
                 Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
             }

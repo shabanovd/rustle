@@ -1,13 +1,14 @@
-use crate::eval::{Environment, Object, Type, Time, DynamicContext, EvalResult};
-use chrono::{Datelike, Date, Local, TimeZone};
+use chrono::Datelike;
+use crate::eval::{Environment, Object, DynamicContext, EvalResult};
+use crate::values::{Date, DayTimeDuration, Duration, Integer, Time, YearMonthDuration};
 
 pub(crate) fn fn_day_from_date(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Empty] => {
             Ok((env, Object::Empty))
         }
-        [Object::Atomic(Type::Date(date))] => {
-            Ok((env, Object::Atomic(Type::Integer(date.day() as i128))))
+        [Object::Atomic(Date(date))] => {
+            Ok((env, Object::Atomic(Integer::boxed(date.day() as i128))))
         },
         _ => panic!("error")
     }
@@ -18,8 +19,8 @@ pub(crate) fn fn_year_from_date(env: Box<Environment>, arguments: Vec<Object>, _
         [Object::Empty] => {
             Ok((env, Object::Empty))
         }
-        [Object::Atomic(Type::Date(date))] => {
-            Ok((env, Object::Atomic(Type::Integer(date.year() as i128))))
+        [Object::Atomic(Date(date))] => {
+            Ok((env, Object::Atomic(Integer::boxed(date.year() as i128))))
         },
         _ => panic!("error")
     }
@@ -30,8 +31,8 @@ pub(crate) fn fn_month_from_date(env: Box<Environment>, arguments: Vec<Object>, 
         [Object::Empty] => {
             Ok((env, Object::Empty))
         }
-        [Object::Atomic(Type::Date(date))] => {
-            Ok((env, Object::Atomic(Type::Integer(date.month() as i128))))
+        [Object::Atomic(Date(date))] => {
+            Ok((env, Object::Atomic(Integer::boxed(date.month() as i128))))
         },
         _ => panic!("error")
     }
@@ -42,16 +43,16 @@ pub(crate) fn fn_days_from_duration(env: Box<Environment>, arguments: Vec<Object
         [Object::Empty] => {
             Ok((env, Object::Empty))
         }
-        [Object::Atomic(Type::Duration { positive, days, .. })] => {
+        [Object::Atomic(Duration { positive, days, .. })] => {
             let sign = if *positive { 1 } else { -1 };
-            Ok((env, Object::Atomic(Type::Integer(*days as i128 * sign))))
+            Ok((env, Object::Atomic(Integer::boxed(*days as i128 * sign))))
         },
-        [Object::Atomic(Type::YearMonthDuration { .. })] => {
-            Ok((env, Object::Atomic(Type::Integer(0))))
+        [Object::Atomic(YearMonthDuration { .. })] => {
+            Ok((env, Object::Atomic(Integer::boxed(0))))
         },
-        [Object::Atomic(Type::DayTimeDuration { positive, days, .. })] => {
+        [Object::Atomic(DayTimeDuration { positive, days, .. })] => {
             let sign = if *positive { 1 } else { -1 };
-            Ok((env, Object::Atomic(Type::Integer(*days as i128 * sign))))
+            Ok((env, Object::Atomic(Integer::boxed(*days as i128 * sign))))
         },
         _ => panic!("error")
     }
@@ -59,21 +60,18 @@ pub(crate) fn fn_days_from_duration(env: Box<Environment>, arguments: Vec<Object
 
 pub(crate) fn fn_current_date(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     // TODO  deterministic
-    let now = Local::now();
-    let date = Date::from_utc(now.date().naive_utc(), TimeZone::from_offset(now.offset()));
-
-    Ok((env, Object::Atomic(Type::Date(date))))
+    Ok((env, Object::Atomic(Date::now())))
 }
 
 pub(crate) fn fn_current_time(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     // TODO  deterministic
-    Ok((env, Object::Atomic(Type::Time(Time::now()))))
+    Ok((env, Object::Atomic(Time::now())))
 }
 
 pub(crate) fn fn_timezone_from_time(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Empty] => Ok((env, Object::Empty)),
-        [Object::Atomic(Type::Time(time))] => {
+        [Object::Atomic(Time(time))] => {
             let seconds = time.offset.local_minus_utc();
 
             let (seconds, positive) = if seconds < 0 {
@@ -86,7 +84,7 @@ pub(crate) fn fn_timezone_from_time(env: Box<Environment>, arguments: Vec<Object
             let (minutes, hours) = norm(minutes, 60);
             let (hours, days) = norm(hours, 24);
 
-            Ok((env, Object::Atomic(Type::DayTimeDuration { positive, days, hours, minutes, seconds, microseconds: 0 })))
+            Ok((env, Object::atomic(DayTimeDuration { positive, days, hours, minutes, seconds, microseconds: 0 })))
         },
         _ => panic!("error")
     }

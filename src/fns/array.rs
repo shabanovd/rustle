@@ -1,11 +1,12 @@
-use crate::eval::{Object, Type, EvalResult, DynamicContext};
+use crate::eval::{Object, EvalResult, DynamicContext};
 use crate::eval::Environment;
+use crate::values::Integer;
 
 pub(crate) fn size(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Array(array)] => {
             let size = array.len();
-            Ok((env, Object::Atomic(Type::Integer(size as i128))))
+            Ok((env, Object::Atomic(Integer::boxed(size as i128))))
         }
         _ => panic!("error")
     }

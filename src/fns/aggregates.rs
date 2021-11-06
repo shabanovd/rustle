@@ -1,13 +1,14 @@
-use crate::eval::{Environment, Object, Type, EvalResult, DynamicContext, comparison};
+use crate::eval::{Environment, Object, EvalResult, DynamicContext, comparison};
 use bigdecimal::{BigDecimal, FromPrimitive};
+use crate::values::{Decimal, Integer};
 
 pub(crate) fn fn_count(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Empty] => {
-            Ok((env, Object::Atomic(Type::Integer(0))))
+            Ok((env, Object::Atomic(Integer::boxed(0))))
         },
         [Object::Atomic(..)] => {
-            Ok((env, Object::Atomic(Type::Integer(1))))
+            Ok((env, Object::Atomic(Integer::boxed(1))))
         }
         [Object::Range { min, max}] => {
             let min = *min;
@@ -17,7 +18,7 @@ pub(crate) fn fn_count(env: Box<Environment>, arguments: Vec<Object>, _context: 
             } else {
                 min - max + 1
             };
-            Ok((env, Object::Atomic(Type::Integer(count))))
+            Ok((env, Object::Atomic(Integer::boxed(count))))
         },
         [Object::Sequence(items)] => {
             let mut count = 0;
@@ -33,10 +34,10 @@ pub(crate) fn fn_count(env: Box<Environment>, arguments: Vec<Object>, _context: 
                     _ => count += 1
                 }
             }
-            Ok((env, Object::Atomic(Type::Integer(count))))
+            Ok((env, Object::Atomic(Integer::boxed(count))))
         },
         [Object::Node(..)] => {
-            Ok((env, Object::Atomic(Type::Integer(1))))
+            Ok((env, Object::Atomic(Integer::boxed(1))))
         }
         _ => panic!("error {:?}", arguments)
     }
@@ -55,7 +56,7 @@ pub(crate) fn fn_avg(env: Box<Environment>, arguments: Vec<Object>, _context: &D
             let mut count: usize = 0;
             for item in items {
                 match item {
-                    Object::Atomic(Type::Integer(num)) => {
+                    Object::Atomic(Integer(num)) => {
                         sum += num;
                         count += 1;
                     },
@@ -68,7 +69,7 @@ pub(crate) fn fn_avg(env: Box<Environment>, arguments: Vec<Object>, _context: &D
 
             let number = sum / count;
 
-            Ok((env, Object::Atomic(Type::Decimal(number))))
+            Ok((env, Object::Atomic(Decimal::boxed(number))))
         },
         _ => panic!("error")
     }
@@ -80,7 +81,7 @@ pub(crate) fn fn_max(env: Box<Environment>, arguments: Vec<Object>, _context: &D
             Ok((env, Object::Empty))
         },
         [Object::Range { min, max}] => {
-            Ok((env, Object::Atomic(Type::Integer(*max))))
+            Ok((env, Object::Atomic(Integer::boxed(*max))))
         },
         [Object::Sequence(items)] => {
             let mut obj = &Object::Empty;

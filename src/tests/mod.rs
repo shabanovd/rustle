@@ -1,7 +1,7 @@
-use crate::eval::{Object, Environment, Type, eval_statements, object_to_iterator, comparison, EvalResult, DynamicContext, Axis};
+use crate::eval::{Object, Environment, eval_statements, object_to_iterator, comparison, EvalResult, DynamicContext, Axis};
 use crate::eval::helpers::relax;
 use crate::parser::parse;
-use crate::values::{resolve_element_qname, QName, QNameResolved};
+use crate::values::{resolve_element_qname, QName, QNameResolved, Str, Integer, Boolean};
 use crate::serialization::object_to_string;
 use crate::fns::object_to_bool;
 use crate::parser::errors::ErrorCode;
@@ -253,7 +253,7 @@ pub(crate) fn _check_assert_type(result: &EvalResult, check: &str) -> Option<Str
                 } else {
                     for item in items {
                         match item {
-                            Object::Atomic(Type::String(..)) => {},
+                            Object::Atomic(Str(..)) => {},
                             _ => return Some(format!("not xs:string: {:?}", item))
                         }
                     }
@@ -270,11 +270,11 @@ pub(crate) fn _check_assert_type(result: &EvalResult, check: &str) -> Option<Str
                 } else {
                     for item in items {
                         match item {
-                            Object::Atomic(Type::String(..)) => {},
+                            Object::Atomic(Str(..)) => {},
                             Object::Sequence(items) => {
                                 for item in items {
                                     match item {
-                                        Object::Atomic(Type::String(..)) => {},
+                                        Object::Atomic(Str(..)) => {},
                                         _ => return Some(format!("not xs:string: {:?}", item))
                                     }
                                 }
@@ -291,7 +291,7 @@ pub(crate) fn _check_assert_type(result: &EvalResult, check: &str) -> Option<Str
         }
     } else if check == "xs:integer" {
         match result {
-            Object::Atomic(Type::Integer(..)) => None,
+            Object::Atomic(Integer(..)) => None,
             _ => Some(String::from("not xs:integer"))
         }
     } else if check == "namespace-node()" {
@@ -336,26 +336,26 @@ pub(crate) fn bool_check_assert_empty(result: &EvalResult) -> bool {
 
 pub(crate) fn check_assert_true(result: &EvalResult) {
     let (env, obj) = result.as_ref().unwrap();
-    if obj != &Object::Atomic(Type::Boolean(true)) {
+    if obj != &Object::Atomic(Boolean::boxed(true)) {
         assert_eq!("not true", format!("{:?}", obj));
     }
 }
 
 pub(crate) fn bool_check_assert_true(result: &EvalResult) -> bool {
     let (env, obj) = result.as_ref().unwrap();
-    obj != &Object::Atomic(Type::Boolean(true))
+    obj != &Object::Atomic(Boolean::boxed(true))
 }
 
 pub(crate) fn check_assert_false(result: &EvalResult) {
     let (env, obj) = result.as_ref().unwrap();
-    if obj != &Object::Atomic(Type::Boolean(false)) {
+    if obj != &Object::Atomic(Boolean::boxed(false)) {
         assert_eq!("not false", format!("{:?}", obj));
     }
 }
 
 pub(crate) fn bool_check_assert_false(result: &EvalResult) -> bool {
     let (env, obj) = result.as_ref().unwrap();
-    obj != &Object::Atomic(Type::Boolean(false))
+    obj != &Object::Atomic(Boolean::boxed(false))
 }
 
 pub(crate) fn check_error(result: &EvalResult, expected_code: &str) {

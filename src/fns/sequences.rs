@@ -1,8 +1,9 @@
-use crate::eval::{Object, Type, DynamicContext, EvalResult};
+use crate::eval::{Object, DynamicContext, EvalResult};
 use crate::eval::Environment;
 
 use crate::eval::helpers::relax;
 use crate::parser::errors::ErrorCode;
+use crate::values::{Boolean, Untyped, Integer};
 
 pub(crate) fn fn_data(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
 
@@ -28,7 +29,7 @@ fn data(env: Box<Environment>, obj: Object, result: &mut Vec<Object>) -> Result<
         Object::Node(rf) => {
             match rf.to_typed_value() {
                 Ok(data) => {
-                    let item = Object::Atomic(Type::Untyped(data));
+                    let item = Object::Atomic(Untyped::boxed(data));
                     result.push(item);
                 },
                 Err(msg) => return Err(msg)
@@ -63,13 +64,13 @@ pub(crate) fn fn_empty(env: Box<Environment>, arguments: Vec<Object>, _context: 
         _ => false
     };
 
-    Ok((env, Object::Atomic(Type::Boolean(result))))
+    Ok((env, Object::Atomic(Boolean::boxed(result))))
 }
 
 pub(crate) fn fn_remove(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Empty, ..] => Ok((env, Object::Empty)),
-        [Object::Sequence(items), Object::Atomic(Type::Integer(pos))] => {
+        [Object::Sequence(items), Object::Atomic(Integer(pos))] => {
             let position = *pos - 1;
             let mut result = items.clone();
 
@@ -97,7 +98,7 @@ pub(crate) fn fn_subsequence(env: Box<Environment>, arguments: Vec<Object>, _con
     println!("arguments {:?}", arguments);
     match arguments.as_slice() {
         [Object::Empty, ..] => Ok((env, Object::Empty)),
-        [Object::Range { min, max }, Object::Atomic(Type::Integer(start)), Object::Atomic(Type::Integer(length))] => {
+        [Object::Range { min, max }, Object::Atomic(Integer(start)), Object::Atomic(Integer(length))] => {
             if *start <= 0 || *length <= 0 {
                 Ok((env, Object::Empty))
             } else {
@@ -109,7 +110,7 @@ pub(crate) fn fn_subsequence(env: Box<Environment>, arguments: Vec<Object>, _con
                         let new_max = (new_min + (length - 1)).min(*max);
 
                         if new_min == new_max {
-                            Ok((env, Object::Atomic(Type::Integer(new_min))))
+                            Ok((env, Object::Atomic(Integer::boxed(new_min))))
                         } else {
                             Ok((env, Object::Range { min: new_min, max: new_max }))
                         }
@@ -122,7 +123,7 @@ pub(crate) fn fn_subsequence(env: Box<Environment>, arguments: Vec<Object>, _con
                         let new_max = (new_min - (length - 1)).max(*max);
 
                         if new_min == new_max {
-                            Ok((env, Object::Atomic(Type::Integer(new_min))))
+                            Ok((env, Object::Atomic(Integer::boxed(new_min))))
                         } else {
                             Ok((env, Object::Range { min: new_min, max: new_max }))
                         }
@@ -130,14 +131,14 @@ pub(crate) fn fn_subsequence(env: Box<Environment>, arguments: Vec<Object>, _con
                 }
             }
         },
-        [Object::Atomic(t), Object::Atomic(Type::Integer(start)), Object::Atomic(Type::Integer(length))] => {
+        [Object::Atomic(t), Object::Atomic(Integer(start)), Object::Atomic(Integer(length))] => {
             if *start == 1 && *length >= 1 {
                 Ok((env, Object::Atomic(t.clone())))
             } else {
                 Ok((env, Object::Empty))
             }
         },
-        [Object::Sequence(items), Object::Atomic(Type::Integer(start)), Object::Atomic(Type::Integer(length))] => {
+        [Object::Sequence(items), Object::Atomic(Integer(start)), Object::Atomic(Integer(length))] => {
             let mut result = Vec::with_capacity(*length as usize);
 
             let from = *start as usize;
@@ -158,7 +159,7 @@ pub(crate) fn fn_subsequence(env: Box<Environment>, arguments: Vec<Object>, _con
 
 pub(crate) fn fn_position(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
     if let Some(position) = context.position {
-        Ok((env, Object::Atomic(Type::Integer(position as i128))))
+        Ok((env, Object::Atomic(Integer::boxed(position as i128))))
     } else {
         Err((ErrorCode::XPDY0002, String::from("context position unknown")))
     }
@@ -166,7 +167,7 @@ pub(crate) fn fn_position(env: Box<Environment>, arguments: Vec<Object>, context
 
 pub(crate) fn fn_last(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
     if let Some(last) = context.last {
-        Ok((env, Object::Atomic(Type::Integer(last as i128))))
+        Ok((env, Object::Atomic(Integer::boxed(last as i128))))
     } else {
         Err((ErrorCode::XPDY0002, String::from("context size unknown")))
     }

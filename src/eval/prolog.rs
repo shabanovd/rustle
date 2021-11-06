@@ -3,9 +3,9 @@ use crate::eval::expression::{Expression, NodeTest};
 use crate::parser::op::{Representation, OperatorArithmetic, OperatorComparison};
 use bigdecimal::BigDecimal;
 use ordered_float::OrderedFloat;
-use crate::values::{QName, resolve_function_qname, resolve_element_qname};
+use crate::values::{QName, resolve_function_qname, resolve_element_qname, Str};
 use crate::fns::{Param, call, object_to_bool};
-use crate::eval::{Environment, DynamicContext, EvalResult, Object, Type, eval_predicates, Axis, step_and_test, object_to_qname, object_owned_to_sequence, object_to_integer, ErrorInfo, INS};
+use crate::eval::{Environment, DynamicContext, EvalResult, Object, eval_predicates, Axis, step_and_test, object_to_qname, object_owned_to_sequence, object_to_integer, ErrorInfo, INS};
 use crate::serialization::{object_to_string};
 use crate::serialization::to_string::object_to_string_xml;
 use crate::eval::helpers::{relax, relax_sequences, sort_and_dedup, process_items, join_sequences};
@@ -84,7 +84,7 @@ pub(crate) struct EscapeQuot {}
 
 impl Expression for EscapeQuot {
     fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
-        Ok((env, Object::Atomic(Type::String(String::from("\"")))))
+        Ok((env, Object::Atomic(Str::boxed(String::from("\"")))))
     }
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
@@ -101,7 +101,7 @@ pub(crate) struct EscapeApos {}
 
 impl Expression for EscapeApos {
     fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
-        Ok((env, Object::Atomic(Type::String(String::from("'")))))
+        Ok((env, Object::Atomic(Str::boxed(String::from("'")))))
     }
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
@@ -898,7 +898,7 @@ pub(crate) struct Boolean { pub(crate) bool: bool }
 
 impl Expression for Boolean {
     fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
-        Ok((env, Object::Atomic(Type::Boolean(self.bool))))
+        Ok((env, Object::Atomic(Boolean::boxed(self.bool))))
     }
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
@@ -915,7 +915,7 @@ pub(crate) struct Integer { pub(crate) number: i128 }
 
 impl Expression for Integer {
     fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
-        Ok((env, Object::Atomic(Type::Integer(self.number))))
+        Ok((env, Object::Atomic(Integer::boxed(self.number))))
     }
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
@@ -939,7 +939,7 @@ impl Expression for Integer {
                         Ok((env, Object::Empty))
                     } else {
                         let num = min + pos - 1;
-                        Ok((env, Object::Atomic(Type::Integer(num))))
+                        Ok((env, Object::Atomic(Integer::boxed(num))))
                     }
                 },
                 Object::Sequence(items) => {
@@ -964,7 +964,7 @@ pub(crate) struct Decimal { pub(crate) number: BigDecimal }
 
 impl Expression for Decimal {
     fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
-        Ok((env, Object::Atomic(Type::Decimal(self.number.clone()))))
+        Ok((env, Object::Atomic(Decimal::boxed(self.number.clone()))))
     }
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
@@ -981,7 +981,7 @@ pub(crate) struct Double { pub(crate) number: OrderedFloat<f64> }
 
 impl Expression for Double {
     fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
-        Ok((env, Object::Atomic(Type::Double(self.number))))
+        Ok((env, Object::Atomic(Double::boxed(self.number))))
     }
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
@@ -1017,7 +1017,7 @@ impl Expression for StringComplex {
             strings.push(str);
         }
 
-        Ok((current_env, Object::Atomic(Type::String(strings.join("")))))
+        Ok((current_env, Object::Atomic(Str::boxed(strings.join("")))))
     }
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
@@ -1058,7 +1058,7 @@ impl From<String> for StringExpr {
 
 impl Expression for StringExpr {
     fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
-        Ok((env, Object::Atomic(Type::String(self.string.clone()))))
+        Ok((env, Object::Atomic(Str::boxed(self.string.clone()))))
     }
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
@@ -1121,10 +1121,15 @@ impl Expression for Sequence {
     fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let (new_env, value) = self.expr.eval(env, context)?;
 
-        let mut items = object_owned_to_sequence(value);
-        let mut result= Vec::with_capacity(items.len());
-        relax_sequences(&mut result, items);
-        relax(new_env, result)
+        match value {
+            Object::Sequence(..) => {
+                let mut items = object_owned_to_sequence(value);
+                let mut result= Vec::with_capacity(items.len());
+                relax_sequences(&mut result, items);
+                relax(new_env, result)
+            }
+            _ => Ok((new_env, value))
+        }
     }
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
@@ -1189,7 +1194,7 @@ impl Expression for Range {
         if min > max {
             Ok((current_env, Object::Empty))
         } else if min == max {
-            Ok((current_env, Object::Atomic(Type::Integer(min))))
+            Ok((current_env, Object::Atomic(Integer::boxed(min))))
         } else {
             Ok((current_env, Object::Range { min, max }))
         }
@@ -1224,7 +1229,7 @@ impl Expression for InstanceOf {
 
         process_items(current_env, object, |env, item| {
             let result = self.st.is_castable(&item)?;
-            Ok((env, Object::Atomic(Type::Boolean(result))))
+            Ok((env, Object::Atomic(Boolean::boxed(result))))
         })
     }
 
@@ -2215,7 +2220,7 @@ impl Expression for Or {
                     }
                 }
 
-                Ok((current_env, Object::Atomic(Type::Boolean(acc))))
+                Ok((current_env, Object::Atomic(Boolean::boxed(acc))))
             }
         }
     }
@@ -2265,7 +2270,7 @@ impl Expression for And {
                     }
                 }
 
-                Object::Atomic(Type::Boolean(acc))
+                Object::Atomic(Boolean::boxed(acc))
             };
             result
         };
@@ -2289,7 +2294,7 @@ impl Expression for StringConcat {
         let mut current_env = env;
 
         if self.exprs.len() == 0 {
-            Ok((current_env, Object::Atomic(Type::String(String::new()))))
+            Ok((current_env, Object::Atomic(Str::boxed(String::new()))))
         } else {
             let mut sequence = Vec::with_capacity(self.exprs.len());
             for expr in &self.exprs {
@@ -2300,7 +2305,7 @@ impl Expression for StringConcat {
             }
 
             if sequence.len() == 0 {
-                Ok((current_env, Object::Atomic(Type::String(String::new()))))
+                Ok((current_env, Object::Atomic(Str::boxed(String::new()))))
             } else if sequence.len() == 1 {
                 let object = sequence.remove(0);
                 Ok((current_env, object))
@@ -2309,7 +2314,7 @@ impl Expression for StringConcat {
                     .map(|item| object_to_string(&current_env, &item))
                     .collect();
 
-                Ok((current_env, Object::Atomic(Type::String(str))))
+                Ok((current_env, Object::Atomic(Str::boxed(str))))
             }
         }
     }

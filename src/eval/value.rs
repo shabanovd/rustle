@@ -1,148 +1,27 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
-use crate::values::{QName, QNameResolved};
+use crate::values::{Double, Integer, QName, QNameResolved, Str, Untyped};
 use crate::fns::Param;
 use crate::parser::op::{Representation};
 use crate::parser::errors::ErrorCode;
-use ordered_float::OrderedFloat;
 use bigdecimal::BigDecimal;
 use crate::eval::helpers::sort_and_dedup;
-use chrono::{NaiveTime, TimeZone, DateTime, Date, FixedOffset, Local, Timelike};
-use num_integer::div_mod_floor;
-use chrono::format::{DelayedFormat, StrftimeItems, Item};
-use std::borrow::Borrow;
 use crate::eval::expression::Expression;
 use std::fmt::{Debug, Formatter};
 use crate::eval::{Environment, ErrorInfo};
 use crate::tree::Reference;
-
-#[allow(dead_code)]
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone, Hash)]
-pub enum Type {
-    Untyped(String),
-
-    DateTime(DateTime<FixedOffset>),
-    DateTimeStamp(),
-
-    Date(Date<FixedOffset>),
-    Time(Time<FixedOffset>),
-
-    Duration { positive: bool, years: u32, months: u32, days: u32, hours: u32, minutes: u32, seconds: u32, microseconds: u32 },
-    YearMonthDuration  { positive: bool, years: u32, months: u32 },
-    DayTimeDuration { positive: bool, days: u32, hours: u32, minutes: u32, seconds: u32, microseconds: u32 },
-
-    Integer(i128),
-    Decimal(BigDecimal),
-    Float(OrderedFloat<f32>),
-    Double(OrderedFloat<f64>),
-
-    // nonPositiveInteger(),
-    // negativeInteger(),
-    // long(),
-    // int(),
-    // short(),
-    // byte(),
-
-    // nonNegativeInteger(),
-    // unsignedLong(),
-    // unsignedInt(),
-    // unsignedShort(),
-    // unsignedByte(),
-
-    // positiveInteger(),
-
-    GYearMonth(),
-    GYear(),
-    GMonthDay(),
-    GDay(),
-    GMonth(),
-
-    // TODO CharRef { representation: Representation, reference: u32 }, ?
-    String(String),
-    NormalizedString(String),
-    Token(String),
-    Language(String),
-    NMTOKEN(String),
-    Name(String),
-    NCName(String),
-    ID(String),
-    IDREF(String),
-    ENTITY(String),
-
-    Boolean(bool),
-    Base64Binary(),
-    HexBinary(),
-    AnyURI(String),
-    QName { url: Option<String>, prefix: Option<String>, local_part: String },
-    NOTATION(),
-}
-
-impl PartialOrd for Time<FixedOffset> {
-    fn partial_cmp(&self, other: &Time<FixedOffset>) -> Option<Ordering> {
-        self.time.partial_cmp(&other.time)
-    }
-}
-
-impl Ord for Time<FixedOffset> {
-    fn cmp(&self, other: &Time<FixedOffset>) -> Ordering {
-        self.time.cmp(&other.time)
-    }
-}
-
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
-pub struct Time<Tz: TimeZone> {
-    pub time: NaiveTime,
-    pub offset: Tz::Offset,
-}
-
-impl Time<FixedOffset> {
-    #[inline]
-    pub fn now() -> Time<FixedOffset> {
-        let now = Local::now();
-        Time { time: now.time(), offset: TimeZone::from_offset(now.offset()) }
-    }
-
-    #[inline]
-    pub fn from(dt: DateTime<Local>) -> Time<FixedOffset> {
-        Time { time: dt.time(), offset: TimeZone::from_offset(dt.offset()) }
-    }
-
-    #[inline]
-    pub fn from_utc(time: NaiveTime) -> Time<FixedOffset> {
-        Time { time, offset: FixedOffset::east(0) }
-    }
-
-    pub fn hms(&self) -> (u32, u32, u32, u32) {
-        let (mins, sec) = div_mod_floor(self.time.num_seconds_from_midnight(), 60);
-        let (hour, min) = div_mod_floor(mins, 60);
-        (hour, min, sec, 0)
-    }
-
-    #[inline]
-    pub fn format<'a>(&self, fmt: &'a str) -> DelayedFormat<StrftimeItems<'a>> {
-        self.format_with_items(StrftimeItems::new(fmt))
-    }
-
-    #[inline]
-    pub fn format_with_items<'a, I, B>(&self, items: I) -> DelayedFormat<I>
-        where
-            I: Iterator<Item = B> + Clone,
-            B: Borrow<Item<'a>>,
-    {
-        DelayedFormat::new_with_offset(None, Some(self.time), &self.offset, items)
-    }
-}
+use crate::values::Value;
 
 pub(crate) fn object_to_qname(t: Object) -> QName {
     match t {
-        Object::Atomic(Type::String(str)) => {
+        Object::Atomic(Str(str)) => {
             if str.contains(":") {
                 todo!()
             }
             QName::local_part(str.as_str())
         }
-        Object::Atomic(Type::QName { prefix, url, local_part }) =>
+        Object::Atomic(QName { prefix, url, local_part }) =>
                        QName { prefix, url, local_part },
         _ => panic!("can't convert to QName {:?}", t)
     }
@@ -151,7 +30,7 @@ pub(crate) fn object_to_qname(t: Object) -> QName {
 pub fn string_to_double(string: &String) -> Result<Object, ErrorCode> {
     match string.trim().parse() {
         Ok(number) => {
-            Ok(Object::Atomic(Type::Double(number)))
+            Ok(Object::Atomic(Double::boxed(number)))
         },
         Err(..) => Err(ErrorCode::FORG0001)
     }
@@ -177,16 +56,22 @@ pub enum Object {
     Empty,
     Sequence(Vec<Object>),
 
-    Atomic(Type),
+    Atomic(Box<dyn Value>),
     Node(Reference),
 
     Array(Vec<Object>),
-    Map(HashMap<Type, Object>),
+    Map(HashMap<Box<dyn Value>, Object>),
 
     Function { parameters: Vec<Param>, body: Box<dyn Expression> },
     FunctionRef { name: QNameResolved, arity: usize },
 
     Return(Box<Object>),
+}
+
+impl Object {
+    pub(crate) fn atomic(value: dyn Value) -> Object {
+        Object::Atomic(Box::new(value))
+    }
 }
 
 impl<'a> PartialEq<Self> for Object {
@@ -434,7 +319,7 @@ pub(crate) fn atomization(env: &Box<Environment>, obj: Object) -> Result<Object,
         Object::Atomic(..) => Ok(obj),
         Object::Node(rf) => {
             match rf.to_typed_value() {
-                Ok(data) => Ok(Object::Atomic(Type::Untyped(data))),
+                Ok(data) => Ok(Object::Atomic(Untyped::boxed(data))),
                 Err(msg) => Err((ErrorCode::TODO, msg))
             }
 
@@ -443,7 +328,7 @@ pub(crate) fn atomization(env: &Box<Environment>, obj: Object) -> Result<Object,
         Object::Sequence(items) => atomization_of_vec(env, items),
         Object::Range { min, max } => {
             if min == max {
-                Ok(Object::Atomic(Type::Integer(min)))
+                Ok(Object::Atomic(Integer::boxed(min)))
             } else {
                 Err((ErrorCode::XPTY0004, String::from("TODO")))
             }
@@ -464,7 +349,7 @@ pub(crate) fn sequence_atomization(env: &Box<Environment>, obj: Object) -> Resul
         Object::Atomic(..) => Ok(obj),
         Object::Node(rf) => {
             match rf.to_typed_value() {
-                Ok(data) => Ok(Object::Atomic(Type::Untyped(data))),
+                Ok(data) => Ok(Object::Atomic(Untyped::new(data))),
                 Err(msg) => Err((ErrorCode::TODO, msg))
             }
         },
@@ -473,7 +358,7 @@ pub(crate) fn sequence_atomization(env: &Box<Environment>, obj: Object) -> Resul
     }
 }
 
-pub(crate) enum Value {
+pub(crate) enum ValueType {
     Typed,
     String,
     Absent,

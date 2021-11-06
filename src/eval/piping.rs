@@ -1,4 +1,4 @@
-use crate::eval::{Object, object_owned_to_sequence, Environment, EvalResult, DynamicContext, Type};
+use crate::eval::{Object, object_owned_to_sequence, Environment, EvalResult, DynamicContext};
 use std::slice::Iter;
 use crate::values::{QNameResolved, resolve_element_qname};
 use crate::eval::helpers::{relax, insert_into_sequences};
@@ -72,7 +72,7 @@ pub(crate) fn eval_pipe<'a>(pipe: Box<Pipe>, env: Box<Environment>, context: &Dy
 
                             current_env.set(name.clone(), item);
                             if let Some(positional_var) = positional_var.clone() {
-                                current_env.set(positional_var, Object::Atomic(Type::Integer(0)));
+                                current_env.set(positional_var, Object::Atomic(Integer::boxed(0)));
                             }
 
                             let (new_env, answer) = eval_pipe(next.clone(), current_env, context)?;
@@ -97,7 +97,7 @@ pub(crate) fn eval_pipe<'a>(pipe: Box<Pipe>, env: Box<Environment>, context: &Dy
 
                             current_env.set(name.clone(), item);
                             if let Some(positional_var) = positional_var.clone() {
-                                current_env.set(positional_var, Object::Atomic(Type::Integer(pos)));
+                                current_env.set(positional_var, Object::Atomic(Integer::boxed(pos)));
                             }
 
                             let (new_env, answer) = eval_pipe(next.clone(), current_env, context)?;

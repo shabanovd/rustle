@@ -1,5 +1,6 @@
-use crate::eval::{Object, Type, RangeIterator, Environment};
+use crate::eval::{Object, RangeIterator, Environment};
 use crate::parser::op::Representation;
+use crate::values::*;
 
 pub fn object_to_string_xml(env: &Box<Environment>, object: &Object) -> String {
     _object_to_string(env, object, false, " ")
@@ -46,13 +47,21 @@ pub fn _object_to_string(env: &Box<Environment>, object: &Object, ref_resolving:
                 _ => panic!("unexpected {:?}", reference)
             }
         },
-        Object::Atomic(Type::Boolean(b)) => b.to_string(),
-        Object::Atomic(Type::Untyped(str)) => str.clone(),
-        Object::Atomic(Type::AnyURI(str)) => str.clone(),
-        Object::Atomic(Type::String(str)) => str.clone(),
-        Object::Atomic(Type::Integer(number)) => number.to_string(),
-        Object::Atomic(Type::Decimal(number)) => number.to_string(),
-        Object::Atomic(Type::Float(number)) => {
+        Object::Atomic(NCName(str)) => str.to_string(),
+        Object::Atomic(QName { url, prefix, local_part} ) => {
+            if let Some(prefix) = prefix {
+                format!("{}:{}", prefix, local_part)
+            } else {
+                local_part.clone()
+            }
+        },
+        Object::Atomic(Boolean(b)) => b.to_string(),
+        Object::Atomic(Untyped(str)) => str.clone(),
+        Object::Atomic(AnyURI(str)) => str.clone(),
+        Object::Atomic(Str(str)) => str.clone(),
+        Object::Atomic(Integer(number)) => number.to_string(),
+        Object::Atomic(Decimal(number)) => number.to_string(),
+        Object::Atomic(Float(number)) => {
             if number.is_nan() {
                 String::from("NaN")
             } else if number.is_infinite() {
@@ -65,7 +74,7 @@ pub fn _object_to_string(env: &Box<Environment>, object: &Object, ref_resolving:
                 number.to_string()
             }
         },
-        Object::Atomic(Type::Double(number)) => {
+        Object::Atomic(Double(number)) => {
             if number.is_nan() {
                 String::from("NaN")
             } else if number.is_infinite() {
@@ -78,13 +87,13 @@ pub fn _object_to_string(env: &Box<Environment>, object: &Object, ref_resolving:
                 number.to_string()
             }
         },
-        Object::Atomic(Type::DateTime(dt)) => {
+        Object::Atomic(DateTime(dt)) => {
             dt.to_rfc3339()
         }
-        Object::Atomic(Type::Date(date)) => {
+        Object::Atomic(Date(date)) => {
             date.format("%Y-%m-%d").to_string()
         }
-        Object::Atomic(Type::Time(time)) => {
+        Object::Atomic(Time(time)) => {
             time.format("%H:%M:%S").to_string()
         }
         Object::Sequence(items) => {

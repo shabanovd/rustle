@@ -1,8 +1,9 @@
 use core::fmt;
-use crate::eval::{Environment, DynamicContext, EvalResult, Object, Type};
+use crate::eval::{Environment, DynamicContext, EvalResult, Object};
 use crate::namespaces::{Namespace, SCHEMA};
 use std::cmp::Ordering;
 use crate::eval::expression::Expression;
+use crate::values::{Str, Value};
 
 lazy_static! {
     pub static ref XS_STRING: QName = QName::full("xs", "string", &SCHEMA.uri);
@@ -145,9 +146,13 @@ impl QName {
     }
 }
 
+impl Value for QName {
+    
+}
+
 impl Expression for QName {
     fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
-        Ok((env, Object::Atomic( Type::QName { local_part: self.local_part.clone(), url: self.url.clone(), prefix: self.prefix.clone() } ) ))
+        Ok((env, Object::atomic( QName { local_part: self.local_part.clone(), url: self.url.clone(), prefix: self.prefix.clone() } ) ))
     }
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
@@ -182,7 +187,7 @@ impl Name {
 
 impl Expression for Name {
     fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
-        Ok((env, Object::Atomic( Type::String(self.name.clone()) ) ))
+        Ok((env, Object::Atomic( Str::boxed(self.name.clone()) ) ))
     }
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {

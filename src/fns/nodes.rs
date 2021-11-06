@@ -1,5 +1,6 @@
-use crate::eval::{Environment, Object, DynamicContext, EvalResult, Type};
+use crate::eval::{Environment, Object, DynamicContext, EvalResult};
 use crate::parser::errors::ErrorCode;
+use crate::values::Str;
 
 pub(crate) fn fn_name(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
     let item = if arguments.len() == 0 {
@@ -12,7 +13,7 @@ pub(crate) fn fn_name(env: Box<Environment>, arguments: Vec<Object>, context: &D
     };
 
     match item {
-        Object::Empty => Ok((env, Object::Atomic(Type::String(String::new())))),
+        Object::Empty => Ok((env, Object::Atomic(Str::boxed(String::new())))),
         Object::Node(rf) => {
             let data = if let Some(name) = rf.name() {
                 name.string()
@@ -20,7 +21,7 @@ pub(crate) fn fn_name(env: Box<Environment>, arguments: Vec<Object>, context: &D
                 String::new()
             };
 
-            Ok((env, Object::Atomic(Type::String(data))))
+            Ok((env, Object::Atomic(Str::boxed(data))))
         },
         _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
     }
@@ -37,12 +38,12 @@ pub(crate) fn fn_local_name(env: Box<Environment>, arguments: Vec<Object>, conte
     };
 
     match item {
-        Object::Empty => Ok((env, Object::Atomic(Type::String(String::new())))),
+        Object::Empty => Ok((env, Object::Atomic(Str::boxed(String::new())))),
         Object::Node(rf) => {
             if let Some(name) = rf.name() {
-                Ok((env, Object::Atomic(Type::String(name.local_part))))
+                Ok((env, Object::Atomic(Str::boxed(name.local_part))))
             } else {
-                Ok((env, Object::Atomic(Type::String(String::new()))))
+                Ok((env, Object::Atomic(Str::boxed(String::new()))))
             }
 
         }

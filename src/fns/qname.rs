@@ -1,8 +1,9 @@
-use crate::eval::{Object, Type, DynamicContext, EvalResult};
+use crate::eval::{Object, DynamicContext, EvalResult};
 use crate::eval::Environment;
 
 use crate::serialization::object_to_string;
 use crate::parser::errors::ErrorCode;
+use crate::values::{AnyURI, QName};
 
 pub(crate) fn fn_resolve_qname(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     todo!()
@@ -37,7 +38,7 @@ pub(crate) fn fn_qname(env: Box<Environment>, arguments: Vec<Object>, _context: 
         return Err((ErrorCode::FOCA0002, String::from("TODO")));
     };
 
-    Ok((env, Object::Atomic( Type::QName { url, prefix, local_part } )))
+    Ok((env, Object::Atomic( QName { url, prefix, local_part } )))
 }
 
 pub(crate) fn fn_prefix_from_qname(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
@@ -54,11 +55,11 @@ pub(crate) fn fn_namespace_uri_from_qname(env: Box<Environment>, arguments: Vec<
     println!("arguments {:?}", arguments);
     match arguments.as_slice() {
         [Object::Empty] => Ok((env, Object::Empty)),
-        [Object::Atomic(Type::QName { url, .. })] => {
+        [Object::Atomic(QName { url, .. })] => {
             if let Some(uri) = url {
-                Ok((env, Object::Atomic(Type::AnyURI(uri.clone()))))
+                Ok((env, Object::Atomic(AnyURI::boxed(uri.clone()))))
             } else {
-                Ok((env, Object::Atomic(Type::AnyURI(String::new()))))
+                Ok((env, Object::Atomic(AnyURI::boxed(String::new()))))
             }
         },
         _ => panic!()
@@ -87,11 +88,11 @@ pub(crate) fn fn_node_name(env: Box<Environment>, arguments: Vec<Object>, contex
         Object::Empty => Ok((env, Object::Empty)),
         Object::Node(rf) => {
             if let Some(name) = rf.name() {
-                Ok((env, Object::Atomic(Type::QName {
+                Ok((env, Object::Atomic(Box::new(QName {
                     url: name.url.clone(),
                     prefix: name.prefix.clone(),
                     local_part: name.local_part.clone()
-                })))
+                }))))
             } else {
                 Ok((env, Object::Empty))
             }

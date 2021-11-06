@@ -1,13 +1,13 @@
-use crate::eval::{Object, Type, Environment, EvalResult, atomization, relax, sequence_atomization, ErrorInfo};
+use crate::eval::{Object, Environment, EvalResult, atomization, relax, sequence_atomization, ErrorInfo};
 use crate::serialization::object_to_string;
-use crate::parser::parse_duration::string_to_dt_duration;
+use crate::parser::parse_duration::{parse_day_time_duration, parse_year_month_duration};
 use std::cmp::Ordering;
-use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
+use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive, Zero};
 use crate::parser::op::OperatorComparison;
 use crate::eval::arithmetic::object_to_items;
 use ordered_float::OrderedFloat;
 use crate::parser::errors::ErrorCode;
-use crate::values::QName;
+use crate::values::*;
 use crate::fns::object_to_bool;
 use crate::tree::Reference;
 
@@ -43,7 +43,7 @@ pub fn eval_comparison(env: Box<Environment>, operator: OperatorComparison, left
                                 (&current_env, &l_obj), (&current_env, &r_obj)
                             )?;
 
-                            let obj = Object::Atomic(Type::Boolean(v));
+                            let obj = Object::Atomic(Boolean::boxed(v));
                             result.push(obj);
                         },
                         _ => panic!("internal error")
@@ -65,7 +65,7 @@ pub fn eval_comparison(env: Box<Environment>, operator: OperatorComparison, left
                                 (&current_env, &l_node), (&current_env, &r_node)
                             )?;
 
-                            let obj = Object::Atomic(Type::Boolean(v));
+                            let obj = Object::Atomic(Boolean::boxed(v));
                             result.push(obj);
                         }
                         _ => panic!("internal error")
@@ -134,19 +134,19 @@ fn object_atomization<'a>(
     env: &'a Box<Environment>, checks_type: &'a ComparisonType, obj: Object
 ) -> Result<(Option<Object>, Option<Reference>, Option<Object>), ErrorInfo> {
     match checks_type {
-        ComparisonType::Value => {
+        ComparisonValue => {
             match atomization(env, obj) {
                 Ok(v) => Ok((Some(v), None, None)),
                 Err(e) => Err(e)
             }
         },
-        ComparisonType::General => {
+        ComparisonGeneral => {
             match sequence_atomization(env, obj) {
                 Ok(v) => Ok((Some(v), None, None)),
                 Err(e) => Err(e)
             }
         },
-        ComparisonType::Node => {
+        ComparisonNode => {
             match obj {
                 Object::Empty => Ok((None, None, Some(Object::Empty))),
                 Object::Node(rf) => Ok((None, Some(rf), None)),
@@ -238,16 +238,143 @@ impl ValueOrdering {
 }
 
 fn cmp(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Option<ValueOrdering> {
+    println!("cmp:");
+    println!("left : {:?}", left.1);
+    println!("right: {:?}", right.1);
+    if left.1 == right.1 {
+        return Some(ValueOrdering::Equal);
+    }
     match left.1 {
-        Object::Atomic(Type::Untyped(..)) |
-        Object::Atomic(Type::AnyURI(..)) |
-        Object::Atomic(Type::String(..)) |
-        Object::Atomic(Type::NormalizedString(..)) |
+        Object::Atomic(Untyped(..)) => {
+            match right.1 {
+                Object::Range { min, max } => {
+                    if let Some(left_num) = object_to_double(left.1) {
+                        if left_num.is_normal() || left_num.is_zero() {
+                            if let Some(left_num) = left_num.to_i128() {
+                                if left_num >= *min && left_num <= *max {
+                                    Some(ValueOrdering::Equal)
+                                } else {
+                                    Some(ValueOrdering::AlwaysNotEqual)
+                                }
+                            } else {
+                                Some(ValueOrdering::AlwaysNotEqual)
+                            }
+                        } else {
+                            Some(ValueOrdering::AlwaysNotEqual)
+                        }
+                    } else {
+                        None
+                    }
+                }
+                Object::CharRef {..} |
+                Object::EntityRef(..) => {
+                    // xs:string or xs:anyURI => xs:string
+                    let l_str = object_to_string(left.0, left.1);
+                    let r_str = object_to_string(right.0, right.1);
+                    ValueOrdering::from(l_str.cmp(&r_str))
+                },
+                Object::Atomic(r_type) => {
+                    match r_type {
+                        Untyped(_) |
+                        QName {..} |
+                        NCName(..) |
+                        AnyURI(..) |
+                        Str(..) |
+                        NormalizedString(..) => {
+                            let l_str = object_to_string(left.0, left.1);
+                            let r_str = object_to_string(right.0, right.1);
+                            ValueOrdering::from(l_str.cmp(&r_str))
+                        }
+                        Integer(right_num) => {
+                            if let Some(left_num) = object_to_i128(left.1) {
+                                ValueOrdering::from(left_num.cmp(&right_num))
+                            } else {
+                                None
+                            }
+                        }
+                        Decimal(right_num) => {
+                            if let Some(left_num) = object_to_decimal(left.1) {
+                                ValueOrdering::from(left_num.cmp(&right_num))
+                            } else {
+                                None
+                            }
+                        }
+                        Float(right_num) => {
+                            if let Some(left_num) = object_to_float(left.1) {
+                                ValueOrdering::from(left_num.cmp(&right_num))
+                            } else {
+                                None
+                            }
+                        }
+                        Double(right_num) => {
+                            if let Some(left_num) = object_to_double(left.1) {
+                                ValueOrdering::from(left_num.cmp(&right_num))
+                            } else {
+                                None
+                            }
+                        }
+                        Duration { .. } => {
+                            todo!()
+                            // let right_duration = r_type;
+                            // let left_str = object_to_string(left.0, left.1);
+                            // match parse_duration(left_str.as_str()) {
+                            //     Ok((i, left_duration)) => {
+                            //         ValueOrdering::from(left_duration.cmp(right_duration))
+                            //     },
+                            //     Err(..) => None
+                            // }
+                        }
+                        YearMonthDuration { .. } => {
+                            let right_duration = r_type;
+                            let left_str = object_to_string(left.0, left.1);
+                            match parse_year_month_duration(left_str.as_str()) {
+                                Ok((i, left_duration)) => {
+                                    ValueOrdering::from(left_duration.cmp(right_duration))
+                                },
+                                Err(..) => None
+                            }
+                        }
+                        DayTimeDuration { .. } => {
+                            let right_duration = r_type;
+                            let left_str = object_to_string(left.0, left.1);
+                            match parse_day_time_duration(left_str.as_str()) {
+                                Ok((i, left_duration)) => {
+                                    ValueOrdering::from(left_duration.cmp(right_duration))
+                                },
+                                Err(..) => None
+                            }
+                        }
+                        // DateTime(_) => todo!(),
+                        // DateTimeStamp() => todo!(),
+                        // Date(_) => todo!(),
+                        // Time(_) => todo!(),
+                        // GYearMonth() => todo!(),
+                        // GYear() => todo!(),
+                        // GMonthDay() => todo!(),
+                        // GDay() => todo!(),
+                        // GMonth() => todo!(),
+                        // Token(_) => todo!(),
+                        // Language(_) => todo!(),
+                        // NMTOKEN(_) => todo!(),
+                        // Name(_) => todo!(),
+                        // ID(_) => todo!(),
+                        // IDREF(_) => todo!(),
+                        // ENTITY(_) => todo!(),
+                        // Boolean(_) => todo!(),
+                        // Base64Binary() => todo!(),
+                        // HexBinary() => todo!(),
+                        // NOTATION() => todo!(),
+                    }
+                },
+                _ => None
+            }
+        }
+        Object::Atomic(NCName(..)) |
+        Object::Atomic(AnyURI(..)) |
+        Object::Atomic(Str(..)) |
+        Object::Atomic(NormalizedString(..)) |
         Object::CharRef {..} |
         Object::EntityRef(..) => {
-            if left.1 == right.1 {
-                return Some(ValueOrdering::Equal);
-            }
             // xs:string or xs:anyURI => xs:string
             if let Some(l_str) = object_to_string_if_string(left.0, left.1) {
                 if let Some(r_str) = object_to_string_if_string(right.0, right.1) {
@@ -256,7 +383,7 @@ fn cmp(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Option<ValueOrdering> {
             }
             None
         }
-        Object::Atomic(Type::QName {..}) => {
+        Object::Atomic(QName {..}) => {
             if left.1 == right.1 {
                 return Some(ValueOrdering::QNameEqual);
             }
@@ -270,19 +397,17 @@ fn cmp(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Option<ValueOrdering> {
             }
             None
         },
-        Object::Atomic(Type::Boolean(lbt)) => {
+        Object::Atomic(Boolean(lbt)) => {
             let rbt = match object_to_bool(right.1) {
                 Ok(v) => v,
-                Err(e) => {
-                    return None;
-                }
+                Err(e) => return None
             };
-            return ValueOrdering::from(lbt.cmp(&rbt));
+            ValueOrdering::from(lbt.cmp(&rbt))
         },
-        Object::Atomic(Type::Integer(..)) |
-        Object::Atomic(Type::Decimal(..)) |
-        Object::Atomic(Type::Float(..)) |
-        Object::Atomic(Type::Double(..)) => {
+        Object::Atomic(Integer(..)) |
+        Object::Atomic(Decimal(..)) |
+        Object::Atomic(Float(..)) |
+        Object::Atomic(Double(..)) => {
             let lnt = object_to_number_type(left.1);
             let rnt = object_to_number_type(right.1);
 
@@ -403,109 +528,115 @@ pub(crate) fn gr(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<bool, Er
 }
 
 pub(crate) fn general_eq(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<bool, ErrorInfo> {
-    match left.1 {
-        Object::Empty => Ok(false),
-        Object::Atomic(lt) => {
-            match right.1 {
-                Object::Empty => Ok(false),
-                Object::Atomic(Type::Untyped(rs)) => {
-                    match lt {
-                        Type::Untyped(ls) => {
-                            Ok(ls == rs)
-                        }
-                        Type::DayTimeDuration { .. } => {
-                            match string_to_dt_duration(rs) {
-                                Ok(rd) => Ok(lt == &rd),
-                                Err(..) => Err((ErrorCode::XPTY0004, String::from("TODO")))
-                            }
-                        }
-                        Type::Integer(..) |
-                        Type::Decimal {..} |
-                        Type::Float {..} |
-                        Type::Double {..} => {
-                            if let Ok(number) = rs.parse() {
-                                let rv = Object::Atomic(Type::Double(number));
-                                eq(left, (right.0, &rv))
-                            } else {
-                                Err((ErrorCode::XPTY0004, String::from("TODO")))
-                            }
-                        }
-                        _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
-                    }
-                }
-                Object::Atomic(..) => {
-                    eq(left, right)
-                },
-                Object::Range { min, max } => {
-                    match lt {
-                        Type::Integer(ls) => {
-                            if min <= max {
-                                Ok(ls >= min && ls <= max)
-                            } else {
-                                Ok(ls >= max && ls <= min)
-                            }
-                        },
-                        _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
-                    }
-                }
-                Object::Sequence(items) => {
-                    for item in items {
-                        if eq(left, (right.0, item))? {
-                            return Ok(true);
-                        }
-                    }
-                    Ok(false)
-                }
-                _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
-            }
-        }
-        Object::Range { min: l_min, max: l_max} => {
-            match right.1 {
-                Object::Empty => Ok(false),
-                Object::Range { min: r_min, max: r_max} => {
-                    let (l_min, l_max) = if l_min <= l_max {
-                        (l_min, l_max)
-                    } else {
-                        (l_max, l_min)
-                    };
-
-                    let (r_min, r_max) = if r_min <= r_max {
-                        (r_min, r_max)
-                    } else {
-                        (r_max, r_min)
-                    };
-
-                    Ok((l_min <= r_max) && (l_max >= r_min))
-                },
-                _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
-            }
-        }
-        Object::Sequence(left_items) => {
-            match right.1 {
-                Object::Empty => Ok(false),
-                Object::Atomic(..) => {
-                    for item in left_items {
-                        if eq((left.0, item), right)? {
-                            return Ok(true);
-                        }
-                    }
-                    Ok(false)
-                },
-                Object::Sequence(right_items) => {
-                    for left_item in left_items {
-                        for right_item in right_items {
-                            if eq((left.0, left_item), (right.0, &right_item))? {
-                                return Ok(true);
-                            }
-                        }
-                    }
-                    Ok(false)
-                }
-                _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
-            }
-        },
-        _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+    match cmp(left, right) {
+        Some(ValueOrdering::Equal) |
+        Some(ValueOrdering::QNameEqual) => Ok(true),
+        Some(..) => Ok(false),
+        None => Err((ErrorCode::XPTY0004, String::from("TODO")))
     }
+    // match left.1 {
+    //     Object::Empty => Ok(false),
+    //     Object::Atomic(lt) => {
+    //         match right.1 {
+    //             Object::Empty => Ok(false),
+    //             Object::Atomic(Untyped(rs)) => {
+    //                 match lt {
+    //                     Untyped(ls) => {
+    //                         Ok(ls == rs)
+    //                     }
+    //                     DayTimeDuration { .. } => {
+    //                         match string_to_dt_duration(rs) {
+    //                             Ok(rd) => Ok(lt == &rd),
+    //                             Err(..) => Err((ErrorCode::XPTY0004, String::from("TODO")))
+    //                         }
+    //                     }
+    //                     Integer(..) |
+    //                     Decimal {..} |
+    //                     Float {..} |
+    //                     Double {..} => {
+    //                         if let Ok(number) = rs.parse() {
+    //                             let rv = Object::Atomic(Double(number));
+    //                             eq(left, (right.0, &rv))
+    //                         } else {
+    //                             Err((ErrorCode::XPTY0004, String::from("TODO")))
+    //                         }
+    //                     }
+    //                     _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+    //                 }
+    //             }
+    //             Object::Atomic(..) => {
+    //                 eq(left, right)
+    //             },
+    //             Object::Range { min, max } => {
+    //                 match lt {
+    //                     Integer(ls) => {
+    //                         if min <= max {
+    //                             Ok(ls >= min && ls <= max)
+    //                         } else {
+    //                             Ok(ls >= max && ls <= min)
+    //                         }
+    //                     },
+    //                     _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+    //                 }
+    //             }
+    //             Object::Sequence(items) => {
+    //                 for item in items {
+    //                     if eq(left, (right.0, item))? {
+    //                         return Ok(true);
+    //                     }
+    //                 }
+    //                 Ok(false)
+    //             }
+    //             _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+    //         }
+    //     }
+    //     Object::Range { min: l_min, max: l_max} => {
+    //         match right.1 {
+    //             Object::Empty => Ok(false),
+    //             Object::Range { min: r_min, max: r_max} => {
+    //                 let (l_min, l_max) = if l_min <= l_max {
+    //                     (l_min, l_max)
+    //                 } else {
+    //                     (l_max, l_min)
+    //                 };
+    //
+    //                 let (r_min, r_max) = if r_min <= r_max {
+    //                     (r_min, r_max)
+    //                 } else {
+    //                     (r_max, r_min)
+    //                 };
+    //
+    //                 Ok((l_min <= r_max) && (l_max >= r_min))
+    //             },
+    //             _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+    //         }
+    //     }
+    //     Object::Sequence(left_items) => {
+    //         match right.1 {
+    //             Object::Empty => Ok(false),
+    //             Object::Atomic(..) => {
+    //                 for item in left_items {
+    //                     if eq((left.0, item), right)? {
+    //                         return Ok(true);
+    //                     }
+    //                 }
+    //                 Ok(false)
+    //             },
+    //             Object::Sequence(right_items) => {
+    //                 for left_item in left_items {
+    //                     for right_item in right_items {
+    //                         if eq((left.0, left_item), (right.0, &right_item))? {
+    //                             return Ok(true);
+    //                         }
+    //                     }
+    //                 }
+    //                 Ok(false)
+    //             }
+    //             _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+    //         }
+    //     },
+    //     _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+    // }
 }
 
 pub(crate) fn deep_eq(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<bool, ErrorInfo> {
@@ -600,7 +731,7 @@ pub(crate) fn deep_eq_sequence_and_range<'a>(env: &'a Box<Environment>, left_ite
 
         loop {
             if let Some(left_item) = left_it.next() {
-                if deep_eq((env, left_item), (env, &Object::Atomic(Type::Integer(right_item))))? {
+                if deep_eq((env, left_item), (env, &Object::Atomic(Integer(right_item))))? {
                     return Ok(false);
                 }
 
@@ -634,31 +765,45 @@ pub enum NT {
 
 fn object_to_number_type(obj: &Object) -> Option<NT> {
     match obj {
-        Object::Atomic(Type::Integer(..)) => Some(NT::Integer),
-        Object::Atomic(Type::Decimal(..)) => Some(NT::Decimal),
-        Object::Atomic(Type::Float(..)) => Some(NT::Float),
-        Object::Atomic(Type::Double(..)) => Some(NT::Double),
+        Object::Atomic(Integer(..)) => Some(NT::Integer),
+        Object::Atomic(Decimal(..)) => Some(NT::Decimal),
+        Object::Atomic(Float(..)) => Some(NT::Float),
+        Object::Atomic(Double(..)) => Some(NT::Double),
         _ => None
     }
 }
 
 fn object_to_i128(obj: &Object) -> Option<i128> {
     match obj {
-        Object::Atomic(Type::Integer(num)) => Some(*num),
-        // Object::Atomic(Type::Decimal(num)) => Some(num),
-        // Object::Atomic(Type::Double(num)) => Some(num),
+        Object::Atomic(Untyped(str)) |
+        Object::Atomic(Str(str)) => {
+            match str.parse::<i128>() {
+                Ok(num) => Some(num),
+                Err(..) => None
+            }
+        }
+        Object::Atomic(Integer(num)) => Some(*num),
+        // Object::Atomic(Decimal(num)) => Some(num),
+        // Object::Atomic(Double(num)) => Some(num),
         _ => None
     }
 }
 
 fn object_to_decimal(obj: &Object) -> Option<BigDecimal> {
     match obj {
-        Object::Atomic(Type::Integer(number)) => BigDecimal::from_i128(*number),
-        Object::Atomic(Type::Decimal(number)) => Some(number.clone()),
-        Object::Atomic(Type::Float(number)) => {
+        Object::Atomic(Untyped(str)) |
+        Object::Atomic(Str(str)) => {
+            match str.parse::<BigDecimal>() {
+                Ok(num) => Some(num),
+                Err(..) => None
+            }
+        }
+        Object::Atomic(Integer(number)) => BigDecimal::from_i128(*number),
+        Object::Atomic(Decimal(number)) => Some(number.clone()),
+        Object::Atomic(Float(number)) => {
             BigDecimal::from_f32(number.into_inner())
         }
-        Object::Atomic(Type::Double(number)) => {
+        Object::Atomic(Double(number)) => {
             BigDecimal::from_f64(number.into_inner())
         },
         _ => None
@@ -667,16 +812,23 @@ fn object_to_decimal(obj: &Object) -> Option<BigDecimal> {
 
 fn object_to_float(obj: &Object) -> Option<OrderedFloat<f32>> {
     match obj {
-        Object::Atomic(Type::Integer(number)) => OrderedFloat::from_i128(*number),
-        Object::Atomic(Type::Decimal(number)) => {
+        Object::Atomic(Untyped(str)) |
+        Object::Atomic(Str(str)) => {
+            match str.parse::<f32>() {
+                Ok(num) => Some(OrderedFloat(num)),
+                Err(..) => None
+            }
+        }
+        Object::Atomic(Integer(number)) => OrderedFloat::from_i128(*number),
+        Object::Atomic(Decimal(number)) => {
             if let Some(number) = number.to_f32() {
                 OrderedFloat::from_f32(number)
             } else {
                 None
             }
         },
-        Object::Atomic(Type::Float(number)) => Some(*number),
-        Object::Atomic(Type::Double(number)) => {
+        Object::Atomic(Float(number)) => Some(*number),
+        Object::Atomic(Double(number)) => {
             if let Some(number) = number.to_f32() {
                 OrderedFloat::from_f32(number)
             } else {
@@ -689,32 +841,39 @@ fn object_to_float(obj: &Object) -> Option<OrderedFloat<f32>> {
 
 fn object_to_double(obj: &Object) -> Option<OrderedFloat<f64>> {
     match obj {
-        Object::Atomic(Type::Integer(number)) => OrderedFloat::from_i128(*number),
-        Object::Atomic(Type::Decimal(number)) => {
+        Object::Atomic(Untyped(str)) |
+        Object::Atomic(Str(str)) => {
+            match str.parse::<f64>() {
+                Ok(num) => Some(OrderedFloat(num)),
+                Err(..) => None
+            }
+        }
+        Object::Atomic(Integer(number)) => OrderedFloat::from_i128(*number),
+        Object::Atomic(Decimal(number)) => {
             if let Some(number) = number.to_f64() {
                 OrderedFloat::from_f64(number)
             } else {
                 None
             }
         },
-        Object::Atomic(Type::Float(number)) => {
+        Object::Atomic(Float(number)) => {
             if let Some(number) = number.to_f64() {
                 OrderedFloat::from_f64(number)
             } else {
                 None
             }
         },
-        Object::Atomic(Type::Double(number)) => Some(number.clone()),
+        Object::Atomic(Double(number)) => Some(number.clone()),
         _ => None
     }
 }
 
 fn object_to_string_if_string(env: &Box<Environment>, obj: &Object) -> Option<String> {
     match obj {
-        Object::Atomic(Type::Untyped(..)) |
-        Object::Atomic(Type::AnyURI(..)) |
-        Object::Atomic(Type::String(..)) |
-        Object::Atomic(Type::NormalizedString(..)) |
+        Object::Atomic(Untyped(..)) |
+        Object::Atomic(AnyURI(..)) |
+        Object::Atomic(Str(..)) |
+        Object::Atomic(NormalizedString(..)) |
         Object::CharRef {..} |
         Object::EntityRef(..) => {
             Some(object_to_string(env, obj))
@@ -725,7 +884,7 @@ fn object_to_string_if_string(env: &Box<Environment>, obj: &Object) -> Option<St
 
 fn object_to_qname_if_qname(obj: &Object) -> Option<QName> {
     match obj {
-        Object::Atomic(Type::QName { url, prefix, local_part }) => {
+        Object::Atomic(QName { url, prefix, local_part }) => {
             Some(QName { url: url.clone(), prefix: prefix.clone(), local_part: local_part.clone() })
         }
         _ => None

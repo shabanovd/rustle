@@ -1,8 +1,9 @@
-use crate::eval::{Object, Type, DynamicContext, EvalResult};
+use crate::eval::{Object, DynamicContext, EvalResult};
 use crate::eval::Environment;
 use crate::serialization::object_to_string;
 use crate::serialization::to_string::_object_to_string;
 use crate::parser::errors::ErrorCode;
+use crate::values::{Boolean, Integer, Str};
 
 pub(crate) fn fn_string(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
 
@@ -14,7 +15,7 @@ pub(crate) fn fn_string(env: Box<Environment>, arguments: Vec<Object>, context: 
 
     let str = object_to_string(&env, item);
 
-    Ok((env, Object::Atomic(Type::String(str))))
+    Ok((env, Object::Atomic(Str::boxed(str))))
 }
 
 pub(crate) fn fn_upper_case(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
@@ -24,7 +25,7 @@ pub(crate) fn fn_upper_case(env: Box<Environment>, arguments: Vec<Object>, _cont
 
     let str = object_to_string(&env, item);
 
-    Ok((env, Object::Atomic(Type::String(str.to_uppercase()))))
+    Ok((env, Object::Atomic(Str::boxed(str.to_uppercase()))))
 }
 
 pub(crate) fn fn_lower_case(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
@@ -34,7 +35,7 @@ pub(crate) fn fn_lower_case(env: Box<Environment>, arguments: Vec<Object>, _cont
 
     let str = object_to_string(&env, item);
 
-    Ok((env, Object::Atomic(Type::String(str.to_lowercase()))))
+    Ok((env, Object::Atomic(Str::boxed(str.to_lowercase()))))
 }
 
 pub(crate) fn fn_concat(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
@@ -42,7 +43,7 @@ pub(crate) fn fn_concat(env: Box<Environment>, arguments: Vec<Object>, _context:
         .map(|item| object_to_string(&env, item))
         .collect();
 
-    Ok((env, Object::Atomic(Type::String(str))))
+    Ok((env, Object::Atomic(Str::boxed(str))))
 }
 
 pub(crate) fn fn_string_join(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
@@ -57,7 +58,7 @@ pub(crate) fn fn_string_join(env: Box<Environment>, arguments: Vec<Object>, _con
         return Err((ErrorCode::TODO, format!("got {:?} arguments, but expected 1 or 2", arguments.len())));
     };
 
-    Ok((env, Object::Atomic(Type::String(str))))
+    Ok((env, Object::Atomic(Str::boxed(str))))
 }
 
 pub(crate) fn fn_string_length(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
@@ -70,7 +71,7 @@ pub(crate) fn fn_string_length(env: Box<Environment>, arguments: Vec<Object>, co
 
     let str = object_to_string(&env, item);
 
-    Ok((env, Object::Atomic(Type::Integer(str.len() as i128))))
+    Ok((env, Object::Atomic(Integer::boxed(str.len() as i128))))
 }
 
 pub(crate) fn fn_normalize_space(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
@@ -86,18 +87,18 @@ pub(crate) fn fn_normalize_space(env: Box<Environment>, arguments: Vec<Object>, 
 
     // TODO replacing sequences of one or more adjacent whitespace characters with a single space
 
-    Ok((env, Object::Atomic(Type::String(str))))
+    Ok((env, Object::Atomic(Str::boxed(str))))
 }
 
 pub(crate) fn fn_string_to_codepoints(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
 
     let result = match arguments.as_slice() {
         [Object::Empty] => Object::Empty,
-        [Object::Atomic(Type::String(str))] => {
+        [Object::Atomic(Str(str))] => {
             let mut codes = Vec::with_capacity(str.len());
             for char in str.chars() {
                 // let code = char as u32;
-                codes.push(Object::Atomic(Type::Integer(char as i128)));
+                codes.push(Object::Atomic(Integer::boxed(char as i128)));
             }
 
             Object::Sequence(codes)
@@ -118,7 +119,7 @@ pub(crate) fn fn_starts_with(env: Box<Environment>, arguments: Vec<Object>, cont
 
     let result = string.starts_with(&pattern);
 
-    Ok((env, Object::Atomic(Type::Boolean(result))))
+    Ok((env, Object::Atomic(Boolean::boxed(result))))
 }
 
 pub(crate) fn fn_ends_with(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
@@ -131,7 +132,7 @@ pub(crate) fn fn_ends_with(env: Box<Environment>, arguments: Vec<Object>, contex
 
     let result = string.ends_with(&pattern);
 
-    Ok((env, Object::Atomic(Type::Boolean(result))))
+    Ok((env, Object::Atomic(Boolean::boxed(result))))
 }
 
 pub(crate) fn object_to_array(object: Object) -> Vec<Object> {

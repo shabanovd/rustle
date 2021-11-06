@@ -8,7 +8,6 @@ use nom::sequence::{preceded, delimited, tuple, terminated, separated_pair};
 use nom::multi::{many0, separated_list1};
 use nom::combinator::{map, opt, peek};
 use nom::character::complete::{one_of, digit1};
-use nom::Err::Failure;
 use crate::eval::{Axis, INS};
 
 use crate::parser::helper::*;
