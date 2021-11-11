@@ -3,11 +3,12 @@ use crate::parser::errors::{CustomError, IResultExt};
 use crate::eval::prolog::*;
 
 use nom::{branch::alt, bytes::complete::tag, error::Error, IResult};
-use nom::bytes::complete::is_not;
+use nom::bytes::complete::{is_a, is_not};
 use nom::sequence::{preceded, delimited, tuple, terminated, separated_pair};
 use nom::multi::{many0, separated_list1};
 use nom::combinator::{map, opt, peek};
 use nom::character::complete::{one_of, digit1};
+use nom::error::ParseError;
 use crate::eval::{Axis, INS};
 
 use crate::parser::helper::*;
@@ -1502,10 +1503,16 @@ fn parse_parenthesized_expr(input: &str) -> IResult<&str, Box<dyn Expression>, C
 
 // [134]    	ContextItemExpr 	   ::=    	"."
 fn parse_context_item_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
-    // lookahead for ".." case
-    let (input, _) = tuple((ws, tag("."), is_not(".")))(input)?;
+    let (input, _) = tuple((ws, tag(".")))(input)?;
 
-    found_expr(input, Box::new(ContextItem{}))
+    //workaround: lookahead for ".." case
+    let check = is_a::<&str, &str, Error<&str>>(".")(input);
+    if check.is_ok() {
+        // TODO: is it correct?
+        Err(nom::Err::Error(nom::error::ParseError::from_char(input, ' ')))
+    } else {
+        found_expr(input, Box::new(ContextItem {}))
+    }
 }
 
 // [137]    	FunctionCall 	   ::=    	EQName ArgumentList

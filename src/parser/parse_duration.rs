@@ -8,10 +8,10 @@ use nom::{
 use nom::sequence::{terminated, preceded, tuple};
 use nom::combinator::{opt, map, map_res};
 
-use crate::eval::{Type, Time};
 use crate::parser::parse_literal::is_digits;
 use chrono::{Date, NaiveDate, FixedOffset, NaiveTime, DateTime, NaiveDateTime};
 use nom::error::{ParseError, ErrorKind};
+use crate::values::Type;
 
 pub fn string_to_date(input: &str) -> Result<Type, String> {
     match parse_date(input) {
@@ -293,7 +293,7 @@ fn parse_duration_time(input: &str) -> IResult<&str, Type> {
             let (s, ms) = s.unwrap_or((0,0));
 
             if let Some(time) = NaiveTime::from_hms_milli_opt(h, m, s, ms) {
-                Ok(Type::Time(Time::from_utc(time)))
+                Ok(Type::Time(crate::values::time::Time::from_utc(time)))
             } else {
                 Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
             }

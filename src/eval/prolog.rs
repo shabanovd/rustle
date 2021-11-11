@@ -802,6 +802,7 @@ impl Expression for Integer {
             Ok((env, Object::Empty))
         } else {
             match value {
+                Object::Empty => Ok((env, Object::Empty)),
                 Object::Atomic(..) |
                 Object::Node {..} => {
                     if pos == 1 {

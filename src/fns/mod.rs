@@ -71,6 +71,8 @@ impl FunctionsRegister {
         instance.register(&*SCHEMA.uri, "dayTimeDuration", 1, types::xs_day_time_duration_eval);
         instance.register(&*SCHEMA.uri, "duration", 1, types::xs_duration_eval);
 
+        instance.register(&*SCHEMA.uri, "hexBinary", 1, types::xs_hex_binary_eval);
+
         instance.register(&*SCHEMA.uri, "integer", 1, types::xs_integer_eval);
         instance.register(&*SCHEMA.uri, "decimal", 1, types::xs_decimal_eval);
         instance.register(&*SCHEMA.uri, "float", 1, types::xs_float_eval);

@@ -32,9 +32,17 @@ pub(crate) fn xs_string_eval(env: Box<Environment>, arguments: Vec<Object>, _con
     Ok((env, Object::Atomic(Type::String(str))))
 }
 
+pub(crate) fn xs_hex_binary_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    let item = arguments.get(0).unwrap();
+
+    let str = object_to_string(&env, item);
+
+    Ok((env, Object::Atomic(Type::HexBinary(str))))
+}
+
 pub(crate) fn xs_ncname_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
-
+        [Object::Atomic(Type::Untyped(string))] |
         [Object::Atomic(Type::String(string))] =>
             Ok((env, Object::Atomic(Type::NCName(string.clone())))),
 
@@ -44,7 +52,7 @@ pub(crate) fn xs_ncname_eval(env: Box<Environment>, arguments: Vec<Object>, _con
 
 pub(crate) fn xs_anyuri_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
-
+        [Object::Atomic(Type::Untyped(string))] |
         [Object::Atomic(Type::String(string))] =>
             Ok((env, Object::Atomic(Type::AnyURI(string.clone())))),
 
@@ -54,6 +62,7 @@ pub(crate) fn xs_anyuri_eval(env: Box<Environment>, arguments: Vec<Object>, _con
 
 pub(crate) fn xs_date_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
+        [Object::Atomic(Type::Untyped(string))] |
         [Object::Atomic(Type::String(string))] => {
             match string_to_date(string) {
                 Ok(dt) => Ok((env, Object::Atomic(dt))),
@@ -69,6 +78,7 @@ pub(crate) fn xs_date_eval(env: Box<Environment>, arguments: Vec<Object>, _conte
 
 pub(crate) fn xs_date_time_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
+        [Object::Atomic(Type::Untyped(string))] |
         [Object::Atomic(Type::String(string))] => {
             match string_to_date_time(string) {
                 Ok(dt) => Ok((env, Object::Atomic(dt))),
@@ -84,6 +94,7 @@ pub(crate) fn xs_date_time_eval(env: Box<Environment>, arguments: Vec<Object>, _
 
 pub(crate) fn xs_duration_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
+        [Object::Atomic(Type::Untyped(string))] |
         [Object::Atomic(Type::String(string))] => {
             match string_to_duration(string) {
                 Ok(dt) => Ok((env, Object::Atomic(dt))),
@@ -99,6 +110,7 @@ pub(crate) fn xs_duration_eval(env: Box<Environment>, arguments: Vec<Object>, _c
 
 pub(crate) fn xs_day_time_duration_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
+        [Object::Atomic(Type::Untyped(string))] |
         [Object::Atomic(Type::String(string))] => {
             match string_to_dt_duration(string) {
                 Ok(dt) => Ok((env, Object::Atomic(dt))),
@@ -114,6 +126,7 @@ pub(crate) fn xs_day_time_duration_eval(env: Box<Environment>, arguments: Vec<Ob
 
 pub(crate) fn xs_year_month_duration_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
+        [Object::Atomic(Type::Untyped(string))] |
         [Object::Atomic(Type::String(string))] => {
             match string_to_ym_duration(string) {
                 Ok(dt) => Ok((env, Object::Atomic(dt))),
@@ -126,11 +139,35 @@ pub(crate) fn xs_year_month_duration_eval(env: Box<Environment>, arguments: Vec<
 
 pub(crate) fn xs_integer_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
+        [Object::Atomic(Type::Untyped(string))] |
         [Object::Atomic(Type::String(string))] =>
             Ok((env, Object::Atomic(Type::Integer(string.parse::<i128>().unwrap())))),
 
         [Object::Atomic(Type::Integer(integer))] =>
             Ok((env, Object::Atomic(Type::Integer(*integer)))),
+
+        [Object::Atomic(Type::Decimal(num))] => {
+            if let Some(num) = num.round(0).to_i128() {
+                Ok((env, Object::Atomic(Type::Integer(num))))
+            } else {
+                Err((ErrorCode::TODO, String::from("TODO")))
+            }
+        }
+
+        [Object::Atomic(Type::Float(num))] => {
+            if let Some(num) = num.0.round().to_i128() {
+                Ok((env, Object::Atomic(Type::Integer(num))))
+            } else {
+                Err((ErrorCode::TODO, String::from("TODO")))
+            }
+        }
+        [Object::Atomic(Type::Double(num))] => {
+            if let Some(num) = num.0.round().to_i128() {
+                Ok((env, Object::Atomic(Type::Integer(num))))
+            } else {
+                Err((ErrorCode::TODO, String::from("TODO")))
+            }
+        }
 
         _ => todo!()
     }
@@ -186,6 +223,7 @@ pub(crate) fn xs_positive_integer_eval(env: Box<Environment>, arguments: Vec<Obj
 
 pub(crate) fn xs_decimal_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
+        [Object::Atomic(Type::Untyped(string))] |
         [Object::Atomic(Type::String(string))] => {
             match string_to_decimal(string) {
                 Ok(number) => {
@@ -223,6 +261,7 @@ pub(crate) fn xs_decimal_eval(env: Box<Environment>, arguments: Vec<Object>, _co
 
 pub(crate) fn xs_float_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
+        [Object::Atomic(Type::Untyped(string))] |
         [Object::Atomic(Type::String(string))] => {
             match string.parse() {
                 Ok(number) => {
@@ -259,7 +298,7 @@ pub(crate) fn xs_float_eval(env: Box<Environment>, arguments: Vec<Object>, _cont
 
 pub(crate) fn xs_double_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
-
+        [Object::Atomic(Type::Untyped(string))] |
         [Object::Atomic(Type::String(string))] => {
             match string.parse() {
                 Ok(number) => {

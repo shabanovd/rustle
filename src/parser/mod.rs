@@ -8,7 +8,7 @@ mod helper;
 pub(crate) mod op;
 pub mod errors;
 mod macros;
-mod parse_names;
+pub(crate) mod parse_names;
 mod parse_expr;
 mod parse_literal;
 mod parse_xml;

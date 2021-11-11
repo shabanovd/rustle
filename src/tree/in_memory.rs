@@ -263,10 +263,10 @@ impl XMLTreeReader for InMemoryXMLTree {
                 if let Some(value) = node.attribute_value(name) {
                     Ok(value)
                 } else {
-                    panic!("IO error")
+                    Err("IO error".to_string()) // TODO better error message
                 }
             } else {
-                panic!("IO error")
+                Err("IO error".to_string()) // TODO better error message
             }
         } else {
             let mut result = vec![];

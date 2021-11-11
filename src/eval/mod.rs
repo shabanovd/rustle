@@ -10,7 +10,7 @@ use crate::eval::prolog::*;
 mod environment;
 pub(crate) mod comparison;
 
-pub(crate) use crate::values::*;
+pub(crate) use crate::values::{Object, Type, string_to_decimal, string_to_double, object_to_qname, atomization, sequence_atomization};
 
 pub(crate) mod navigation;
 mod arithmetic;
@@ -286,20 +286,21 @@ pub(crate) fn object_owned_to_sequence<'a>(object: Object) -> Vec<Object> {
     // println!("object_to_iterator for {:?}", object);
     match object {
         Object::Empty => vec![],
+        Object::Range { .. } |
         Object::Node(..) |
         Object::Atomic(..) => {
             let mut result = Vec::with_capacity(1);
             result.push(object);
             result
         },
-        Object::Range { min , max } => {
-            let (it, count) = RangeIterator::create(min, max);
-            let mut result = Vec::with_capacity(count.min(0) as usize);
-            for item in it {
-                result.push(item);
-            }
-            result
-        },
+        // Object::Range { min , max } => {
+        //     let (it, count) = RangeIterator::create(min, max);
+        //     let mut result = Vec::with_capacity(count.min(0) as usize);
+        //     for item in it {
+        //         result.push(item);
+        //     }
+        //     result
+        // },
         Object::Array(items) => {
             items
         },
