@@ -1,9 +1,41 @@
 use crate::eval::{Object, Type, EvalResult, DynamicContext};
 use crate::eval::Environment;
+use crate::parser::errors::ErrorCode;
+use crate::values::Types;
 use math::round::half_to_even;
 use bigdecimal::num_traits::float::FloatCore;
 use bigdecimal::{BigDecimal, Signed};
 use bigdecimal::num_bigint::BigInt;
+use ordered_float::OrderedFloat;
+
+pub(crate) fn fn_number_eval(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
+    let item = if arguments.len() == 0 {
+        &context.item
+    } else {
+        arguments.get(0).unwrap()
+    };
+
+    match item {
+        Object::Nothing => Err((ErrorCode::XPDY0002, String::from("TODO"))),
+        Object::Empty => Ok((env, Object::Empty)),
+        Object::Atomic(t) => {
+            match t.convert(Types::Double) {
+                Ok(v) => Ok((env, Object::Atomic(v))),
+                Err(_) => Ok((env, Object::Atomic(Type::Double(OrderedFloat::from(f64::NAN))))),
+            }
+        }
+        Object::Node(rf) => {
+            match rf.to_typed_value() {
+                Ok(str) => {
+                    let value = crate::values::string_to::double(&str, false)?;
+                    Ok((env, Object::Atomic(value)))
+                },
+                Err(msg) => Err((ErrorCode::FORG0001, msg))
+            }
+        }
+        _ => Ok((env, Object::Atomic(Type::Double(OrderedFloat::from(f64::NAN)))))
+    }
+}
 
 pub(crate) fn fn_abs(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
 

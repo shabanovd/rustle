@@ -1,4 +1,4 @@
-use crate::eval::{Object, Type, string_to_decimal, DynamicContext, EvalResult};
+use crate::eval::{Object, Type, string_to_decimal, DynamicContext, EvalResult, ErrorInfo};
 use crate::eval::Environment;
 use crate::parser::parse_duration::{string_to_dt_duration, string_to_ym_duration, string_to_duration, string_to_date, string_to_date_time};
 use crate::parser::errors::ErrorCode;
@@ -6,6 +6,7 @@ use ordered_float::OrderedFloat;
 use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use crate::serialization::object_to_string;
 use crate::fns::boolean::object_casting_bool;
+use crate::values::Types;
 
 pub(crate) fn xs_untyped_atomic_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     let item = arguments.get(0).unwrap();
@@ -26,10 +27,14 @@ pub(crate) fn xs_boolean_eval(env: Box<Environment>, arguments: Vec<Object>, _co
 
 pub(crate) fn xs_string_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     let item = arguments.get(0).unwrap();
+    match item {
+        Object::Empty => Ok((env, Object::Empty)),
+        _ => {
+            let str = object_to_string(&env, item);
 
-    let str = object_to_string(&env, item);
-
-    Ok((env, Object::Atomic(Type::String(str))))
+            Ok((env, Object::Atomic(Type::String(str))))
+        }
+    }
 }
 
 pub(crate) fn xs_hex_binary_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
@@ -139,10 +144,13 @@ pub(crate) fn xs_year_month_duration_eval(env: Box<Environment>, arguments: Vec<
 
 pub(crate) fn xs_integer_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
+        [Object::Empty] => Ok((env, Object::Empty)),
         [Object::Atomic(Type::Untyped(string))] |
-        [Object::Atomic(Type::String(string))] =>
-            Ok((env, Object::Atomic(Type::Integer(string.parse::<i128>().unwrap())))),
-
+        [Object::Atomic(Type::String(string))] |
+        [Object::Atomic(Type::NormalizedString(string))] => {
+            let value = crate::values::string_to::integer(string)?;
+            Ok((env, Object::Atomic(value)))
+        }
         [Object::Atomic(Type::Integer(integer))] =>
             Ok((env, Object::Atomic(Type::Integer(*integer)))),
 
@@ -153,7 +161,6 @@ pub(crate) fn xs_integer_eval(env: Box<Environment>, arguments: Vec<Object>, _co
                 Err((ErrorCode::TODO, String::from("TODO")))
             }
         }
-
         [Object::Atomic(Type::Float(num))] => {
             if let Some(num) = num.0.round().to_i128() {
                 Ok((env, Object::Atomic(Type::Integer(num))))
@@ -168,8 +175,16 @@ pub(crate) fn xs_integer_eval(env: Box<Environment>, arguments: Vec<Object>, _co
                 Err((ErrorCode::TODO, String::from("TODO")))
             }
         }
-
-        _ => todo!()
+        [Object::Node(rf)] => {
+            match rf.to_typed_value() {
+                Ok(str) => {
+                    let value = crate::values::string_to::integer(&str)?;
+                    Ok((env, Object::Atomic(value)))
+                },
+                Err(msg) => Err((ErrorCode::FORG0001, msg))
+            }
+        }
+        _ => todo!("{:?}", arguments)
     }
 }
 
@@ -223,14 +238,12 @@ pub(crate) fn xs_positive_integer_eval(env: Box<Environment>, arguments: Vec<Obj
 
 pub(crate) fn xs_decimal_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
+        [Object::Empty] => Ok((env, Object::Empty)),
         [Object::Atomic(Type::Untyped(string))] |
-        [Object::Atomic(Type::String(string))] => {
-            match string_to_decimal(string) {
-                Ok(number) => {
-                    Ok((env, Object::Atomic(Type::Decimal(number))))
-                },
-                Err(code) => Err((code, String::from("TODO")))
-            }
+        [Object::Atomic(Type::String(string))] |
+        [Object::Atomic(Type::NormalizedString(string))] => {
+            let value = crate::values::string_to::decimal(string)?;
+            Ok((env, Object::Atomic(value)))
         },
         [Object::Atomic(Type::Integer(number))] => {
             if let Some(number) = BigDecimal::from_i128(*number) {
@@ -254,21 +267,27 @@ pub(crate) fn xs_decimal_eval(env: Box<Environment>, arguments: Vec<Object>, _co
                 None => Err((ErrorCode::FORG0001, String::from("TODO")))
             }
         },
-
+        [Object::Node(rf)] => {
+            match rf.to_typed_value() {
+                Ok(str) => {
+                    let value = crate::values::string_to::decimal(&str)?;
+                    Ok((env, Object::Atomic(value)))
+                },
+                Err(msg) => Err((ErrorCode::FORG0001, msg))
+            }
+        }
         _ => todo!()
     }
 }
 
 pub(crate) fn xs_float_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
+        [Object::Empty] => Ok((env, Object::Empty)),
         [Object::Atomic(Type::Untyped(string))] |
-        [Object::Atomic(Type::String(string))] => {
-            match string.parse() {
-                Ok(number) => {
-                    Ok((env, Object::Atomic(Type::Float(number))))
-                },
-                Err(..) => Err((ErrorCode::FORG0001, String::from("TODO")))
-            }
+        [Object::Atomic(Type::String(string))] |
+        [Object::Atomic(Type::NormalizedString(string))] => {
+            let value = crate::values::string_to::float(string, false)?;
+            Ok((env, Object::Atomic(value)))
         }
         [Object::Atomic(Type::Integer(number))] => {
             match OrderedFloat::from_i128(*number) {
@@ -291,21 +310,27 @@ pub(crate) fn xs_float_eval(env: Box<Environment>, arguments: Vec<Object>, _cont
         [Object::Atomic(Type::Double(number))] => {
             Ok((env, Object::Atomic(Type::Float(OrderedFloat::from(number.into_inner() as f32)))))
         },
-
+        [Object::Node(rf)] => {
+            match rf.to_typed_value() {
+                Ok(str) => {
+                    let value = crate::values::string_to::float(&str, false)?;
+                    Ok((env, Object::Atomic(value)))
+                },
+                Err(msg) => Err((ErrorCode::FORG0001, msg))
+            }
+        }
         _ => todo!()
     }
 }
 
 pub(crate) fn xs_double_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
+        [Object::Empty] => Ok((env, Object::Empty)),
         [Object::Atomic(Type::Untyped(string))] |
-        [Object::Atomic(Type::String(string))] => {
-            match string.parse() {
-                Ok(number) => {
-                    Ok((env, Object::Atomic(Type::Double(number))))
-                },
-                Err(..) => Err((ErrorCode::FORG0001, String::from("TODO")))
-            }
+        [Object::Atomic(Type::String(string))] |
+        [Object::Atomic(Type::NormalizedString(string))] => {
+            let value = crate::values::string_to::double(string, false)?;
+            Ok((env, Object::Atomic(value)))
         },
         [Object::Atomic(Type::Integer(number))] => {
             if let Some(number) = OrderedFloat::from_i128(*number) {
@@ -329,6 +354,15 @@ pub(crate) fn xs_double_eval(env: Box<Environment>, arguments: Vec<Object>, _con
         [Object::Atomic(Type::Double(number))] => {
             Ok((env, Object::Atomic(Type::Double(*number))))
         },
+        [Object::Node(rf)] => {
+            match rf.to_typed_value() {
+                Ok(str) => {
+                    let value = crate::values::string_to::double(&str, false)?;
+                    Ok((env, Object::Atomic(value)))
+                },
+                Err(msg) => Err((ErrorCode::FORG0001, msg))
+            }
+        }
         _ => todo!()
     }
 }

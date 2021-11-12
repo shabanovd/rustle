@@ -161,6 +161,9 @@ impl FunctionsRegister {
         instance.register(&*XPATH_FUNCTIONS.uri, "error", 2, fun::error);
         instance.register(&*XPATH_FUNCTIONS.uri, "error", 3, fun::error);
 
+        instance.register(&*XPATH_FUNCTIONS.uri, "number", 0, math::fn_number_eval);
+        instance.register(&*XPATH_FUNCTIONS.uri, "number", 1, math::fn_number_eval);
+
         instance.register(&*XPATH_FUNCTIONS.uri, "count", 1, aggregates::fn_count);
         instance.register(&*XPATH_FUNCTIONS.uri, "avg", 1, aggregates::fn_avg);
         instance.register(&*XPATH_FUNCTIONS.uri, "max", 1, aggregates::fn_max);

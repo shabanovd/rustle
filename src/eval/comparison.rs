@@ -37,12 +37,10 @@ pub fn eval_comparison(env: Box<Environment>, operator: OperatorComparison, left
                         Err(e) => return Err(e),
                         Ok((None, None, Some(result))) => return Ok((current_env, result)),
                         Ok((Some(r_obj), None, None)) => {
-                            let v = comparison_of_items(
+                            let obj = comparison_of_items(
                                 &operator,
                                 (&current_env, &l_obj), (&current_env, &r_obj)
                             )?;
-
-                            let obj = Object::Atomic(Type::Boolean(v));
                             result.push(obj);
                         },
                         _ => panic!("internal error")
@@ -102,7 +100,7 @@ pub fn eval_comparison_item(
                 }
                 Ok((Some(r_obj), None, None)) => {
                     match comparison_of_items(&operator, (&env, &l_obj), (&env, &r_obj)) {
-                        Ok(v) => Ok((env, v)),
+                        Ok(v) => Ok((env, object_to_bool(&v)?)),
                         Err(e) => Err(e)
                     }
                 },
@@ -198,20 +196,23 @@ pub fn comparison_of_items(
     operator: &OperatorComparison,
     left: ObjectRefInEnv,
     right: ObjectRefInEnv,
-) -> Result<bool, ErrorInfo> {
+) -> Result<Object, ErrorInfo> {
     match operator {
         OperatorComparison::GeneralEquals |
         OperatorComparison::GeneralNotEquals |
         OperatorComparison::GeneralLessThan |
         OperatorComparison::GeneralLessOrEquals |
         OperatorComparison::GeneralGreaterThan |
-        OperatorComparison::GeneralGreaterOrEquals => general_comparison(operator, left, right),
-        OperatorComparison::ValueEquals => eq(left, right),
-        OperatorComparison::ValueNotEquals => ne(left, right),
-        OperatorComparison::ValueLessThan => ls(left, right),
-        OperatorComparison::ValueLessOrEquals => ls_or_eq(left, right),
-        OperatorComparison::ValueGreaterThan => gr(left, right),
-        OperatorComparison::ValueGreaterOrEquals => gr_or_eq(left, right),
+        OperatorComparison::GeneralGreaterOrEquals => {
+            let value = general_comparison(operator, left, right)?;
+            Ok(Object::Atomic(Type::Boolean(value)))
+        },
+        OperatorComparison::ValueEquals |
+        OperatorComparison::ValueNotEquals |
+        OperatorComparison::ValueLessThan |
+        OperatorComparison::ValueLessOrEquals |
+        OperatorComparison::ValueGreaterThan |
+        OperatorComparison::ValueGreaterOrEquals => value_comparison(operator, left, right),
         _ => panic!("internal error")
     }
 }
@@ -236,85 +237,34 @@ impl From<Ordering> for ValueOrdering {
     }
 }
 
-fn cmp(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Option<ValueOrdering> {
-    if left.1 == right.1 {
-        return Some(ValueOrdering::Equal);
-    }
-    match left.1 {
-        Object::Atomic(lt) => {
-            match right.1 {
-                Object::Atomic(rt) => {
-                    match lt.value_comparison(rt) {
-                        Ok(v) => Some(v),
-                        Err(_) => todo!()
-                    }
-                },
-                _ => todo!()
-            }
-        }
-        _ => todo!()
-    }
-}
-
 pub(crate) fn eq(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<bool, ErrorInfo> {
-    match cmp(left, right) {
-        Some(ValueOrdering::Equal) |
-        Some(ValueOrdering::QNameEqual) => Ok(true),
-        Some(..) => Ok(false),
-        None => Err((ErrorCode::XPTY0004, String::from("TODO")))
-    }
+    let result = value_comparison(&OperatorComparison::ValueEquals, left, right)?;
+    object_to_bool(&result)
 }
 
 pub(crate) fn ne(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<bool, ErrorInfo> {
-    match cmp(left, right) {
-        Some(ValueOrdering::Less) |
-        Some(ValueOrdering::Greater) |
-        Some(ValueOrdering::AlwaysNotEqual) |
-        Some(ValueOrdering::QNameNotEqual) => Ok(true),
-        Some(..) => Ok(false),
-        None => Err((ErrorCode::XPTY0004, String::from("TODO")))
-    }
+    let result = value_comparison(&OperatorComparison::ValueNotEquals, left, right)?;
+    object_to_bool(&result)
 }
 
 pub(crate) fn ls_or_eq(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<bool, ErrorInfo> {
-    match cmp(left, right) {
-        Some(ValueOrdering::QNameEqual) |
-        Some(ValueOrdering::QNameNotEqual) |
-        None => Err((ErrorCode::XPTY0004, String::from("TODO"))),
-        Some(ValueOrdering::Equal) |
-        Some(ValueOrdering::Less) => Ok(true),
-        Some(..) => Ok(false),
-    }
+    let result = value_comparison(&OperatorComparison::ValueLessOrEquals, left, right)?;
+    object_to_bool(&result)
 }
 
 pub(crate) fn ls(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<bool, ErrorInfo> {
-    match cmp(left, right) {
-        Some(ValueOrdering::QNameEqual) |
-        Some(ValueOrdering::QNameNotEqual) |
-        None => Err((ErrorCode::XPTY0004, String::from("TODO"))),
-        Some(ValueOrdering::Less) => Ok(true),
-        Some(..) => Ok(false),
-    }
+    let result = value_comparison(&OperatorComparison::ValueLessThan, left, right)?;
+    object_to_bool(&result)
 }
 
 pub(crate) fn gr_or_eq(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<bool, ErrorInfo> {
-    match cmp(left, right) {
-        Some(ValueOrdering::QNameEqual) |
-        Some(ValueOrdering::QNameNotEqual) |
-        None => Err((ErrorCode::XPTY0004, String::from("TODO"))),
-        Some(ValueOrdering::Equal) |
-        Some(ValueOrdering::Greater) => Ok(true),
-        Some(..) => Ok(false),
-    }
+    let result = value_comparison(&OperatorComparison::ValueGreaterOrEquals, left, right)?;
+    object_to_bool(&result)
 }
 
 pub(crate) fn gr(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<bool, ErrorInfo> {
-    match cmp(left, right) {
-        Some(ValueOrdering::QNameEqual) |
-        Some(ValueOrdering::QNameNotEqual) |
-        None => Err((ErrorCode::XPTY0004, String::from("TODO"))),
-        Some(v) => Ok(v == ValueOrdering::Greater),
-    }
+    let result = value_comparison(&OperatorComparison::ValueGreaterThan, left, right)?;
+    object_to_bool(&result)
 }
 
 fn is_untyped(value: &Type) -> bool {
@@ -336,7 +286,7 @@ fn is_numeric(value: &Type) -> bool {
 
 pub(crate) fn value_comparison_for_types(op: Comparison, left: &Type, right: &Type) -> Result<bool, ErrorInfo> {
     let cmp_result = left.value_comparison(right)?;
-    Ok(op.is_it(cmp_result))
+    op.is_it(cmp_result)
 }
 
 fn general_comparison_for_types(op: &OperatorComparison, left: &Type, right: &Type) -> Result<bool, ErrorInfo> {
@@ -375,8 +325,40 @@ fn type_in_range(t: &Type, min: &i128, max: &i128) -> Result<bool, ErrorInfo> {
     }
 }
 
+fn value_comparison(op: &OperatorComparison, left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<Object, ErrorInfo> {
+    println!("value_comparison: {:?} vs {:?}", left.1, right.1);
+
+    if left.1 == &Object::Empty {
+        return Ok(Object::Empty);
+    } else if left.1 == right.1 {
+        match op.to_comparison() {
+            Comparison::GreaterOrEquals |
+            Comparison::LessOrEquals |
+            Comparison::Equals => return Ok(Object::Atomic(Type::Boolean(true))),
+            Comparison::NotEquals |
+            Comparison::LessThan |
+            Comparison::GreaterThan => {},
+        }
+    }
+    match left.1 {
+        Object::Empty => Ok(Object::Empty),
+        Object::Atomic(lt) => {
+            match right.1 {
+                Object::Empty => Ok(Object::Empty),
+                Object::Atomic(rt) => {
+                    let cmp_result = lt.value_comparison(rt)?;
+                    let value = op.to_comparison().is_it(cmp_result)?;
+                    Ok(Object::Atomic(Type::Boolean(value)))
+                },
+                _ => todo!()
+            }
+        }
+        _ => todo!()
+    }
+}
+
 pub(crate) fn general_comparison(op: &OperatorComparison, left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<bool, ErrorInfo> {
-    println!("{:?} vs {:?}", left.1, right.1);
+    println!("general_comparison: {:?} vs {:?}", left.1, right.1);
     match left.1 {
         Object::Empty => Ok(false),
         Object::Atomic(lt) => {
@@ -396,10 +378,6 @@ pub(crate) fn general_comparison(op: &OperatorComparison, left: ObjectRefInEnv, 
                     general_comparison_for_types(op, lt, &rv)
                 }
                 Object::Sequence(items) => {
-                    match op {
-                        OperatorComparison::GeneralEquals => {},
-                        _ => panic!("unsupported operation {:?}", op)
-                    }
                     for item in items {
                         match item {
                             Object::Atomic(rt) => {
@@ -450,10 +428,6 @@ pub(crate) fn general_comparison(op: &OperatorComparison, left: ObjectRefInEnv, 
         }
         Object::Array(left_items) |
         Object::Sequence(left_items) => {
-            match op {
-                OperatorComparison::GeneralEquals => {},
-                _ => panic!("unsupported operation {:?}", op)
-            }
             match right.1 {
                 Object::Empty => Ok(false),
                 Object::Atomic(..) => {
@@ -491,7 +465,7 @@ pub(crate) fn general_comparison(op: &OperatorComparison, left: ObjectRefInEnv, 
                     match l_rf.cmp(r_rf) {
                         Ordering::Equal => {
                             let cmp_result = ValueOrdering::from(Ordering::Equal);
-                            Ok(op.to_comparison().is_it(cmp_result))
+                            op.to_comparison().is_it(cmp_result)
                         },
                         _ => {
                             let lv = match l_rf.to_typed_value() {

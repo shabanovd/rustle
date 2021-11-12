@@ -796,9 +796,9 @@ fn parse_comparison_expr(input: &str) -> IResult<&str, Box<dyn Expression>, Cust
     let check = delimited(
         ws1,
         alt((
-            tag("="), tag("!="), tag("<"), tag("<="), tag(">"), tag(">="),
-            tag("eq"), tag("ne"), tag("lt"), tag("le"), tag("gt"), tag("ge"),
             tag("is"), tag("<<"), tag(">>"),
+            tag("="), tag("!="), tag("<="), tag("<"), tag(">="), tag(">"),
+            tag("eq"), tag("ne"), tag("lt"), tag("le"), tag("gt"), tag("ge"),
         )),
         ws1
     )(current_input);

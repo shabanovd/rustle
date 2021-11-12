@@ -11,7 +11,7 @@ use crate::tree::InMemoryXMLTree;
 
 pub(crate) fn eval_on_spec(spec: &str, sources: Vec<(&str, &str)>, input: &str) -> EvalResult {
     match spec {
-        "XQ10" | "XQ10+" | "XP30+ XQ10+" | "XQ30+" | "XP30+ XQ30+" | "XQ31+" | "XP31+ XQ31+" => {
+        "XQ10" | "XQ10+" | "XP20+ XQ10+" | "XP30+ XQ10+" | "XQ30+" | "XP30+ XQ30+" | "XQ31+" | "XP31+ XQ31+" => {
             eval(sources, input)
         }
         _ => panic!("unsupported spec {}", spec)

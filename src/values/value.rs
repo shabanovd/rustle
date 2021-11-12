@@ -17,6 +17,52 @@ use crate::parser::parse_duration::{parse_day_time_duration, parse_year_month_du
 use crate::tree::Reference;
 use crate::values::time::Time;
 
+// xs:untypedAtomic
+// xs:dateTime
+// 	xs:dateTimeStamp
+// xs:date
+// xs:time
+// xs:duration
+// 	xs:yearMonthDuration
+// 	xs:dayTimeDuration
+// xs:float
+// xs:double
+// xs:decimal
+// 	xs:integer
+// 		xs:nonPositiveInteger
+// 			xs:negativeInteger
+// 		xs:long
+// 			xs:int
+// 				xs:short
+// 					xs:byte
+// 		xs:nonNegativeInteger
+// 			xs:unsignedLong
+// 				xs:unsignedInt
+// 					xs:unsignedShort
+// 						xs:unsignedByte
+// 			xs:positiveInteger
+// xs:gYearMonth
+// xs:gYear
+// xs:gMonthDay
+// xs:gDay
+// xs:gMonth
+// xs:string
+// 	xs:normalizedString
+// 		xs:token
+// 			xs:language
+// 			xs:NMTOKEN
+// 			xs:Name
+// 				xs:NCName
+// 					xs:ID
+// 					xs:IDREF
+// 					xs:ENTITY
+// xs:boolean
+// xs:base64Binary
+// xs:hexBinary
+// xs:anyURI
+// xs:QName
+// xs:NOTATION
+
 #[derive(Debug, Eq, PartialEq, PartialOrd)]
 pub enum Types {
     Untyped = 0,
@@ -249,8 +295,8 @@ impl Type {
                     }
                     Types::Integer => crate::values::string_to::integer(str),
                     Types::Decimal => crate::values::string_to::decimal(str),
-                    Types::Float => crate::values::string_to::float(str),
-                    Types::Double => crate::values::string_to::double(str),
+                    Types::Float => crate::values::string_to::float(str, false),
+                    Types::Double => crate::values::string_to::double(str, false),
                     Types::DayTimeDuration => {
                         match parse_day_time_duration(str) {
                             Ok((rest, t)) => {
@@ -327,7 +373,7 @@ impl Type {
     pub(crate) fn to_i128(&self, force: bool) -> Option<i128> {
         match self {
             Type::Untyped(str) => {
-                match crate::values::string_to::double(str) {
+                match crate::values::string_to::double(str, true) {
                     Ok(num) => num.to_i128(force),
                     Err(_) => None
                 }
@@ -466,6 +512,7 @@ impl Type {
     }
 
     fn is_comparable(&self, other: &Type) -> bool {
+        println!("is_comparable {:?} vs {:?}", self.to_comparison_type(), other.to_comparison_type());
         self.to_comparison_type() == other.to_comparison_type()
     }
 
