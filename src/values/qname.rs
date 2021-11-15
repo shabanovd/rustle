@@ -158,7 +158,13 @@ impl Expression for QName {
 impl fmt::Debug for QName {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if let Some(prefix) = &self.prefix {
-            write!(f, "QN{{{}:{}}}", prefix, self.local_part)
+            if let Some(url) = &self.url {
+                write!(f, "QN{{{}:{} {}}}", prefix, self.local_part, url)
+            } else {
+                write!(f, "QN{{{}:{}}}", prefix, self.local_part)
+            }
+        } else if let Some(url) = &self.url {
+            write!(f, "QN{{{} {}}}", self.local_part, url)
         } else {
             write!(f, "QN{{{}}}", self.local_part)
         }

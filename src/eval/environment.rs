@@ -4,7 +4,7 @@ use std::sync::{Mutex, MutexGuard};
 use crate::values::{QName, QNameResolved};
 use crate::eval::Object;
 use crate::eval::prolog::{BoundarySpace, ConstructionMode, EmptyOrderMode, InheritMode, OrderingMode, PreserveMode};
-use crate::fns::{Function, FunctionsRegister};
+use crate::fns::{Function, FUNCTION, FunctionsRegister};
 use crate::namespaces::*;
 use crate::tree::{InMemoryXMLTree, Reference, XMLTreeWriter};
 
@@ -109,22 +109,40 @@ impl Environment {
         }
     }
 
-    pub fn set(&mut self, name: QNameResolved, value: Object) {
+    pub fn set_variable(&mut self, name: QNameResolved, value: Object) {
         self.vars.insert(name, value);
     }
 
-    pub fn get(&self, name: &QNameResolved) -> Option<Object> {
+    pub fn get_variable(&self, name: &QNameResolved) -> Option<Object> {
         let obj = self.vars.get(name).map(|val| val.clone());
         if obj.is_some() {
             obj
         } else if let Some(prev) = &self.prev {
-            prev.get(name)
+            prev.get_variable(name)
         } else {
             None
         }
     }
 
-    pub fn declared_functions(&self, qname: &QNameResolved, arity: usize) -> Option<&Function> {
-        self.functions.declared(qname, arity)
+    pub fn get_function(&self, name: &QNameResolved, arity: usize) -> Option<FUNCTION> {
+        let obj = self.functions.get(name, arity).map(|val| val.clone());
+        if obj.is_some() {
+            obj
+        } else if let Some(prev) = &self.prev {
+            prev.get_function(name, arity)
+        } else {
+            None
+        }
+    }
+
+    pub fn declared_functions(&self, name: &QNameResolved, arity: usize) -> Option<&Function> {
+        let obj = self.functions.declared(name, arity);
+        if obj.is_some() {
+            obj
+        } else if let Some(prev) = &self.prev {
+            prev.declared_functions(name, arity)
+        } else {
+            None
+        }
     }
 }

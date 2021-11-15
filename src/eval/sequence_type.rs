@@ -260,6 +260,8 @@ impl NameTest {
 impl NodeTest for NameTest {
     fn test_node(&self, rf: &Reference) -> bool {
         if let Some(name) = rf.name() {
+            println!("{:?} vs {:?}", self.name.local_part, name.local_part);
+            println!("{:?} vs {:?}", self.name.url, name.url);
             (self.name.local_part == "*" || self.name.local_part == name.local_part)
                 && (self.name.url == Some(String::from("*")) || self.name.url == name.url)
         } else {

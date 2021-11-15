@@ -596,7 +596,7 @@ mod tests {
 
         let start = Local::now();
 
-        for i in 0..ITEMS_TO_TEST {
+        for _i in 0..ITEMS_TO_TEST {
             let mut dln = DLN::default();
             let num = rng.next_u32() as usize;
             dln.set_level_id(0, num).unwrap();

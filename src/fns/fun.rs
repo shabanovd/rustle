@@ -93,7 +93,7 @@ pub(crate) fn apply(env: Box<Environment>, mut arguments: Vec<Object>, context: 
 
                 let name = resolve_element_qname(&parameter.name, &fn_env);
 
-                fn_env.set(name, argument);
+                fn_env.set_variable(name, argument);
             }
 
             let (new_env, result) = body.eval(fn_env, &DynamicContext::nothing())?;

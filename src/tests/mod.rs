@@ -43,7 +43,7 @@ pub(crate) fn eval(sources: Vec<(&str, &str)>, input: &str) -> EvalResult {
                 let writer = tree.lock().unwrap();
                 if let Some(rf) = writer.as_reader().first() {
                     let var_name = QNameResolved { url: "".to_string(), local_part: name[1..].to_string() };
-                    env.set(var_name, Object::Node(rf));
+                    env.set_variable(var_name, Object::Node(rf));
                 }
 
             } else {
@@ -107,7 +107,7 @@ fn eval_assert(result: &EvalResult, check: &str) -> EvalResult {
         let mut env = Environment::create();
 
         let name = resolve_element_qname(&QName::local_part("result"), &env);
-        env.set(name, result.clone());
+        env.set_variable(name, result.clone());
 
         eval_statements(program, env, &DynamicContext::nothing())
     } else {
@@ -203,12 +203,18 @@ pub(crate) fn bool_check_assert_xml(result: &EvalResult, check: &str) -> bool {
         relax(tmp_env, items).unwrap()
     };
 
-    match comparison::deep_eq((&tmp_env, &expected), (env, obj)) {
-        Ok(v) => v,
-        Err(e) => {
-            assert_eq!(format!("error {:?}", e), check);
-            panic!()
-        },
+    match &expected {
+        Object::Node(l_rf) => {
+            println!("expected: {}", l_rf.to_xml().unwrap());
+            match obj {
+                Object::Node(r_rf) => {
+                    println!("result: {}", r_rf.to_xml().unwrap());
+                    l_rf.deep_eq(r_rf)
+                }
+                _ => panic!()
+            }
+        }
+        _ => panic!()
     }
 }
 

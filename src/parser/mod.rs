@@ -16,7 +16,6 @@ pub mod parse_duration;
 
 // [1]    	Module 	   ::=    	TODO: VersionDecl? (LibraryModule | MainModule)
 pub fn parse(input: &str) -> Result<Vec<Statement>, CustomError<&str>> {
-
     let (input, version_decl) = opt(parse_version_decl)(input)?;
 
     if input.len() == 0 {

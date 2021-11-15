@@ -476,7 +476,7 @@ impl Expression for VarDecl {
         if let Some(expr) = &self.value {
             match expr.eval(new_env, &DynamicContext::nothing()) {
                 Ok((new_env, obj)) => {
-                    env.set(name, obj);
+                    env.set_variable(name, obj);
                 },
                 Err(e) => return Err(e),
             }
@@ -509,7 +509,7 @@ impl Expression for FunctionDecl {
             env.functions.put(name, self.params.clone(), body);
 
         } else {
-            panic!("error")
+            todo!()
         }
 
         Ok((env, Object::Nothing))
@@ -604,6 +604,82 @@ impl Expression for EnclosedExpr {
         env = new_env.prev();
 
         Ok((env, value))
+    }
+
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
+        todo!()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct Pragma {
+    pub(crate) name: QName,
+    pub(crate) content: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ExtensionExpr {
+    pragma: Vec<Pragma>,
+    expr: Option<Box<dyn Expression>>
+}
+
+impl ExtensionExpr {
+    pub(crate) fn boxed(pragma: Vec<Pragma>, expr: Option<Box<dyn Expression>>) -> Box<dyn Expression> {
+        Box::new(ExtensionExpr { pragma, expr })
+    }
+}
+
+impl Expression for ExtensionExpr {
+    fn eval<'a>(&self, mut env: Box<Environment>, context: &DynamicContext) -> EvalResult {
+        // TODO handle pragmas
+        if let Some(expr) = self.expr.as_ref() {
+            let new_env = env.next();
+            let (new_env, value) = expr.eval(new_env, context)?;
+            env = new_env.prev();
+
+            Ok((env, value))
+        } else {
+            Ok((env, Object::Empty))
+        }
+    }
+
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
+        todo!()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum ValidationMode {
+    Lax,
+    Strict,
+    Type(QName),
+}
+
+impl From<&str> for ValidationMode {
+    fn from(name: &str) -> Self {
+        match name {
+            "lax" => ValidationMode::Lax,
+            "strict" => ValidationMode::Strict,
+            _ => panic!("internal error")
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ValidateExpr {
+    pub(crate) mode: Option<ValidationMode>,
+    expr: Box<dyn Expression>
+}
+
+impl ValidateExpr {
+    pub(crate) fn boxed(mode: Option<ValidationMode>, expr:Box<dyn Expression>) -> Box<dyn Expression> {
+        Box::new(ValidateExpr { mode, expr })
+    }
+}
+
+impl Expression for ValidateExpr {
+    fn eval<'a>(&self, mut env: Box<Environment>, context: &DynamicContext) -> EvalResult {
+        todo!()
     }
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
@@ -753,7 +829,9 @@ pub(crate) struct ForwardStep { pub(crate) axis: Axis, pub(crate) test: Box<dyn 
 
 impl Expression for ForwardStep {
     fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
-        step_and_test(&self.axis, &self.test, env, context)
+        let (env, result) = step_and_test(&self.axis, &self.test, env, context)?;
+        // println!("ForwardStep: {:?}", result);
+        Ok((env, result))
     }
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
@@ -1110,7 +1188,7 @@ impl Expression for Castable {
     fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let (new_env, object) = self.expr.eval(env, context)?;
 
-        println!("st {:?}", self.st);
+        // println!("st {:?}", self.st);
 
         Ok((new_env, object))
     }
@@ -1315,6 +1393,7 @@ impl Expression for NodeElement {
                     for item in items {
                         match item {
                             Object::Node(rf) => {
+                                // println!("Object::Node {:?} at {:?}", rf, self.name);
                                 if current_env.xml_tree_id() != rf.xml_tree_id() {
                                     current_env.xml_writer(|w| w.link_node(&rf));
                                 }
@@ -1334,6 +1413,7 @@ impl Expression for NodeElement {
                     }
                 },
                 Object::Node(rf) => {
+                    // println!("Object::Node {:?} at {:?}", rf, self.name);
                     if current_env.xml_tree_id() != rf.xml_tree_id() {
                         current_env.xml_writer(|w| w.link_node(&rf));
                     }
@@ -1775,7 +1855,7 @@ impl Expression for Call {
 
         let name = resolve_function_qname(&self.function, &current_env);
 
-        let (parameters, body) = match current_env.get(&name) {
+        let (parameters, body) = match current_env.get_variable(&name) {
             Some(Object::Function {parameters, body}) => (parameters, body),
             None => {
                 let mut evaluated_arguments = vec![];
@@ -1806,7 +1886,7 @@ impl Expression for Call {
 
         let mut fn_env = current_env.next();
         for (name, value) in arguments {
-            fn_env.set(name, value);
+            fn_env.set_variable(name, value);
         }
 
         let (new_env, result) = body.eval(fn_env, context)?;
@@ -1901,7 +1981,7 @@ impl Expression for VarRef {
     fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let name = resolve_element_qname(&self.name, &env);
 
-        if let Some(value) = env.get(&name) {
+        if let Some(value) = env.get_variable(&name) {
             Ok((env, value))
         } else {
             panic!("unknown variable {:?}", name)

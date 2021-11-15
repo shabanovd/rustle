@@ -294,7 +294,7 @@ pub(crate) fn call<'a>(env: Box<Environment>, name: QNameResolved, arguments: Ve
             .zip(arguments.into_iter())
             .into_iter()
         {
-            fn_env.set(resolve_element_qname(&parameter.name, &fn_env), argument.clone())
+            fn_env.set_variable(resolve_element_qname(&parameter.name, &fn_env), argument.clone())
         }
 
         let (new_env, result) = fun.body.eval(fn_env, context)?;
@@ -303,7 +303,7 @@ pub(crate) fn call<'a>(env: Box<Environment>, name: QNameResolved, arguments: Ve
         Ok((env, result))
 
     } else {
-        let fun: Option<FUNCTION> = fn_env.functions.get(&name, arguments.len());
+        let fun: Option<FUNCTION> = fn_env.get_function(&name, arguments.len());
 
         if let Some(fun) = fun {
             let (new_env, result) = fun(fn_env, arguments, context)?;

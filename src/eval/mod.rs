@@ -22,6 +22,7 @@ use helpers::*;
 use crate::eval::expression::{Expression, NodeTest};
 use crate::tree::Reference;
 
+
 pub type ErrorInfo = (ErrorCode, String);
 // pub type EvalResult = Result<(Box<Environment>, Iter<'a, Answer>), (ErrorCode, String)>;
 // pub type EvalResult = Result<(Box<Environment>, Answer), (ErrorCode, String)>;

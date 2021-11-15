@@ -1,5 +1,3 @@
-use crate::namespaces::NS;
-use crate::parser::op::found_qname;
 use crate::parser::errors::CustomError;
 use crate::values::{QName, Name};
 
@@ -7,17 +5,29 @@ use nom::{
     bytes::complete::{tag, take_while, take_while_m_n},
     IResult
 };
+use nom::branch::alt;
+use nom::combinator::{map, opt};
+use nom::sequence::{preceded, tuple};
 use crate::eval::expression::Expression;
 use crate::parser::helper::ws1;
-
-fn parse_name(input: &str) -> IResult<&str, String, CustomError<&str>> {
-    parse_ncname(input)
-}
+use crate::parser::parse_literal::parse_uri_qualified_name;
 
 // [7]   	QName	   ::=   	PrefixedName | UnprefixedName
+// [8]   	PrefixedName	   ::=   	Prefix ':' LocalPart
+// [9]   	UnprefixedName	   ::=   	LocalPart
+// [10]   	Prefix	   ::=   	NCName
+// [11]   	LocalPart	   ::=   	NCName
 pub(crate) fn parse_qname(input: &str) -> IResult<&str, QName, CustomError<&str>> {
-    // use as workaround
-    parse_eqname(input)
+    map(
+        tuple((parse_ncname, opt(preceded(tag(":"), parse_ncname)))),
+        |(part1, part2)| {
+            if let Some(name) = part2 {
+                QName { local_part: name, url: None, prefix: Some(part1) }
+            } else {
+                QName { local_part: part1, url: None, prefix: None }
+            }
+        }
+    )(input)
 }
 
 pub(crate) fn parse_qname_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
@@ -31,38 +41,9 @@ pub(crate) fn parse_ws1_qname_expr(input: &str) -> IResult<&str, Box<dyn Express
     Ok((input, Box::new(qname)))
 }
 
-// [218]    	EQName 	   ::=    	QName TODO: | URIQualifiedName
+// [218]    	EQName 	   ::=    	QName | URIQualifiedName
 pub(crate) fn parse_eqname(input: &str) -> IResult<&str, QName, CustomError<&str>> {
-    // [8]   	PrefixedName	   ::=   	Prefix ':' LocalPart
-    // [9]   	UnprefixedName	   ::=   	LocalPart
-    // [10]   	Prefix	   ::=   	NCName
-    // [11]   	LocalPart	   ::=   	NCName
-
-    let (input, name1) = parse_ncname(input)?;
-
-    let check = tag(":")(input);
-    if check.is_ok() {
-        let (input, _) = check?;
-
-        let (input, name2) = parse_ncname(input)?;
-
-        // TODO: remove resolving from here?
-        let url = if let Some(ns) = NS.get(&name1) {
-            Some(ns.uri.clone())
-        } else {
-            None
-        };
-
-        found_qname(
-            input,
-            QName { local_part: name2, url, prefix: Some(name1) }
-        )
-    } else {
-        found_qname(
-            input,
-            QName { local_part: name1, url: None, prefix: None }
-        )
-    }
+    alt((parse_uri_qualified_name, parse_qname))(input)
 }
 
 // [4]   	NCName	   ::=   	Name - (Char* ':' Char*)	/* An XML Name, minus the ":" */

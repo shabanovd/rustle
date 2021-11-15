@@ -1,12 +1,10 @@
 use crate::eval::{Object, Type, Environment, EvalResult, atomization, relax, sequence_atomization, ErrorInfo};
 use crate::serialization::object_to_string;
-use crate::parser::parse_duration::string_to_dt_duration;
 use std::cmp::Ordering;
 use crate::parser::op::{Comparison, OperatorComparison};
 use crate::eval::arithmetic::object_to_items;
-use ordered_float::OrderedFloat;
 use crate::parser::errors::ErrorCode;
-use crate::values::{atomization_of_vec, QName, Types};
+use crate::values::{QName, Types};
 use crate::fns::object_to_bool;
 use crate::tree::Reference;
 

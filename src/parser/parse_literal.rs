@@ -14,9 +14,12 @@ use crate::parser::parse_xml::{parse_refs, parse_refs_as_char};
 use crate::parser::helper::ws;
 use ordered_float::OrderedFloat;
 use bigdecimal::BigDecimal;
-use nom::sequence::preceded;
+use nom::combinator::map;
+use nom::sequence::{preceded, terminated, tuple};
 use crate::eval::expression::Expression;
 use crate::eval::prolog::*;
+use crate::parser::parse_names::parse_ncname;
+use crate::values::QName;
 
 // [129]    	Literal 	   ::=    	NumericLiteral | StringLiteral
 parse_one_of!(parse_literal,
@@ -227,6 +230,23 @@ pub(crate) fn parse_string_literal_as_string(input: &str) -> IResult<&str, Strin
             }
         }
     }
+}
+
+
+// ws: explicit
+// [223]    	URIQualifiedName 	   ::=    	BracedURILiteral NCName
+// [224]    	BracedURILiteral 	   ::=    	"Q" "{" (PredefinedEntityRef | CharRef | [^&{}])* "}"
+pub(crate) fn parse_uri_qualified_name(input: &str) -> IResult<&str, QName, CustomError<&str>> {
+    map(
+        tuple((
+            preceded(
+                tuple((ws, tag("Q{"))),
+                terminated(is_not("}"), tag("}"))
+            ),
+            parse_ncname
+        )),
+        |(url, local_part)| QName { prefix: None, url: Some(url.to_string()), local_part }
+    )(input)
 }
 
 //[238]    	Digits 	   ::=    	[0-9]+

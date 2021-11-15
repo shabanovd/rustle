@@ -5,10 +5,9 @@ use crate::eval::prolog::*;
 use nom::{branch::alt, bytes::complete::tag, error::Error, IResult};
 use nom::bytes::complete::{is_a, is_not};
 use nom::sequence::{preceded, delimited, tuple, terminated, separated_pair};
-use nom::multi::{many0, separated_list1};
+use nom::multi::{many0, many1, separated_list1};
 use nom::combinator::{map, opt, peek};
 use nom::character::complete::{one_of, digit1};
-use nom::error::ParseError;
 use crate::eval::{Axis, INS};
 
 use crate::parser::helper::*;
@@ -59,13 +58,13 @@ pub fn parse_version_decl(input: &str) -> IResult<&str, Box<dyn Expression>, Cus
 
 // [3]    	MainModule 	   ::=    	Prolog QueryBody
 pub(crate) fn parse_main_module(input: &str) -> IResult<&str, Vec<Statement>, CustomError<&str>> {
-    let (input, _) = ws(input)?;
-    let (input, prolog) = parse_prolog(input)?;
-
-    let (input, _) = ws(input)?;
-    let (input, program) = parse_expr(input)?;
-
-    Ok((input, vec![Statement::Prolog(prolog), Statement::Program(program)]))
+    map(
+        tuple((
+            preceded(ws, parse_prolog),
+            preceded(ws, parse_expr)
+        )),
+        |(prolog, program)| vec![Statement::Prolog(prolog), Statement::Program(program)]
+    )(input)
 }
 
 // [6]    	Prolog 	   ::=
@@ -388,6 +387,8 @@ pub(crate) fn parse_annotation_value(input: &str) -> IResult<&str, Box<dyn Expre
 }
 
 // [28]    	VarDecl 	   ::=    	"variable" "$" VarName TypeDeclaration? ((":=" VarValue) | ("external" (":=" VarDefaultValue)?))
+// [29]    	VarValue 	   ::=    	ExprSingle
+// [30]    	VarDefaultValue 	   ::=    	ExprSingle
 // [132]    	VarName 	   ::=    	EQName
 pub(crate) fn parse_var_decl(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
     let (input, _) = ws_tag("variable", input)?;
@@ -1076,8 +1077,8 @@ fn parse_arrow_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomErr
     }
 }
 
-// [97]    	UnaryExpr 	   ::=    	("-" | "+")* TODO: ValueExpr
-// [98]    	ValueExpr 	   ::=    	TODO: ValidateExpr | TODO: ExtensionExpr | SimpleMapExpr
+// [97]    	UnaryExpr 	   ::=    	("-" | "+")* ValueExpr
+// [98]    	ValueExpr 	   ::=    	ValidateExpr | ExtensionExpr | SimpleMapExpr
 fn parse_unary_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
 
     let mut is_positive: Option<bool> = None;
@@ -1102,12 +1103,73 @@ fn parse_unary_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomErr
         }
     }
 
-    let (input, expr) = parse_simple_map_expr(current_input)?;
+    let (input, expr) = alt((
+        parse_validate_expr, parse_extension_expr, parse_simple_map_expr
+    ))(current_input)?;
     if let Some(sign_is_positive) = is_positive {
         found_expr(input, Box::new(Unary { expr, sign_is_positive }))
     } else {
         Ok((input, expr))
     }
+}
+
+// [102]    	ValidateExpr 	   ::=    	"validate" (ValidationMode | ("type" TypeName))? "{" Expr "}"
+// [103]    	ValidationMode 	   ::=    	"lax" | "strict"
+fn parse_validate_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
+    map(
+        preceded(
+            tuple((ws, tag("validate"), ws1)),
+            tuple((
+                opt(
+                    alt((
+                        map(alt((tag("lax"), tag("strict"))), |name| ValidationMode::from(name)),
+                        map(preceded(tag("type"), parse_type_name), |type_name| ValidationMode::Type(type_name))
+                    ))
+                ),
+                delimited(
+                tuple((ws, tag("{"))),
+                parse_expr,
+                tuple((ws, tag("}")))
+                )
+            ))
+        ),
+        |(mode, expr)| ValidateExpr::boxed(mode, expr)
+    )(input)
+}
+
+// [104]    	ExtensionExpr 	   ::=    	Pragma+ "{" Expr? "}"
+fn parse_extension_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
+    map(
+        tuple((
+            many1(parse_pragma),
+            opt(delimited(
+                tuple((ws, tag("{"))),
+                parse_expr,
+                tuple((ws, tag("}")))
+            ))
+        )),
+        |(pragmas, expr)| ExtensionExpr::boxed(pragmas, expr)
+    )(input)
+}
+
+// ws: explicit
+// [105]    	Pragma 	   ::=    	"(#" S? EQName (S PragmaContents)? "#)"
+// [106]    	PragmaContents 	   ::=    	(Char* - (Char* '#)' Char*))
+fn parse_pragma(input: &str) -> IResult<&str, Pragma, CustomError<&str>> {
+    map(
+        delimited(
+            tuple((tag("(#"), ws)),
+            tuple((parse_eqname, opt(preceded(ws1, is_not("#"))))),
+            tag("#)")
+        ),
+        |(name, content)| {
+            if let Some(content) = content {
+                Pragma { name, content: Some(content.to_string()) }
+            } else {
+                Pragma { name, content: None }
+            }
+        }
+    )(input)
 }
 
 // [107]    	SimpleMapExpr 	   ::=    	PathExpr ("!" PathExpr)*
@@ -1152,11 +1214,6 @@ fn parse_path_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomErro
 }
 
 // [109]    	RelativePathExpr 	   ::=    	StepExpr (("/" | "//") StepExpr)*
-// [110]    	StepExpr 	   ::=    	PostfixExpr | AxisStep
-fn parse_step_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
-    alt((parse_postfix_expr, parse_axis_step))(input)
-}
-
 fn parse_relative_path_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
     let mut exprs = vec![];
 
@@ -1166,7 +1223,7 @@ fn parse_relative_path_expr(input: &str) -> IResult<&str, Box<dyn Expression>, C
     exprs.push(expr);
 
     loop {
-        let check = alt((tag("//"), tag("/")) )(current_input);
+        let check = preceded(ws, alt((tag("//"), tag("/")) ))(current_input);
         if check.is_ok() {
             let (input, steps) = check?;
             current_input = input;
@@ -1192,6 +1249,11 @@ fn parse_relative_path_expr(input: &str) -> IResult<&str, Box<dyn Expression>, C
     } else {
         found_expr(current_input, Steps::new(exprs))
     }
+}
+
+// [110]    	StepExpr 	   ::=    	PostfixExpr | AxisStep
+fn parse_step_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
+    alt((parse_postfix_expr, parse_axis_step))(input)
 }
 
 // [111]    	AxisStep 	   ::=    	(ReverseStep | ForwardStep) PredicateList

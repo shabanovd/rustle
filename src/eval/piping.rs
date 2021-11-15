@@ -70,9 +70,9 @@ pub(crate) fn eval_pipe<'a>(pipe: Box<Pipe>, env: Box<Environment>, context: &Dy
                                 Object::Empty
                             };
 
-                            current_env.set(name.clone(), item);
+                            current_env.set_variable(name.clone(), item);
                             if let Some(positional_var) = positional_var.clone() {
-                                current_env.set(positional_var, Object::Atomic(Type::Integer(0)));
+                                current_env.set_variable(positional_var, Object::Atomic(Type::Integer(0)));
                             }
 
                             let (new_env, answer) = eval_pipe(next.clone(), current_env, context)?;
@@ -95,9 +95,9 @@ pub(crate) fn eval_pipe<'a>(pipe: Box<Pipe>, env: Box<Environment>, context: &Dy
                                 item
                             };
 
-                            current_env.set(name.clone(), item);
+                            current_env.set_variable(name.clone(), item);
                             if let Some(positional_var) = positional_var.clone() {
-                                current_env.set(positional_var, Object::Atomic(Type::Integer(pos)));
+                                current_env.set_variable(positional_var, Object::Atomic(Type::Integer(pos)));
                             }
 
                             let (new_env, answer) = eval_pipe(next.clone(), current_env, context)?;
@@ -130,7 +130,7 @@ pub(crate) fn eval_pipe<'a>(pipe: Box<Pipe>, env: Box<Environment>, context: &Dy
                 // TODO: handle typeDeclaration
 
                 let name = resolve_element_qname(&name, &current_env);
-                current_env.set(name, item);
+                current_env.set_variable(name, item);
 
                 if let Some(next) = next {
                     eval_pipe(next, current_env, context)
