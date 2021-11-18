@@ -1,4 +1,4 @@
-use crate::eval::{Object, object_owned_to_sequence, Environment, EvalResult, DynamicContext, Type};
+use crate::eval::{Object, Environment, EvalResult, DynamicContext, Type, range_to_sequence};
 use std::slice::Iter;
 use crate::values::{QNameResolved, resolve_element_qname};
 use crate::eval::helpers::{relax, insert_into_sequences};
@@ -56,7 +56,7 @@ pub(crate) fn eval_pipe<'a>(pipe: Box<Pipe>, env: Box<Environment>, context: &Dy
                 let mut result = vec![];
 
                 if let Some(next) = next {
-                    let items = object_owned_to_sequence(evaluated);
+                    let items = range_to_sequence(evaluated);
                     if items.len() == 0 {
                         if allowing_empty {
 

@@ -21,6 +21,7 @@ pub(crate) mod helpers;
 use helpers::*;
 use crate::eval::expression::{Expression, NodeTest};
 use crate::tree::Reference;
+use crate::values::resolve_element_qname;
 
 
 pub type ErrorInfo = (ErrorCode, String);
@@ -171,16 +172,48 @@ fn step_and_test_for_node<'a>(axis: &Axis, test: &Box<dyn NodeTest>, rf: &Refere
 }
 
 
-fn eval_predicates(exprs: &Vec<Predicate>, env: Box<Environment>, value: Object, context: &DynamicContext) -> EvalResult {
+fn eval_predicates(exprs: &Vec<PrimaryExprSuffix>, env: Box<Environment>, value: Object, context: &DynamicContext) -> EvalResult {
     let mut current_env = env;
     let mut result = value;
 
     for expr in exprs {
-        let Predicate { expr: cond } = expr;
+        let PrimaryExprSuffix { predicate, argument_list, lookup } = expr;
 
-        let (new_env, new_value) = cond.predicate(current_env, context, result)?;
-        current_env = new_env;
-        result = new_value;
+        if let Some(cond) = predicate {
+            let (new_env, new_value) = cond.predicate(current_env, context, result)?;
+            current_env = new_env;
+            result = new_value;
+        } else if let Some(arguments) = argument_list {
+            match result {
+                Object::Function { parameters, body } => {
+                    let mut evaluated_arguments = vec![];
+                    for argument in arguments {
+                        let (new_env, value) = argument.eval(current_env, context)?;
+                        current_env = new_env;
+
+                        evaluated_arguments.push(value);
+                    }
+
+                    let mut fn_env = current_env.next();
+
+                    for (parameter, argument) in (&parameters).into_iter()
+                        .zip(evaluated_arguments.into_iter())
+                        .into_iter()
+                    {
+                        fn_env.set_variable(resolve_element_qname(&parameter.name, &fn_env), argument)
+                    }
+
+                    let (new_env, new_value) = body.eval(fn_env, context)?;
+                    current_env = new_env.prev();
+
+                    result = new_value;
+                },
+                _ => return Err((ErrorCode::XPTY0004, String::from("TODO")))
+            }
+        } else if let Some(key) = lookup {
+            todo!()
+        }
+
     }
 
     Ok((current_env, result))
@@ -282,7 +315,7 @@ pub(crate) fn object_to_iterator(object: &Object) -> Vec<Object> {
     }
 }
 
-// TODO: optimize!!!
+// TODO: optimize!!! rewrite into iterator
 pub(crate) fn object_owned_to_sequence<'a>(object: Object) -> Vec<Object> {
     // println!("object_to_iterator for {:?}", object);
     match object {
@@ -305,6 +338,32 @@ pub(crate) fn object_owned_to_sequence<'a>(object: Object) -> Vec<Object> {
         Object::Array(items) => {
             items
         },
+        Object::Sequence(items) => {
+            items
+        },
+        _ => panic!("TODO object_to_iterator {:?}", object)
+    }
+}
+
+// TODO: optimize!!! rewrite into iterator
+pub(crate) fn range_to_sequence<'a>(object: Object) -> Vec<Object> {
+    match object {
+        Object::Empty => vec![],
+        Object::Node(..) |
+        Object::Atomic(..) => {
+            let mut result = Vec::with_capacity(1);
+            result.push(object);
+            result
+        },
+        Object::Range { min , max } => {
+            let (it, count) = RangeIterator::create(min, max);
+            let mut result = Vec::with_capacity(count.min(0) as usize);
+            for item in it {
+                result.push(item);
+            }
+            result
+        },
+        Object::Array(items) |
         Object::Sequence(items) => {
             items
         },

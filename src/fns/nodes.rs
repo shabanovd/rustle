@@ -50,9 +50,31 @@ pub(crate) fn fn_local_name(env: Box<Environment>, arguments: Vec<Object>, conte
     }
 }
 
-pub(crate) fn fn_namespace_uri(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
-    println!("arguments {:?}", arguments);
-    todo!()
+pub(crate) fn fn_namespace_uri(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
+    let item = if arguments.len() == 0 {
+        if context.item == Object::Nothing {
+            return Err((ErrorCode::XPDY0002, "context item is absent".to_string()))
+        }
+        &context.item
+    } else {
+        arguments.get(0).unwrap()
+    };
+
+    match item {
+        Object::Node(rf) => {
+            let url = if let Some(name) = rf.name() {
+                if let Some(url) = name.url {
+                    url
+                } else {
+                    String::from("")
+                }
+            } else {
+                String::from("")
+            };
+            Ok((env, Object::Atomic(Type::String(url))))
+        }
+        _ => Err((ErrorCode::XPTY0004, "context item is not a node".to_string()))
+    }
 }
 
 pub(crate) fn fn_lang(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {

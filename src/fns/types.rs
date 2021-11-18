@@ -1,4 +1,4 @@
-use crate::eval::{Object, Type, string_to_decimal, DynamicContext, EvalResult, ErrorInfo};
+use crate::eval::{Object, Type, DynamicContext, EvalResult};
 use crate::eval::Environment;
 use crate::parser::parse_duration::{string_to_dt_duration, string_to_ym_duration, string_to_duration, string_to_date, string_to_date_time};
 use crate::parser::errors::ErrorCode;
@@ -6,7 +6,6 @@ use ordered_float::OrderedFloat;
 use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use crate::serialization::object_to_string;
 use crate::fns::boolean::object_casting_bool;
-use crate::values::Types;
 
 pub(crate) fn xs_untyped_atomic_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     let item = arguments.get(0).unwrap();

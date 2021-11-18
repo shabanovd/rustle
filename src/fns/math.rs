@@ -8,6 +8,20 @@ use bigdecimal::{BigDecimal, Signed};
 use bigdecimal::num_bigint::BigInt;
 use ordered_float::OrderedFloat;
 
+
+pub(crate) fn fn_pi(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
+    Ok((env, Object::Atomic(Type::Double(OrderedFloat::from(std::f64::consts::PI)))))
+}
+
+pub(crate) fn fn_format_number_eval(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
+    match arguments.as_slice() {
+        [Object::Atomic(Type::Double(number)), Object::Atomic(Type::String(picture)), Object::Atomic(Type::String(format_name))] => {
+            todo!()
+        }
+        _ => panic!("error")
+    }
+}
+
 pub(crate) fn fn_number_eval(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
     let item = if arguments.len() == 0 {
         &context.item

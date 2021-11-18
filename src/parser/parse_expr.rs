@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use crate::parse_one_of;
 use crate::parser::errors::{CustomError, IResultExt};
 use crate::eval::prolog::*;
@@ -13,7 +14,7 @@ use crate::eval::{Axis, INS};
 use crate::parser::helper::*;
 use crate::fns::Param;
 use crate::values::QName;
-use crate::parser::parse_literal::{parse_literal, parse_integer_literal, parse_string_literal, parse_string_literal_as_string};
+use crate::parser::parse_literal::{parse_literal, parse_integer_literal, parse_string_literal, parse_string_literal_as_string, parse_braced_uri_literal};
 use crate::parser::parse_xml::parse_node_constructor;
 use crate::parser::parse_names::{parse_eqname, parse_ncname, parse_ncname_expr};
 use crate::parser::op::{found_expr, Statement, OperatorComparison, OperatorArithmetic};
@@ -112,12 +113,12 @@ pub(crate) fn parse_prolog(input: &str) -> IResult<&str, Vec<Box<dyn Expression>
 }
 
 // [8]    	Setter 	   ::=    	BoundarySpaceDecl | DefaultCollationDecl | BaseURIDecl
-// | ConstructionDecl | OrderingModeDecl | EmptyOrderDecl | CopyNamespacesDecl | TODO DecimalFormatDecl
+// | ConstructionDecl | OrderingModeDecl | EmptyOrderDecl | CopyNamespacesDecl | DecimalFormatDecl
 pub(crate) fn parse_setter(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
     alt((
         parse_boundary_space_decl, parse_default_collation_decl, parse_base_uri_decl,
         parse_construction_decl, parse_ordering_mode_decl, parse_empty_order_decl,
-        parse_copy_namespaces_decl
+        parse_copy_namespaces_decl, parse_decimal_format_decl
     ))(input)
 }
 
@@ -260,13 +261,19 @@ pub(crate) fn parse_decimal_format_decl(input: &str) -> IResult<&str, Box<dyn Ex
             ),
             many0(parse_df_property)
         )),
-        |(format, properties)| {
-            DeclareDecimalFormat::boxed(format, properties)
+        |(name, properties)| {
+            let mut map = HashMap::with_capacity(properties.len());
+            for (name, value) in properties {
+                if map.insert(name, value) != None {
+                    todo!()
+                }
+            }
+            DeclareDecimalFormat::boxed(name, map)
         }
     )(input)
 }
 
-pub(crate) fn parse_df_property(input: &str) -> IResult<&str, (String, String), CustomError<&str>> {
+pub(crate) fn parse_df_property(input: &str) -> IResult<&str, (DecimalFormatPropertyName, String), CustomError<&str>> {
     map(
         preceded(
             ws,
@@ -288,7 +295,23 @@ pub(crate) fn parse_df_property(input: &str) -> IResult<&str, (String, String), 
                 parse_string_literal_as_string
             )
         ),
-        |(name, value)| (name.to_string(), value)
+        |(name, value)| {
+            let name = match name {
+                "decimal-separator" => DecimalFormatPropertyName::DecimalSeparator,
+                "grouping-separator" => DecimalFormatPropertyName::GroupingSeparator,
+                "infinity" => DecimalFormatPropertyName::Infinity,
+                "minus-sign" => DecimalFormatPropertyName::MinusSign,
+                "NaN" => DecimalFormatPropertyName::NaN,
+                "percent" => DecimalFormatPropertyName::Percent,
+                "per-mille" => DecimalFormatPropertyName::PerMille,
+                "zero-digit" => DecimalFormatPropertyName::ZeroDigit,
+                "digit" => DecimalFormatPropertyName::Digit,
+                "pattern-separator" => DecimalFormatPropertyName::PatternSeparator,
+                "exponent-separator" => DecimalFormatPropertyName::ExponentSeparator,
+                _ => panic!("internal error")
+            };
+            (name, value)
+        }
     )(input)
 }
 
@@ -446,10 +469,19 @@ pub(crate) fn parse_var_decl(input: &str) -> IResult<&str, Box<dyn Expression>, 
 
 // [33]    	ParamList 	   ::=    	Param ("," Param)*
 fn parse_param_list(input: &str) -> IResult<&str, Vec<Param>, CustomError<&str>> {
-    separated_list1(
+    let (input, params) = separated_list1(
         tuple((ws, tag(","), ws)),
         parse_param
-    )(input)
+    )(input)?;
+
+    let mut names = HashSet::with_capacity(params.len() as usize);
+    for param in &params {
+        if names.insert(param.name.clone()) == false {
+            return Err(nom::Err::Failure(CustomError::XQST0039));
+        }
+    }
+
+    Ok((input, params))
 }
 
 // [34]    	Param 	   ::=    	"$" EQName TypeDeclaration?
@@ -478,14 +510,13 @@ fn parse_function_decl(input: &str) -> IResult<&str, Box<dyn Expression>, Custom
     let (input, _) = ws_tag_ws("(", input)?;
     let mut current_input = input;
 
-    let check = parse_param_list(current_input);
-    let params = if check.is_ok() {
-        let (input, params) = check?;
-        current_input = input;
-
-        params
-    } else {
-        vec![]
+    let params = match parse_param_list(input) {
+        Ok((input, params)) => {
+            current_input = input;
+            params
+        },
+        Err(nom::Err::Failure(code)) => return Err(nom::Err::Failure(code)),
+        Err(_) => vec![]
     };
 
     let (input, _) = ws_tag(")", current_input)?;
@@ -525,7 +556,7 @@ pub(crate) fn parse_enclosed_expr(input: &str) -> IResult<&str, Box<dyn Expressi
         (input, Body::empty())
     };
 
-    let (input, _) = ws_tag_ws("}", input)?;
+    let (input, _) = ws_tag("}", input)?;
 
     Ok((input, EnclosedExpr::new(expr)))
 }
@@ -1193,19 +1224,22 @@ fn parse_path_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomErro
     let check = alt((tag("//"), tag("/")))(input);
     if check.is_ok() {
         let (input, steps) = check?;
-        let check = parse_relative_path_expr(input);
-        if check.is_ok() {
-            let (input, expr) = check?;
-
-            let initial_node_sequence = match steps {
-                "/" => INS::Root,
-                "//" => INS::RootDescendantOrSelf,
-                _ => panic!("internal error")
-            };
-            return found_expr(input, Box::new(InitialPath { initial_node_sequence, expr }))
-        } else {
-            if steps == "/" {
-                return found_expr(input, Box::new(Root {} ))
+        match parse_relative_path_expr(input) {
+            Ok((input, expr)) => {
+                let initial_node_sequence = match steps {
+                    "/" => INS::Root,
+                    "//" => INS::RootDescendantOrSelf,
+                    _ => panic!("internal error")
+                };
+                return found_expr(input, Box::new(InitialPath { initial_node_sequence, expr }));
+            }
+            Err(nom::Err::Failure(code)) => return Err(nom::Err::Failure(code)),
+            _ => {
+                if steps == "/" {
+                    return found_expr(input, Box::new(Root {} ))
+                } else {
+                    todo!("error?")
+                }
             }
         }
     }
@@ -1321,7 +1355,7 @@ fn parse_forward_axis(input: &str) -> IResult<&str, Axis, CustomError<&str>> {
 
 // [114]    	AbbrevForwardStep 	   ::=    	"@"? NodeTest
 fn parse_abbrev_forward_step(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
-    let check = tag("@")(input);
+    let check = ws_tag("@", input);
     let (input, axis) = if check.is_ok() {
         let (input, _) = check?;
         (input, Axis::ForwardAttribute)
@@ -1399,34 +1433,53 @@ fn parse_node_test(input: &str) -> IResult<&str, Box<dyn NodeTest>, CustomError<
 // | ("*:" NCName)
 // TODO: | (BracedURILiteral "*") 	/* ws: explicit */
 fn parse_name_test(input: &str) -> IResult<&str, Box<dyn NodeTest>, CustomError<&str>> {
-    let check = parse_eqname(input);
-    let (input, qname) = if check.is_ok() {
-        let (input, name) = check?;
-        (input, name)
-    } else {
-        let check = tag("*:")(input);
-        if check.is_ok() {
-            let (input, _) = check?;
-            let (input, name) = parse_ncname(input)?;
-            (input, QName::new("*".to_string(), name))
-        } else {
-            let check = tag("*")(input);
-            if check.is_ok() {
-                let (input, _) = check?;
-                (input, QName::new("*".to_string(), "*".to_string()))
-            } else {
-                let (input, prefix) = parse_ncname(input)?;
-                let (input, _) = tag(":*")(input)?;
+    let (input, qname) = alt((
+        map(
+            tuple((parse_braced_uri_literal, tag("*"))),
+            |(uri, _)| QName { prefix: None, url: Some(uri.to_string()), local_part: "*".to_string() }
+        ),
+        map(
+            tuple((tag("*:"), parse_ncname)),
+            |(_, name)| QName { prefix: Some("*".to_string()), url: None, local_part: name.to_string() }
+        ),
+        map(
+            tag("*"),|_| QName::wildcard()
+        ),
+        map(
+            tuple((parse_ncname, tag(":*"))),
+            |(prefix, _)| QName { prefix: Some(prefix.to_string()), url: None, local_part: "*".to_string() }
+        ),
+        parse_eqname
+    ))(input)?;
 
-                (input, QName::new(prefix, "*".to_string()))
-            }
-        }
-    };
+    // let check = parse_eqname(input);
+    // let (input, qname) = if check.is_ok() {
+    //     let (input, name) = check?;
+    //     (input, name)
+    // } else {
+    //     let check = tag("*:")(input);
+    //     if check.is_ok() {
+    //         let (input, _) = check?;
+    //         let (input, name) = parse_ncname(input)?;
+    //         (input, QName::new("*".to_string(), name))
+    //     } else {
+    //         let check = tag("*")(input);
+    //         if check.is_ok() {
+    //             let (input, _) = check?;
+    //             (input, QName::new("*".to_string(), "*".to_string()))
+    //         } else {
+    //             let (input, prefix) = parse_ncname(input)?;
+    //             let (input, _) = tag(":*")(input)?;
+    //
+    //             (input, QName::new(prefix, "*".to_string()))
+    //         }
+    //     }
+    // };
 
     Ok((input, NameTest::boxed(qname)))
 }
 
-// [121]    	PostfixExpr 	   ::=    	PrimaryExpr (Predicate | TODO: ArgumentList | Lookup)*
+// [121]    	PostfixExpr 	   ::=    	PrimaryExpr (Predicate | ArgumentList | TODO: Lookup)*
 fn parse_postfix_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
     let (input, _) = ws(input)?;
     let (input, primary) = parse_primary_expr(input)?;
@@ -1443,7 +1496,23 @@ fn parse_postfix_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomE
 
             suffix.push(predicate)
         } else {
-            break;
+            let check = parse_argument_list(current_input);
+            if check.is_ok() {
+                let (input, arguments) = check?;
+                current_input = input;
+
+                suffix.push(PrimaryExprSuffix { predicate: None, argument_list: Some(arguments), lookup: None })
+            } else {
+                let check = parse_lookup(current_input);
+                if check.is_ok() {
+                    let (input, lookup) = check?;
+                    current_input = input;
+
+                    suffix.push(lookup)
+                } else {
+                    break;
+                }
+            }
         }
     }
 
@@ -1469,7 +1538,7 @@ fn parse_argument_list(input: &str) -> IResult<&str, Vec<Box<dyn Expression>>, C
 }
 
 // [123]    	PredicateList 	   ::=    	Predicate*
-fn parse_predicate_list(input: &str) -> IResult<&str, Vec<Predicate>, CustomError<&str>> {
+fn parse_predicate_list(input: &str) -> IResult<&str, Vec<PrimaryExprSuffix>, CustomError<&str>> {
     let mut current_input = input;
 
     let mut predicates = vec![];
@@ -1489,7 +1558,7 @@ fn parse_predicate_list(input: &str) -> IResult<&str, Vec<Predicate>, CustomErro
 }
 
 // [124]    	Predicate 	   ::=    	"[" Expr "]"
-fn parse_predicate(input: &str) -> IResult<&str, Predicate, CustomError<&str>> {
+fn parse_predicate(input: &str) -> IResult<&str, PrimaryExprSuffix, CustomError<&str>> {
     let input = ws_tag("[", input)?.0;
 
     let (input, expr) = parse_expr_single(input)?;
@@ -1497,7 +1566,21 @@ fn parse_predicate(input: &str) -> IResult<&str, Predicate, CustomError<&str>> {
 
     let input = ws_tag("]", input)?.0;
 
-    Ok((input, Predicate { expr }))
+    Ok((input, PrimaryExprSuffix { predicate: Some(expr), argument_list: None, lookup: None }))
+}
+
+// [125]    	Lookup 	   ::=    	"?" KeySpecifier
+// [126]    	KeySpecifier 	   ::=    	NCName | IntegerLiteral | ParenthesizedExpr | "*"
+fn parse_lookup(input: &str) -> IResult<&str, PrimaryExprSuffix, CustomError<&str>> {
+    let input = ws_tag("?", input)?.0;
+
+    let (input, lookup) = alt((
+        parse_ncname_expr,
+        parse_integer_literal,
+        parse_parenthesized_expr
+    ))(input)?;
+
+    Ok((input, PrimaryExprSuffix { predicate: None, argument_list: None, lookup: Some(lookup) }))
 }
 
 // [127]    	ArrowFunctionSpecifier 	   ::=    	TODO: EQName | VarRef | ParenthesizedExpr
@@ -1684,13 +1767,10 @@ fn parse_inline_function_expr(input: &str) -> IResult<&str, Box<dyn Expression>,
     let (input, _) = ws_tag("function", input)?;
     let (input, _) = ws_tag("(", input)?;
 
-    let check = parse_param_list(input);
-    let (input, arguments) = if check.is_ok() {
-        let (input, params) = check?;
-
-        (input, params)
-    } else {
-        (input, vec![])
+    let (input, arguments) = match parse_param_list(input) {
+        Ok((input, params)) => (input, params),
+        Err(nom::Err::Failure(code)) => return Err(nom::Err::Failure(code)),
+        Err(_) => (input, vec![])
     };
 
     let (input, _) = ws_tag(")", input)?;

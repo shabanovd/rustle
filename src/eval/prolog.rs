@@ -351,21 +351,44 @@ impl Expression for DeclareCopyNamespaces {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum DecimalFormatPropertyName {
+    DecimalSeparator,
+    GroupingSeparator,
+    Infinity,
+    MinusSign,
+    NaN,
+    Percent,
+    PerMille,
+    ZeroDigit,
+    Digit,
+    PatternSeparator,
+    ExponentSeparator
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct DeclareDecimalFormat {
-    format: Option<QName>,
-    properties: Vec<(String, String)>,
+    name: Option<QName>,
+    properties: HashMap<DecimalFormatPropertyName, String>,
 }
 
 impl DeclareDecimalFormat {
-    pub(crate) fn boxed(format: Option<QName>, properties: Vec<(String, String)>) -> Box<dyn Expression> {
-        Box::new(DeclareDecimalFormat { format, properties })
+    pub(crate) fn boxed(name: Option<QName>, properties: HashMap<DecimalFormatPropertyName, String>) -> Box<dyn Expression> {
+        Box::new(DeclareDecimalFormat { name, properties })
     }
 }
 
 impl Expression for DeclareDecimalFormat {
     fn eval<'a>(&self, mut env: Box<Environment>, context: &DynamicContext) -> EvalResult {
-        todo!()
+        if env.decimal_formats.is_none() {
+            env.decimal_formats = Some(HashMap::new());
+        };
+
+        if let Some(map) = &mut env.decimal_formats {
+            map.insert(self.name.clone(), self.properties.clone());
+        };
+
+        Ok((env, Object::Nothing))
     }
 
     fn predicate(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
@@ -800,11 +823,11 @@ impl Expression for Path {
 #[derive(Clone, Debug)]
 pub(crate) struct AxisStep {
     pub(crate) step: Box<dyn Expression>,
-    pub(crate) predicates: Vec<Predicate>
+    pub(crate) predicates: Vec<PrimaryExprSuffix>
 }
 
 impl AxisStep {
-    pub(crate) fn boxed(step: Box<dyn Expression>, predicates: Vec<Predicate>) -> Box<dyn Expression> {
+    pub(crate) fn boxed(step: Box<dyn Expression>, predicates: Vec<PrimaryExprSuffix>) -> Box<dyn Expression> {
         Box::new(AxisStep { step, predicates })
     }
 }
@@ -1122,7 +1145,11 @@ impl Expression for Range {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct Predicate { pub(crate) expr: Box<dyn Expression> }
+pub(crate) struct PrimaryExprSuffix {
+    pub(crate) predicate: Option<Box<dyn Expression>>,
+    pub(crate) argument_list: Option<Vec<Box<dyn Expression>>>,
+    pub(crate) lookup: Option<Box<dyn Expression>>,
+}
 
 #[derive(Clone, Debug)]
 pub(crate) struct InstanceOf {
@@ -1212,7 +1239,7 @@ impl Expression for Cast {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct Postfix { pub(crate) primary: Box<dyn Expression>, pub(crate) suffix: Vec<Predicate> }
+pub(crate) struct Postfix { pub(crate) primary: Box<dyn Expression>, pub(crate) suffix: Vec<PrimaryExprSuffix> }
 
 impl Expression for Postfix {
     fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
@@ -1238,7 +1265,7 @@ impl Expression for Union {
             let (new_env, items) = expr.eval(current_env, context)?;
             current_env = new_env;
 
-            let mut items = object_owned_to_sequence(items);
+            let items = object_owned_to_sequence(items);
 
             join_sequences(&mut result, items);
             sort_and_dedup(&mut result)

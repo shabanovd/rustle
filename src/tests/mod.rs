@@ -62,6 +62,8 @@ pub(crate) fn eval(sources: Vec<(&str, &str)>, input: &str) -> EvalResult {
                 let code = match msg {
                     "XPST0003" => ErrorCode::XPST0003,
                     "XQST0031" => ErrorCode::XQST0031,
+                    "XQST0039" => ErrorCode::XQST0039,
+                    "XQST0070" => ErrorCode::XQST0070,
                     "XQST0087" => ErrorCode::XQST0087,
                     _ => panic!("{}", msg),
                 };

@@ -3,7 +3,7 @@ use std::rc::Rc;
 use std::sync::{Mutex, MutexGuard};
 use crate::values::{QName, QNameResolved};
 use crate::eval::Object;
-use crate::eval::prolog::{BoundarySpace, ConstructionMode, EmptyOrderMode, InheritMode, OrderingMode, PreserveMode};
+use crate::eval::prolog::{BoundarySpace, ConstructionMode, DecimalFormatPropertyName, EmptyOrderMode, InheritMode, OrderingMode, PreserveMode};
 use crate::fns::{Function, FUNCTION, FunctionsRegister};
 use crate::namespaces::*;
 use crate::tree::{InMemoryXMLTree, Reference, XMLTreeWriter};
@@ -19,6 +19,7 @@ pub struct Environment {
     pub ordering_mode: Option<OrderingMode>,
     pub empty_order_mode: Option<EmptyOrderMode>,
     pub copy_namespaces: Option<(PreserveMode, InheritMode)>,
+    pub decimal_formats: Option<HashMap<Option<QName>, HashMap<DecimalFormatPropertyName, String>>>,
 
     pub xml_tree: Rc<Mutex<Box<dyn XMLTreeWriter>>>,
 
@@ -42,6 +43,7 @@ impl Environment {
                 ordering_mode: None,
                 empty_order_mode: None,
                 copy_namespaces: None,
+                decimal_formats: None,
 
                 xml_tree: InMemoryXMLTree::create(1),
 
@@ -66,6 +68,7 @@ impl Environment {
                 ordering_mode: None,
                 empty_order_mode: None,
                 copy_namespaces: None,
+                decimal_formats: None,
 
                 xml_tree: InMemoryXMLTree::create(sequence),
 
@@ -110,16 +113,19 @@ impl Environment {
     }
 
     pub fn set_variable(&mut self, name: QNameResolved, value: Object) {
+        // println!("set_variable {:?} {:?}", name, value);
         self.vars.insert(name, value);
     }
 
     pub fn get_variable(&self, name: &QNameResolved) -> Option<Object> {
         let obj = self.vars.get(name).map(|val| val.clone());
         if obj.is_some() {
+            // println!("get_variable {:?} => {:?}", name, obj);
             obj
         } else if let Some(prev) = &self.prev {
             prev.get_variable(name)
         } else {
+            // println!("get_variable {:?} => None", name);
             None
         }
     }

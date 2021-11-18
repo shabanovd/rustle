@@ -1,11 +1,10 @@
-use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fs;
 use std::rc::Rc;
 use std::sync::Mutex;
 use linked_hash_map::LinkedHashMap;
 use xmlparser::{ElementEnd, Token};
-use crate::eval::{Axis, INS};
+use crate::eval::{Axis, ErrorInfo, INS};
 use crate::namespaces::XML;
 use crate::tree::dln::DLN;
 use crate::tree::{NodeType, Reference, XMLNode, XMLTreeReader, XMLTreeWriter};
@@ -26,11 +25,14 @@ pub struct InMemoryXMLTree {
 
 impl InMemoryXMLTree {
     fn instance(id: usize) -> Box<dyn XMLTreeWriter> {
+        let mut namespaces = LinkedHashMap::with_capacity(21);
+        namespaces.insert("xml".to_string(), "http://www.w3.org/XML/1998/namespace".to_string());
+
         Box::new(InMemoryXMLTree {
             id,
             storage: None,
             stack: Vec::with_capacity(21),
-            namespaces: LinkedHashMap::with_capacity(21),
+            namespaces,
             items: BTreeMap::new()
         })
     }
@@ -46,6 +48,17 @@ impl InMemoryXMLTree {
         }
 
         rf
+    }
+
+    fn resolve(&self, mut name: QName) -> QName {
+        if name.url.is_none() {
+            if let Some(prefix) = &name.prefix {
+                if let Some(url) = self.namespaces.get(prefix) {
+                    name.url = Some(url.clone());
+                }
+            }
+        }
+        name
     }
 
     pub fn load(id: usize, path: &str) -> Rc<Mutex<Box<dyn XMLTreeWriter>>> {
@@ -131,6 +144,8 @@ impl InMemoryXMLTree {
             if prefix == "xmlns" {
                 self.namespaces.insert(name.local_part.clone(), value.clone());
             }
+        } else if name.local_part == "xmlns" {
+            self.namespaces.insert("".to_string(), value.clone());
         }
     }
 
@@ -211,15 +226,15 @@ impl InMemoryXMLTree {
 impl XMLTreeReader for InMemoryXMLTree {
     fn name(&self, rf: &Reference) -> Option<QName> {
         if let Some(attr_name) = &rf.attr_name {
-            if let Some(uri) = &attr_name.url {
-                if uri == &*XML.uri {
-                    Some(QName::local_part(attr_name.local_part.clone()))
-                } else {
-                    Some(attr_name.clone())
-                }
-            } else {
-                Some(attr_name.clone())
-            }
+            // if let Some(uri) = &attr_name.url {
+            //     if uri == &*XML.uri {
+            //         Some(QName::local_part(attr_name.local_part.clone()))
+            //     } else {
+            //         Some(attr_name.clone())
+            //     }
+            // } else {
+            Some(attr_name.clone())
+            // }
         } else {
             if let Some(node) = self.items.get(&rf.id) {
                 node.name()
@@ -235,7 +250,7 @@ impl XMLTreeReader for InMemoryXMLTree {
     }
 
     fn to_xml(&self, rf: &Reference) -> Result<String, String> {
-        // println!("to_xml {}", self.dump());
+        println!("to_xml {}", self.dump());
         let mut ids: Vec<(usize, &DLN, &Box<dyn XMLNode>, usize)> = vec![];
 
         let mut namespaces = LinkedHashMap::with_capacity(21);
@@ -362,8 +377,8 @@ impl XMLTreeReader for InMemoryXMLTree {
     }
 
     fn forward(&self, rf: &Reference, initial_node_sequence: &Option<INS>, axis: &Axis) -> Vec<Reference> {
-        // println!("forward {:?} {:?}", initial_node_sequence, axis);
-        // println!("{}", self.dump());
+        println!("forward {:?} {:?}", initial_node_sequence, axis);
+        println!("{}", self.dump());
 
         let (rf, all) = if let Some(initial_node) = initial_node_sequence {
             match initial_node {
@@ -581,7 +596,9 @@ impl XMLTreeWriter for InMemoryXMLTree {
         let id = self.next_sibling();
         self.prepare_child();
 
-        // resolve or check namespace
+        name = self.resolve(name);
+
+        // TODO on element end check namespace?
         if let Some(prefix) = &name.prefix {
             if let Some(ns) = self.namespaces.get(prefix) {
                 if let Some(url) = &name.url {
@@ -605,8 +622,10 @@ impl XMLTreeWriter for InMemoryXMLTree {
         self.attribute(name, url)
     }
 
-    fn attribute(&mut self, name: QName, value: String) -> Reference {
+    fn attribute(&mut self, mut name: QName, value: String) -> Reference {
         self.add_namespace(&name, &value);
+
+        name = self.resolve(name);
 
         let size = self.stack.len();
         if size == 0 {
@@ -805,7 +824,15 @@ impl XMLNode for Element {
                     }
                 }
             }
+        } else if name.local_part == "xmlns" {
+            if let Some(el_name) = &mut self.name {
+                if el_name.prefix.is_none() {
+                    el_name.url = Some(value.clone());
+                }
+            }
         }
+
+        println!("add_attribute {:?}", name);
 
         if let Some(attributes) = &mut self.attributes {
             attributes.insert(name.clone(), Attribute { name, value } );
@@ -850,6 +877,8 @@ impl XMLNode for Element {
                         if prefix == "xmlns" {
                             namespaces.insert(name.local_part.clone(), attr.value.clone());
                         }
+                    } else if name.local_part == "xmlns" {
+                        namespaces.insert("".to_string(), attr.value.clone());
                     }
                     buf.push_str(" ");
                     buf.push_str(name.string().as_str());

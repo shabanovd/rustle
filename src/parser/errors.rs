@@ -1,5 +1,5 @@
 use strum_macros::AsRefStr;
-use nom::error::{ErrorKind, ParseError};
+use nom::error::{ErrorKind, ParseError, FromExternalError};
 use nom::{IResult, Err};
 
 #[allow(dead_code)]
@@ -174,8 +174,10 @@ pub enum ErrorCode {
 
 #[derive(Debug, PartialEq, AsRefStr)]
 pub enum CustomError<I> {
+    XQST0039,
     XQST0040,
     XQST0031,
+    XQST0070,
     XQST0087,
     XPST0003,
     FOAR0002,
@@ -183,6 +185,12 @@ pub enum CustomError<I> {
     XQST0118,
 
     Nom(I, ErrorKind),
+}
+
+impl<I> FromExternalError<I, CustomError<I>> for CustomError<I> {
+    fn from_external_error(input: I, kind: ErrorKind, e: CustomError<I>) -> Self {
+        e
+    }
 }
 
 impl<I> ParseError<I> for CustomError<I> {

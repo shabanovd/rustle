@@ -161,6 +161,9 @@ impl FunctionsRegister {
         instance.register(&*XPATH_FUNCTIONS.uri, "error", 2, fun::error);
         instance.register(&*XPATH_FUNCTIONS.uri, "error", 3, fun::error);
 
+        instance.register(&*XPATH_FUNCTIONS.uri, "format-number", 2, math::fn_format_number_eval);
+        instance.register(&*XPATH_FUNCTIONS.uri, "format-number", 3, math::fn_format_number_eval);
+
         instance.register(&*XPATH_FUNCTIONS.uri, "number", 0, math::fn_number_eval);
         instance.register(&*XPATH_FUNCTIONS.uri, "number", 1, math::fn_number_eval);
 
@@ -172,6 +175,8 @@ impl FunctionsRegister {
         instance.register(&*XPATH_FUNCTIONS.uri, "min", 2, aggregates::fn_min);
         // instance.register(&*XPATH_FUNCTIONS.url, "sum", 1, aggregates::fn_sum);
         // instance.register(&*XPATH_FUNCTIONS.url, "sum", 2, aggregates::fn_sum);
+
+        instance.register(&*XPATH_MATH.uri, "pi", 0, math::fn_pi);
 
         instance.register(&*XPATH_FUNCTIONS.uri, "abs", 1, math::fn_abs);
         instance.register(&*XPATH_FUNCTIONS.uri, "floor", 1, math::fn_floor);

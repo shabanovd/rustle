@@ -182,10 +182,11 @@ pub(crate) fn parse_string_literal(input: &str) -> IResult<&str, Box<dyn Express
 }
 
 pub(crate) fn parse_string_literal_as_string(input: &str) -> IResult<&str, String, CustomError<&str>> {
-    let (input, open) = preceded(ws, alt((tag("\""), tag("'"))))(input)?;
+    let (input, _) = ws(input)?;
+    let (input, open) = alt((tag("\""), tag("'")))(input)?;
     let except = if open == "'" { "'&" } else { "\"&" };
 
-    let mut data = String::new();
+    let mut data = vec![];
 
     let mut current_input = input;
     loop {
@@ -194,7 +195,7 @@ pub(crate) fn parse_string_literal_as_string(input: &str) -> IResult<&str, Strin
             Ok((input, expr)) => {
                 current_input = input;
 
-                data.push(expr);
+                data.push(expr.to_string());
                 continue;
             },
             Err(nom::Err::Failure(e)) => {
@@ -206,7 +207,7 @@ pub(crate) fn parse_string_literal_as_string(input: &str) -> IResult<&str, Strin
         let check = is_not(except)(current_input);
         current_input = if check.is_ok() {
             let (input, content) = check?;
-            data.push_str(content);
+            data.push(content.to_string());
 
             input
         } else {
@@ -224,29 +225,118 @@ pub(crate) fn parse_string_literal_as_string(input: &str) -> IResult<&str, Strin
                 let (input, _) = check?;
                 current_input = input;
 
-                data.push_str(open);
+                if open == "'" {
+                    data.push("'".to_string());
+                } else {
+                    data.push("\"".to_string());
+                }
             } else {
-                return Ok((current_input, data));
+                return if data.len() == 0 {
+                    Ok((current_input, "".to_string()))
+                } else if data.len() == 1 {
+                    let str = data.remove(0);
+                    Ok((current_input, str))
+                } else {
+                    Ok((current_input, data.join("")))
+                }
             }
         }
     }
 }
 
-
 // ws: explicit
 // [223]    	URIQualifiedName 	   ::=    	BracedURILiteral NCName
-// [224]    	BracedURILiteral 	   ::=    	"Q" "{" (PredefinedEntityRef | CharRef | [^&{}])* "}"
 pub(crate) fn parse_uri_qualified_name(input: &str) -> IResult<&str, QName, CustomError<&str>> {
+    let (input, (qname, error)) = map(
+        tuple((parse_braced_uri_literal, parse_ncname)),
+        |(url, local_part)| {
+            let url = url.trim();
+            if url.is_empty() {
+                (Some(QName { prefix: None, url: None, local_part }), None)
+            } else {
+                if "http://www.w3.org/2000/xmlns/" == url {
+                    (None, Some(CustomError::XQST0070))
+                } else {
+                    (Some(QName { prefix: None, url: Some(url.to_string()), local_part }), None)
+                }
+            }
+        }
+    )(input)?;
+
+    if let Some(code) = error {
+        Err(nom::Err::Failure(code))
+    } else if let Some(qname) = qname {
+        Ok((input, qname))
+    } else {
+        Err(nom::Err::Error(CustomError::XPST0003))
+    }
+}
+
+// [224]    	BracedURILiteral 	   ::=    	"Q" "{" (PredefinedEntityRef | CharRef | [^&{}])* "}"
+// [225]    	PredefinedEntityRef 	   ::=    	"&" ("lt" | "gt" | "amp" | "quot" | "apos") ";"
+pub(crate) fn parse_braced_uri_literal(input: &str) -> IResult<&str, String, CustomError<&str>> {
     map(
-        tuple((
-            preceded(
-                tuple((ws, tag("Q{"))),
-                terminated(is_not("}"), tag("}"))
-            ),
-            parse_ncname
-        )),
-        |(url, local_part)| QName { prefix: None, url: Some(url.to_string()), local_part }
+        preceded(
+            tuple((ws, tag("Q{"))),
+            terminated(parse_string, tag("}"))
+        ),
+        |url| {
+            // workaround
+            let mut old_url= url.trim()
+                .replace("\t", " ")
+                .replace("\n", " ")
+                .replace("\r", " ");
+            let mut new_url = old_url.replace("  ", " ");
+            while old_url != new_url {
+                old_url = new_url;
+                new_url = old_url.replace("  ", " ");
+            }
+            new_url
+        }
     )(input)
+}
+
+pub(crate) fn parse_string(input: &str) -> IResult<&str, String, CustomError<&str>> {
+    let mut data = vec![];
+
+    let mut current_input = input;
+    loop {
+        let check = parse_refs_as_char(current_input);
+        match check {
+            Ok((input, expr)) => {
+                current_input = input;
+
+                data.push(expr.to_string());
+                continue;
+            },
+            Err(nom::Err::Failure(e)) => {
+                return Err(nom::Err::Failure(e));
+            },
+            _ => {}
+        }
+
+        let check = is_not("&{}")(current_input);
+        current_input = if check.is_ok() {
+            let (input, content) = check?;
+            data.push(content.to_string());
+
+            input
+        } else {
+            current_input
+        };
+
+        let check: Result<(&str, &str), nom::Err<Error<&str>>> = tag("&")(current_input);
+        if check.is_err() {
+            return if data.len() == 0 {
+                Ok((current_input, "".to_string()))
+            } else if data.len() == 1 {
+                let str = data.remove(0);
+                Ok((current_input, str))
+            } else {
+                Ok((current_input, data.join("")))
+            }
+        }
+    }
 }
 
 //[238]    	Digits 	   ::=    	[0-9]+

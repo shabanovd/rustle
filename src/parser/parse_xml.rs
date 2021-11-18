@@ -382,18 +382,7 @@ pub(crate) fn parse_computed_constructor(input: &str) -> IResult<&str, Box<dyn E
 pub(crate) fn parse_refs(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
     let must_have: Result<(&str, &str), nom::Err<Error<&str>>> = tag("&")(input);
 
-    let check = parse_predefined_entity_ref(input);
-    match check {
-        Ok(r) => {
-            return Ok(r);
-        },
-        Err(nom::Err::Failure(e)) => {
-            return Err(nom::Err::Failure(e));
-        },
-        _ => {}
-    }
-
-    let check = parse_char_ref(input);
+    let check = alt((parse_predefined_entity_ref, parse_char_ref))(input);
     match check {
         Ok(r) => {
             return Ok(r);
@@ -414,18 +403,7 @@ pub(crate) fn parse_refs(input: &str) -> IResult<&str, Box<dyn Expression>, Cust
 pub(crate) fn parse_refs_as_char(input: &str) -> IResult<&str, char, CustomError<&str>> {
     let must_have: Result<(&str, &str), nom::Err<Error<&str>>> = tag("&")(input);
 
-    let check = parse_predefined_entity_ref_as_char(input);
-    match check {
-        Ok(r) => {
-            return Ok(r);
-        },
-        Err(nom::Err::Failure(e)) => {
-            return Err(nom::Err::Failure(e));
-        },
-        _ => {}
-    }
-
-    let check = parse_char_ref_as_char(input);
+    let check = alt((parse_predefined_entity_ref_as_char, parse_char_ref_as_char))(input);
     match check {
         Ok(r) => {
             return Ok(r);
@@ -565,6 +543,11 @@ pub(crate) fn parse_predefined_entity_ref_as_char(input: &str) -> IResult<&str, 
     };
 
     Ok((input, ch))
+}
+
+pub(crate) fn parse_predefined_entity_ref_as_string(input: &str) -> IResult<&str, String, CustomError<&str>> {
+    let (input, ch) = parse_predefined_entity_ref_as_char(input)?;
+    Ok((input, ch.to_string()))
 }
 
 // [228]    	ElementContentChar 	   ::=    	(Char - [{}<&])
