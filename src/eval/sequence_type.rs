@@ -1,4 +1,4 @@
-use crate::eval::{ErrorInfo, Object, Type};
+use crate::eval::{Environment, ErrorInfo, Object, Type};
 use crate::values::*;
 use crate::eval::expression::{NodeTest, Expression};
 use crate::tree::Reference;
@@ -41,21 +41,22 @@ impl SequenceType {
         todo!()
     }
 
-    pub fn is_castable(&self, obj: &Object) -> Result<bool, ErrorInfo> {
+    pub fn is_castable(&self, env: &Environment, obj: &Object) -> Result<bool, ErrorInfo> {
         let result = match &self.item_type {
             ItemType::AtomicOrUnionType(name) => {
+                let name = env.namespaces.resolve(name.clone());
                 match obj {
                     Object::Empty => {
                         self.occurrence_indicator == OccurrenceIndicator::ZeroOrMore
                             || self.occurrence_indicator == OccurrenceIndicator::ZeroOrOne
                     },
-                    Object::Atomic(Type::String(..)) => name == &*XS_STRING,
-                    Object::Atomic(Type::NormalizedString(..)) => name == &*XS_STRING,
-                    Object::Atomic(Type::Integer(..)) => name == &*XS_INTEGER,
-                    Object::Atomic(Type::Decimal{..}) => name == &*XS_DECIMAL,
-                    Object::Atomic(Type::Float{..}) => name == &*XS_FLOAT,
-                    Object::Atomic(Type::Double{..}) => name == &*XS_DOUBLE,
-                    Object::Atomic(Type::Untyped(..)) => name == &*XS_UNTYPED_ATOMIC,
+                    Object::Atomic(Type::String(..)) => name == *XS_STRING,
+                    Object::Atomic(Type::NormalizedString(..)) => name == *XS_STRING,
+                    Object::Atomic(Type::Integer(..)) => name == *XS_INTEGER,
+                    Object::Atomic(Type::Decimal{..}) => name == *XS_DECIMAL,
+                    Object::Atomic(Type::Float{..}) => name == *XS_FLOAT,
+                    Object::Atomic(Type::Double{..}) => name == *XS_DOUBLE,
+                    Object::Atomic(Type::Untyped(..)) => name == *XS_UNTYPED_ATOMIC,
                     _ => panic!("TODO: {:?}", obj)
                 }
             },

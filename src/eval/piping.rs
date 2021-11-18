@@ -61,7 +61,7 @@ pub(crate) fn eval_pipe<'a>(pipe: Box<Pipe>, env: Box<Environment>, context: &Dy
                         if allowing_empty {
 
                             let item = if let Some(st) = st.as_ref() {
-                                if st.is_castable(&Object::Empty)? {
+                                if st.is_castable(&current_env, &Object::Empty)? {
                                     Object::Empty
                                 } else {
                                     return Err((ErrorCode::XPTY0004, String::from("TODO")))
@@ -86,7 +86,7 @@ pub(crate) fn eval_pipe<'a>(pipe: Box<Pipe>, env: Box<Environment>, context: &Dy
                             pos += 1;
 
                             let item = if let Some(st) = st.as_ref() {
-                                if st.is_castable(&item)? {
+                                if st.is_castable(&current_env, &item)? {
                                     item
                                 } else {
                                     return Err((ErrorCode::XPTY0004, String::from("TODO")))

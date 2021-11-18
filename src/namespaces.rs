@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use crate::values::{QName, QNameResolved};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Namespace {
@@ -76,6 +77,18 @@ impl Namespaces {
         instance.add(&*XQUERY_LOCAL);
 
         instance
+    }
+
+    pub fn resolve(&self, mut name: QName) -> QNameResolved {
+        if name.url.is_none() {
+            if let Some(prefix) = &name.prefix {
+                if let Some(ns) = self.prefixes.get(prefix) {
+                    name.url = Some(ns.uri.clone())
+                }
+            }
+        }
+        let url = if let Some(url) = name.url { url } else { "".to_string() };
+        QNameResolved { url, local_part: name.local_part }
     }
 
     pub fn default_for_element(&self) -> String {

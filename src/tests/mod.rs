@@ -200,18 +200,23 @@ pub(crate) fn bool_check_assert_xml(result: &EvalResult, check: &str) -> bool {
         let reader = writer.as_reader();
         let rf = reader.first().unwrap();
         for rf in reader.forward(&rf, &None, &Axis::ForwardChild) {
-            items.push(Object::Node(rf))
+            for rf in reader.forward(&rf, &None, &Axis::ForwardChild) {
+                items.push(Object::Node(rf))
+            }
         }
         relax(tmp_env, items).unwrap()
     };
 
     match &expected {
         Object::Node(l_rf) => {
-            println!("expected: {}", l_rf.to_xml().unwrap());
+            let expect = l_rf.to_xml().unwrap();
+            println!("expect: {:?}", expect);
             match obj {
                 Object::Node(r_rf) => {
-                    println!("result: {}", r_rf.to_xml().unwrap());
-                    l_rf.deep_eq(r_rf)
+                    let result = r_rf.to_xml().unwrap();
+                    println!("result: {:?}", result);
+                    // l_rf.deep_eq(r_rf)
+                    expect == result
                 }
                 _ => panic!()
             }

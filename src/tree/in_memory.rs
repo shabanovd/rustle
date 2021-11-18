@@ -245,12 +245,38 @@ impl XMLTreeReader for InMemoryXMLTree {
         }
     }
 
+    fn target(&self, rf: &Reference) -> Option<QName> {
+        if let Some(attr_name) = &rf.attr_name {
+            None
+        } else {
+            if let Some(node) = self.items.get(&rf.id) {
+                node.target()
+            } else {
+                // TODO raise error?
+                None
+            }
+        }
+    }
+
+    fn content(&self, rf: &Reference) -> Option<String> {
+        if let Some(attr_name) = &rf.attr_name {
+            None
+        } else {
+            if let Some(node) = self.items.get(&rf.id) {
+                node.content()
+            } else {
+                // TODO raise error?
+                None
+            }
+        }
+    }
+
     fn to_string(&self, rf: &Reference) -> Result<String, String> {
         todo!()
     }
 
     fn to_xml(&self, rf: &Reference) -> Result<String, String> {
-        println!("to_xml {}", self.dump());
+        // println!("to_xml {}", self.dump());
         let mut ids: Vec<(usize, &DLN, &Box<dyn XMLNode>, usize)> = vec![];
 
         let mut namespaces = LinkedHashMap::with_capacity(21);
@@ -377,8 +403,8 @@ impl XMLTreeReader for InMemoryXMLTree {
     }
 
     fn forward(&self, rf: &Reference, initial_node_sequence: &Option<INS>, axis: &Axis) -> Vec<Reference> {
-        println!("forward {:?} {:?}", initial_node_sequence, axis);
-        println!("{}", self.dump());
+        // println!("forward {:?} {:?}", initial_node_sequence, axis);
+        // println!("{}", self.dump());
 
         let (rf, all) = if let Some(initial_node) = initial_node_sequence {
             match initial_node {
@@ -490,9 +516,9 @@ impl XMLTreeReader for InMemoryXMLTree {
         }
     }
 
-    fn get_node(&self, rf: &Reference) -> Option<&Box<dyn XMLNode>> {
+    fn get_node(&self, rf: &Reference) -> Option<Box<dyn XMLNode>> {
         if let Some(node) = self.items.get(&rf.id) {
-            Some(node)
+            Some(node.clone())
         } else {
             None
         }
@@ -1254,11 +1280,11 @@ impl XMLNode for LinkedNode {
     }
 
     fn target(&self) -> Option<QName> {
-        todo!()
+        self.rf.target()
     }
 
     fn content(&self) -> Option<String> {
-        todo!()
+        self.rf.content()
     }
 
     fn typed_value(&self) -> String {

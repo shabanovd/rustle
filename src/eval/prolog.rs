@@ -1167,7 +1167,7 @@ impl Expression for InstanceOf {
         // TODO occurrence_indicator checks
 
         process_items(current_env, object, |env, item| {
-            let result = self.st.is_castable(&item)?;
+            let result = self.st.is_castable(&env, &item)?;
             Ok((env, Object::Atomic(Type::Boolean(result))))
         })
     }
@@ -1193,7 +1193,7 @@ impl Expression for Treat {
         // TODO occurrence_indicator checks
 
         process_items(current_env, object, |env, item| {
-            let correct = self.st.is_castable(&item)?;
+            let correct = self.st.is_castable(&env, &item)?;
 
             if correct {
                 Ok((env, item))

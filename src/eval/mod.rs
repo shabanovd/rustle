@@ -10,7 +10,7 @@ use crate::eval::prolog::*;
 mod environment;
 pub(crate) mod comparison;
 
-pub(crate) use crate::values::{Object, Type, string_to_decimal, string_to_double, object_to_qname, atomization, sequence_atomization};
+pub(crate) use crate::values::{Object, Type, string_to_double, object_to_qname, atomization, sequence_atomization};
 
 pub(crate) mod navigation;
 mod arithmetic;
@@ -208,7 +208,7 @@ fn eval_predicates(exprs: &Vec<PrimaryExprSuffix>, env: Box<Environment>, value:
 
                     result = new_value;
                 },
-                _ => return Err((ErrorCode::XPTY0004, String::from("TODO")))
+                _ => panic!() // return Err((ErrorCode::XPTY0004, String::from("TODO")))
             }
         } else if let Some(key) = lookup {
             todo!()

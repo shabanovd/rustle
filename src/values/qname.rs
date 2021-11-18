@@ -19,6 +19,26 @@ pub struct QNameResolved {
     pub local_part: String,
 }
 
+impl QNameResolved {
+    fn is_same(&self, qname: &QName) -> bool {
+        if self.local_part == qname.local_part {
+            if let Some(url) = &qname.url {
+                &self.url == url
+            } else {
+                self.url == ""
+            }
+        } else {
+            false
+        }
+    }
+}
+
+impl PartialEq<QName> for QNameResolved {
+    fn eq(&self, other: &QName) -> bool {
+        self.is_same(other)
+    }
+}
+
 pub fn resolve_element_qname(qname: &QName, env: &Box<Environment>) -> QNameResolved {
     resolve_qname(qname, env, &env.namespaces.default_for_element)
 }
@@ -142,6 +162,12 @@ impl QName {
         }
         str.push_str(self.local_part.as_str());
         str
+    }
+}
+
+impl PartialEq<QNameResolved> for QName {
+    fn eq(&self, other: &QNameResolved) -> bool {
+        other.is_same(self)
     }
 }
 

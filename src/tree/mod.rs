@@ -21,9 +21,24 @@ pub struct Reference {
 }
 
 impl Reference {
+    pub fn get_node(&self) -> Option<Box<dyn XMLNode>> {
+        let storage = self.storage.lock().unwrap();
+        storage.as_reader().get_node(self)
+    }
+
     pub fn name(&self) -> Option<QName> {
         let storage = self.storage.lock().unwrap();
         storage.as_reader().name(self)
+    }
+
+    pub fn target(&self) -> Option<QName> {
+        let storage = self.storage.lock().unwrap();
+        storage.as_reader().target(self)
+    }
+
+    pub fn content(&self) -> Option<String> {
+        let storage = self.storage.lock().unwrap();
+        storage.as_reader().content(self)
     }
 
     pub fn xml_tree_id(&self) -> usize {
@@ -64,22 +79,27 @@ impl Reference {
         if Rc::ptr_eq(&self.storage, &other.storage) {
             self.id == other.id
         } else {
-            let self_storage = self.storage.lock().unwrap();
-            let other_storage = other.storage.lock().unwrap();
+            let self_items = {
+                let self_storage = self.storage.lock().unwrap();
+                let self_reader = self_storage.as_reader();
+                self_reader.forward(self, &None, &Axis::ForwardDescendantOrSelf)
+            };
 
-            let self_reader = self_storage.as_reader();
-            let other_reader = other_storage.as_reader();
-
-            let self_items = self_reader.forward(self, &None, &Axis::ForwardDescendantOrSelf);
-            let other_items = other_reader.forward(self, &None, &Axis::ForwardDescendantOrSelf);
+            let other_items = {
+                let other_storage = other.storage.lock().unwrap();
+                let other_reader = other_storage.as_reader();
+                other_reader.forward(other, &None, &Axis::ForwardDescendantOrSelf)
+            };
 
             let mut self_it = self_items.iter();
             let mut other_it = other_items.iter();
             loop {
                 if let Some(self_rf) = self_it.next() {
                     if let Some(other_rf) = other_it.next() {
-                        if let Some(left_node) = self_reader.get_node(&self_rf) {
-                            if let Some(right_node) = self_reader.get_node(&other_rf) {
+                        if let Some(left_node) = self_rf.get_node() {
+                            println!("left_node {:?}", left_node);
+                            if let Some(right_node) = other_rf.get_node() {
+                                println!("right_node {:?}", right_node);
                                 if left_node.name() != right_node.name() {
                                     return false;
                                 }
@@ -91,11 +111,13 @@ impl Reference {
                                 if left_node.content() != right_node.content() {
                                     return false;
                                 }
+
+                                // TODO check attributes
                             } else {
                                 return false;
                             }
                         } else {
-                            if let Some(_) = self_reader.get_node(&other_rf) {
+                            if let Some(_) = other_rf.get_node() {
                                 return false;
                             }
                         }
@@ -168,8 +190,11 @@ impl Reference {
     }
 
     pub(crate) fn dump(&self) -> String {
-        let storage = self.storage.lock().unwrap();
-        storage.as_reader().dump(&self)
+        match self.storage.try_lock() {
+            Ok(storage) => storage.as_reader().dump(&self),
+            Err(_) => format!("RF {{ {:?} {:?} }}", self.id, self.attr_name)
+        }
+
     }
 }
 
@@ -270,6 +295,10 @@ dyn_clone::clone_trait_object!(XMLTreeWriter);
 pub trait XMLTreeReader: DynClone {
     fn name(&self, pointer: &Reference) -> Option<QName>;
 
+    fn target(&self, rf: &Reference) -> Option<QName>;
+
+    fn content(&self, rf: &Reference) -> Option<String>;
+
     fn to_string(&self, rf: &Reference) -> Result<String, String>;
 
     fn to_xml(&self, rf: &Reference) -> Result<String, String>;
@@ -287,7 +316,7 @@ pub trait XMLTreeReader: DynClone {
     fn attributes(&self, rf: &Reference) -> Option<Vec<Reference>>;
 
     // tests
-    fn get_node(&self, rf: &Reference) -> Option<&Box<dyn XMLNode>>;
+    fn get_node(&self, rf: &Reference) -> Option<Box<dyn XMLNode>>;
     fn get_type(&self, rf: &Reference) -> Option<NodeType>;
     fn is_namespace(&self, rf: &Reference) -> bool;
     fn is_text(&self, rf: &Reference) -> bool;
