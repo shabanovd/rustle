@@ -69,7 +69,7 @@ pub enum ItemType {
 
     AnyKind,
     Array(Option<Box<SequenceType>>),
-    Map,
+    Map(Option<(Box<SequenceType>, Box<SequenceType>)>),
     Node(Box<dyn NodeTest>),
     // Document(Option<Box<ItemType>>),
     // Element,
@@ -97,6 +97,102 @@ impl ItemType {
         where N: Namespace, S: Into<String>
     {
         ItemType::Node(ElementTest::boxed(Some(QName { prefix: Some(nc.prefix()), url: Some(nc.uri()), local_part: local_part.into() }), None))
+    }
+
+    pub(crate) fn is_same(&self, env: &Environment, right: &ItemType) -> bool {
+        match self {
+            ItemType::None => {
+                match right {
+                    ItemType::None => true,
+                    _ => false
+                }
+            }
+            ItemType::SequenceEmpty => {
+                match right {
+                    ItemType::SequenceEmpty => true,
+                    _ => false
+                }
+            }
+            ItemType::Item => {
+                match right {
+                    ItemType::Item => true,
+                    _ => false
+                }
+            }
+            ItemType::AnyAtomicType => {
+                match right {
+                    ItemType::AnyAtomicType => true,
+                    _ => false
+                }
+            }
+            ItemType::AtomicOrUnionType(l_name) => {
+                match right {
+                    ItemType::AtomicOrUnionType(r_name) => {
+                        let l_name = env.namespaces.resolve(l_name);
+                        let r_name = env.namespaces.resolve(r_name);
+                        l_name == r_name
+                    },
+                    _ => false
+                }
+            }
+            ItemType::AnyKind => {
+                match right {
+                    ItemType::AnyKind => true,
+                    _ => false
+                }
+            }
+            ItemType::Array(l_st) => {
+                match right {
+                    ItemType::Array(r_st) => {
+                        if let Some(l_st) = l_st {
+                            if let Some(r_st) = r_st {
+                                l_st.is_same(env, r_st)
+                            } else {
+                                false
+                            }
+                        } else {
+                            r_st.is_none()
+                        }
+                    },
+                    _ => false
+                }
+            }
+            ItemType::Map(l_st) => {
+                match right {
+                    ItemType::Map(r_st) => {
+                        if let Some((l_k, l_v)) = l_st {
+                            if let Some((r_k, r_v)) = r_st {
+                                l_k.is_same(env, r_k) && l_v.is_same(env, r_v)
+                            } else {
+                                false
+                            }
+                        } else {
+                            r_st.is_none()
+                        }
+                    },
+                    _ => false
+                }
+            }
+            ItemType::Node(_) => {
+                match right {
+                    ItemType::Node(_) => todo!(),
+                    _ => false
+                }
+            }
+            ItemType::SchemaAttribute(_) => {
+                match right {
+                    ItemType::SchemaAttribute(_) => todo!(),
+                    _ => false
+                }
+            }
+            ItemType::Function { .. } => {
+                match right {
+                    ItemType::Function { .. } => todo!(),
+                    _ => false
+                }
+            }
+        }
+
     }
 }
 
@@ -186,10 +282,22 @@ impl SequenceType {
                     _ => false
                 }
             }
-            ItemType::Map => {
+            ItemType::Map(l_st) => {
                 match &other.item_type {
-                    ItemType::Map => {
-                        self.occurrence_indicator == other.occurrence_indicator
+                    ItemType::Map(r_st) => {
+                        if self.occurrence_indicator == other.occurrence_indicator {
+                            if let Some((l_k, l_v)) = l_st {
+                                if let Some((r_k, r_v)) = r_st {
+                                    l_k.is_same(env, r_k) && l_v.is_same(env, r_v)
+                                } else {
+                                    false
+                                }
+                            } else {
+                                r_st.is_none()
+                            }
+                        } else {
+                            false
+                        }
                     }
                     _ => false
                 }
@@ -292,6 +400,23 @@ impl SequenceType {
                     }
                 }
             },
+            ItemType::Map(st) => {
+                match obj {
+                    Object::Map(items) => {
+                        if let Some((k_it, v_st)) = st {
+                            for (k, v) in items {
+                                if !v_st.is_castable(env, v)? {
+                                    return Ok(false);
+                                }
+                            }
+                            true
+                        } else {
+                            true
+                        }
+                    }
+                    _ => false
+                }
+            }
             ItemType::Array(st) => {
                 match obj {
                     Object::Array(items) => {
@@ -360,6 +485,9 @@ impl SequenceType {
                         }
                         true
                     }
+                    Object::Map(items) => {
+                        todo!()
+                    }
                     Object::Array(_) => {
                         if let Some(args) = args {
                             match args.as_slice() {
@@ -388,7 +516,6 @@ impl SequenceType {
                     }
                     _ => panic!("TODO: {:?}", obj)
                 }
-
             }
             _ => panic!("TODO: {:?}", self.item_type)
         };

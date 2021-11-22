@@ -1422,7 +1422,6 @@ fn parse_abbrev_reverse_step(input: &str) -> IResult<&str, Box<dyn Expression>, 
 }
 
 // [118]    	NodeTest 	   ::=    	KindTest | NameTest
-// TODO: parse_one_of!(parse_node_test, parse_kind_test, parse_name_test);
 fn parse_node_test(input: &str) -> IResult<&str, Box<dyn NodeTest>, CustomError<&str>> {
     alt((parse_kind_test, parse_name_test))(input)
 }
@@ -1950,7 +1949,7 @@ fn parse_item_type(input: &str) -> IResult<&str, ItemType, CustomError<&str>> {
         let (input, test) = check?;
         Ok((input, ItemType::Node(test)))
     } else {
-        alt((parse_item, parse_array_test, parse_function_test, parse_atomic_or_union_type))(input)
+        alt((parse_item, parse_map_test, parse_array_test, parse_function_test, parse_atomic_or_union_type))(input)
     }
 }
 
@@ -2187,6 +2186,31 @@ fn parse_function_test(input: &str) -> IResult<&str, ItemType, CustomError<&str>
     )(input)
 }
 
+// [210]    	MapTest 	   ::=    	AnyMapTest | TypedMapTest
+// [211]    	AnyMapTest 	   ::=    	"map" "(" "*" ")"
+// [212]    	TypedMapTest 	   ::=    	"map" "(" AtomicOrUnionType "," SequenceType ")"
+fn parse_map_test(input: &str) -> IResult<&str, ItemType, CustomError<&str>> {
+    map(
+        delimited(
+            tuple((ws, tag("map"), ws, tag("("), ws)),
+            alt((
+                map(tag("*"), |_| None),
+                map(
+                    separated_pair(
+                        parse_atomic_or_union_type,
+                        tuple((ws, tag(","), ws)),
+                        parse_sequence_type
+                    ),
+                    |(key_it, value_st)| Some((
+                        Box::new(SequenceType { item_type: key_it, occurrence_indicator: OccurrenceIndicator::ExactlyOne }),
+                        Box::new(value_st)
+                    )))
+            )),
+            tuple((ws, tag(")")))
+        ),
+        |st| ItemType::Map(st)
+    )(input)
+}
 
 // [213]    	ArrayTest 	   ::=    	AnyArrayTest | TypedArrayTest
 // [214]    	AnyArrayTest 	   ::=    	"array" "(" "*" ")"
@@ -2194,7 +2218,7 @@ fn parse_function_test(input: &str) -> IResult<&str, ItemType, CustomError<&str>
 fn parse_array_test(input: &str) -> IResult<&str, ItemType, CustomError<&str>> {
     map(
         delimited(
-            tuple((ws, tag("array"), ws, tag("("))),
+            tuple((ws, tag("array"), ws, tag("("), ws)),
             alt((
                 map(tag("*"), |_| None),
                 map(parse_sequence_type, |st| Some(Box::new(st)))

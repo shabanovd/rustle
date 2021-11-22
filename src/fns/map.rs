@@ -11,8 +11,8 @@ use crate::fns::FUNCTION;
 pub(crate) fn FN_MAP_MERGE_1() -> FUNCTION {
     (
         (
-            [SequenceType::zero_or_more(ItemType::Map)].to_vec(),
-            SequenceType::exactly_one(ItemType::Map)
+            [SequenceType::zero_or_more(ItemType::Map(None))].to_vec(),
+            SequenceType::exactly_one(ItemType::Map(None))
         ),
         fn_map_merge
     )
@@ -23,10 +23,10 @@ pub(crate) fn FN_MAP_MERGE_2() -> FUNCTION {
     (
         (
             [
-                SequenceType::zero_or_more(ItemType::Map),
-                SequenceType::exactly_one(ItemType::Map),
+                SequenceType::zero_or_more(ItemType::Map(None)),
+                SequenceType::exactly_one(ItemType::Map(None)),
             ].to_vec(),
-            SequenceType::exactly_one(ItemType::Map)
+            SequenceType::exactly_one(ItemType::Map(None))
         ),
         fn_map_merge
     )
@@ -40,7 +40,7 @@ pub(crate) fn fn_map_merge(env: Box<Environment>, arguments: Vec<Object>, _conte
 pub(crate) fn FN_MAP_SIZE() -> FUNCTION {
     (
         (
-            [SequenceType::exactly_one(ItemType::Map)].to_vec(),
+            [SequenceType::exactly_one(ItemType::Map(None))].to_vec(),
             SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_INTEGER.into()))
         ),
         map_size
@@ -55,7 +55,7 @@ pub(crate) fn map_size(env: Box<Environment>, arguments: Vec<Object>, _context: 
 pub(crate) fn FN_MAP_KEYS() -> FUNCTION {
     (
         (
-            [SequenceType::exactly_one(ItemType::Map)].to_vec(),
+            [SequenceType::exactly_one(ItemType::Map(None))].to_vec(),
             SequenceType::zero_or_more(ItemType::AnyAtomicType)
         ),
         map_keys
@@ -71,7 +71,7 @@ pub(crate) fn FN_MAP_CONTAINS() -> FUNCTION {
     (
         (
             [
-                SequenceType::exactly_one(ItemType::Map),
+                SequenceType::exactly_one(ItemType::Map(None)),
                 SequenceType::exactly_one(ItemType::AnyAtomicType),
             ].to_vec(),
             SequenceType::zero_or_more(ItemType::AtomicOrUnionType(XS_BOOLEAN.into()))
@@ -89,7 +89,7 @@ pub(crate) fn FN_MAP_GET() -> FUNCTION {
     (
         (
             [
-                SequenceType::exactly_one(ItemType::Map),
+                SequenceType::exactly_one(ItemType::Map(None)),
                 SequenceType::exactly_one(ItemType::AnyAtomicType),
             ].to_vec(),
             SequenceType::zero_or_more(ItemType::Item)
@@ -138,11 +138,11 @@ pub(crate) fn FN_MAP_PUT() -> FUNCTION {
     (
         (
             [
-                SequenceType::exactly_one(ItemType::Map),
+                SequenceType::exactly_one(ItemType::Map(None)),
                 SequenceType::exactly_one(ItemType::AnyAtomicType),
                 SequenceType::zero_or_more(ItemType::Item),
             ].to_vec(),
-            SequenceType::exactly_one(ItemType::Map)
+            SequenceType::exactly_one(ItemType::Map(None))
         ),
         map_put
     )
@@ -160,7 +160,7 @@ pub(crate) fn FN_MAP_ENTRY() -> FUNCTION {
                 SequenceType::exactly_one(ItemType::AnyAtomicType),
                 SequenceType::zero_or_more(ItemType::Item),
             ].to_vec(),
-            SequenceType::exactly_one(ItemType::Map)
+            SequenceType::exactly_one(ItemType::Map(None))
         ),
         map_entry
     )
@@ -186,10 +186,10 @@ pub(crate) fn FN_MAP_REMOVE() -> FUNCTION {
     (
         (
             [
-                SequenceType::exactly_one(ItemType::Map),
+                SequenceType::exactly_one(ItemType::Map(None)),
                 SequenceType::zero_or_more(ItemType::AnyAtomicType),
             ].to_vec(),
-            SequenceType::exactly_one(ItemType::Map)
+            SequenceType::exactly_one(ItemType::Map(None))
         ),
         map_remove
     )
@@ -204,7 +204,7 @@ pub(crate) fn FN_MAP_FOR_EACH() -> FUNCTION {
     (
         (
             [
-                SequenceType::exactly_one(ItemType::Map),
+                SequenceType::exactly_one(ItemType::Map(None)),
                 SequenceType::exactly_one(ItemType::Function {
                     args: Some([
                         SequenceType::exactly_one(ItemType::AnyAtomicType),
@@ -214,7 +214,7 @@ pub(crate) fn FN_MAP_FOR_EACH() -> FUNCTION {
                 }),
                 SequenceType::zero_or_more(ItemType::AnyAtomicType),
             ].to_vec(),
-            SequenceType::exactly_one(ItemType::Map)
+            SequenceType::exactly_one(ItemType::Map(None))
         ),
         map_for_each
     )
