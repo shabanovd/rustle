@@ -1,8 +1,31 @@
-use crate::eval::{Object, Type, DynamicContext, EvalResult};
-use crate::eval::Environment;
+use crate::eval::{Environment, Object, Type, DynamicContext, EvalResult};
+use crate::eval::sequence_type::*;
+use crate::fns::FUNCTION;
 
 use crate::eval::helpers::relax;
 use crate::parser::errors::ErrorCode;
+
+// fn:data() as xs:anyAtomicType*
+pub(crate) fn FN_DATA_0() -> FUNCTION {
+    (
+        (
+            [].to_vec(),
+            SequenceType::zero_or_more(ItemType::AnyAtomicType)
+        ),
+        fn_data
+    )
+}
+
+// fn:data($arg as item()*) as xs:anyAtomicType*
+pub(crate) fn FN_DATA_1() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_more(ItemType::Item)].to_vec(),
+            SequenceType::zero_or_more(ItemType::AnyAtomicType)
+        ),
+        fn_data
+    )
+}
 
 pub(crate) fn fn_data(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
 
@@ -54,6 +77,17 @@ fn data_of_vec(env: Box<Environment>, items: Vec<Object>, result: &mut Vec<Objec
     Ok(current_env)
 }
 
+// fn:empty($arg as item()*) as xs:boolean
+pub(crate) fn FN_EMPTY() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_more(ItemType::Item)].to_vec(),
+            SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_BOOLEAN.into()))
+        ),
+        fn_empty
+    )
+}
+
 pub(crate) fn fn_empty(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     let result = match arguments.as_slice() {
         [Object::Empty] => true,
@@ -64,6 +98,84 @@ pub(crate) fn fn_empty(env: Box<Environment>, arguments: Vec<Object>, _context: 
     };
 
     Ok((env, Object::Atomic(Type::Boolean(result))))
+}
+
+// fn:exists($arg as item()*) as xs:boolean
+pub(crate) fn FN_EXISTS() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_more(ItemType::Item)].to_vec(),
+            SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_BOOLEAN.into()))
+        ),
+        fn_exists
+    )
+}
+
+pub(crate) fn fn_exists(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    todo!()
+}
+
+// fn:head($arg as item()*) as item()?
+pub(crate) fn FN_HEAD() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_more(ItemType::Item)].to_vec(),
+            SequenceType::exactly_one(ItemType::Item)
+        ),
+        fn_head
+    )
+}
+
+pub(crate) fn fn_head(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    todo!()
+}
+
+// fn:tail($arg as item()*) as item()*
+pub(crate) fn FN_TAIL() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_more(ItemType::Item)].to_vec(),
+            SequenceType::zero_or_more(ItemType::Item)
+        ),
+        fn_tail
+    )
+}
+
+pub(crate) fn fn_tail(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    todo!()
+}
+
+// fn:insert-before($target as item()*, $position as xs:integer, $inserts as item()*) as item()*
+pub(crate) fn FN_INSERT_BEFORE() -> FUNCTION {
+    (
+        (
+            [
+                SequenceType::zero_or_more(ItemType::Item),
+                SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_INTEGER.into())),
+                SequenceType::zero_or_more(ItemType::Item),
+            ].to_vec(),
+            SequenceType::zero_or_more(ItemType::Item)
+        ),
+        fn_insert_before
+    )
+}
+
+pub(crate) fn fn_insert_before(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    todo!()
+}
+
+// fn:remove($target as item()*, $position as xs:integer) as item()*
+pub(crate) fn FN_REMOVE() -> FUNCTION {
+    (
+        (
+            [
+                SequenceType::zero_or_more(ItemType::Item),
+                SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_INTEGER.into()))
+            ].to_vec(),
+            SequenceType::zero_or_more(ItemType::Item)
+        ),
+        fn_remove
+    )
 }
 
 pub(crate) fn fn_remove(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
@@ -83,6 +195,17 @@ pub(crate) fn fn_remove(env: Box<Environment>, arguments: Vec<Object>, _context:
     }
 }
 
+// fn:reverse($arg as item()*) as item()*
+pub(crate) fn FN_REVERSE() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_more(ItemType::Item)].to_vec(),
+            SequenceType::zero_or_more(ItemType::Item)
+        ),
+        fn_reverse
+    )
+}
+
 pub(crate) fn fn_reverse(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Empty] => Ok((env, Object::Empty)),
@@ -91,6 +214,35 @@ pub(crate) fn fn_reverse(env: Box<Environment>, arguments: Vec<Object>, _context
         },
         _ => panic!("error {:?}", arguments)
     }
+}
+
+// fn:subsequence($sourceSeq as item()*, $startingLoc as xs:double) as item()*
+pub(crate) fn FN_SUBSEQUENCE_2() -> FUNCTION {
+    (
+        (
+            [
+                SequenceType::zero_or_more(ItemType::Item),
+                SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_DOUBLE.into()))
+            ].to_vec(),
+            SequenceType::zero_or_more(ItemType::Item)
+        ),
+        fn_subsequence
+    )
+}
+
+// fn:subsequence($sourceSeq as item()*, $startingLoc as xs:double, $length as xs:double) as item()*
+pub(crate) fn FN_SUBSEQUENCE_3() -> FUNCTION {
+    (
+        (
+            [
+                SequenceType::zero_or_more(ItemType::Item),
+                SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_DOUBLE.into())),
+                SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_DOUBLE.into())),
+            ].to_vec(),
+            SequenceType::zero_or_more(ItemType::Item)
+        ),
+        fn_subsequence
+    )
 }
 
 pub(crate) fn fn_subsequence(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
@@ -156,6 +308,32 @@ pub(crate) fn fn_subsequence(env: Box<Environment>, arguments: Vec<Object>, _con
     }
 }
 
+// fn:unordered($sourceSeq as item()*) as item()*
+pub(crate) fn FN_UNORDERED() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_more(ItemType::Item)].to_vec(),
+            SequenceType::zero_or_more(ItemType::Item)
+        ),
+        fn_unordered
+    )
+}
+
+pub(crate) fn fn_unordered(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    todo!()
+}
+
+// fn:position() as xs:integer
+pub(crate) fn FN_POSITION() -> FUNCTION {
+    (
+        (
+            [].to_vec(),
+            SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_INTEGER.into()))
+        ),
+        fn_position
+    )
+}
+
 pub(crate) fn fn_position(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
     if let Some(position) = context.position {
         Ok((env, Object::Atomic(Type::Integer(position as i128))))
@@ -164,12 +342,34 @@ pub(crate) fn fn_position(env: Box<Environment>, arguments: Vec<Object>, context
     }
 }
 
+// fn:last() as xs:integer
+pub(crate) fn FN_LAST() -> FUNCTION {
+    (
+        (
+            [].to_vec(),
+            SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_INTEGER.into()))
+        ),
+        fn_last
+    )
+}
+
 pub(crate) fn fn_last(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
     if let Some(last) = context.last {
         Ok((env, Object::Atomic(Type::Integer(last as i128))))
     } else {
         Err((ErrorCode::XPDY0002, String::from("context size unknown")))
     }
+}
+
+// fn:zero-or-one($arg as item()*) as item()?
+pub(crate) fn FN_ZERO_OR_ONE() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_more(ItemType::Item)].to_vec(),
+            SequenceType::zero_or_one(ItemType::Item)
+        ),
+        fn_zero_or_one
+    )
 }
 
 pub(crate) fn fn_zero_or_one(env: Box<Environment>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
@@ -190,6 +390,18 @@ pub(crate) fn fn_zero_or_one(env: Box<Environment>, mut arguments: Vec<Object>, 
     }
 }
 
+
+// fn:one-or-more($arg as item()*) as item()+
+pub(crate) fn FN_ONE_OR_MORE() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_more(ItemType::Item)].to_vec(),
+            SequenceType::one_or_more(ItemType::Item)
+        ),
+        fn_one_or_more
+    )
+}
+
 pub(crate) fn fn_one_or_more(env: Box<Environment>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     let arg = arguments.remove(0);
     match arg {
@@ -206,6 +418,17 @@ pub(crate) fn fn_one_or_more(env: Box<Environment>, mut arguments: Vec<Object>, 
         }
         _ => Err((ErrorCode::FORG0004, String::from("TODO")))
     }
+}
+
+// fn:exactly-one($arg as item()*) as item()
+pub(crate) fn FN_EXACTLY_ONE() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_more(ItemType::Item)].to_vec(),
+            SequenceType::exactly_one(ItemType::Item)
+        ),
+        fn_exactly_one
+    )
 }
 
 pub(crate) fn fn_exactly_one(env: Box<Environment>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {

@@ -28,6 +28,21 @@ pub fn string_to_date(input: &str) -> Result<Type, String> {
     }
 }
 
+pub fn string_to_time(input: &str) -> Result<Type, String> {
+    match parse_time(input) {
+        Ok((input, dt)) => {
+            if input.is_empty() {
+                Ok(dt)
+            } else {
+                Err(String::from(input))
+            }
+        },
+        Err(e) => {
+            Err(format!("{:?}", e))
+        }
+    }
+}
+
 pub fn string_to_date_time(input: &str) -> Result<Type, String> {
     match parse_date_time(input) {
         Ok((input, dt)) => {
@@ -113,6 +128,35 @@ pub fn parse_date(input: &str) -> IResult<&str, Type> {
         }
     )(input)
 }
+
+// 12:00:00-01:00
+pub fn parse_time(input: &str) -> IResult<&str, Type> {
+    map_res(
+        tuple((
+            parse_hour,
+            tag(":"),
+            parse_minute,
+            tag(":"),
+            parse_second,
+            opt(alt((timezone_hour, timezone_utc))),
+        )),
+        |(h, _, m, _, s, z)| {
+            let (tz_h, tz_m) = z.unwrap_or((0, 0));
+            if let Some(time) = NaiveTime::from_hms_opt(h, m, s) {
+                let offset = if tz_h > 0 {
+                    FixedOffset::east(((tz_h * 60) + tz_m) * 60)
+                } else {
+                    FixedOffset::west(((-tz_h * 60) + tz_m) * 60)
+                };
+                let dt = time - offset;
+                Ok(Type::Time(crate::values::time::Time::from(time, offset)))
+            } else {
+                Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
+            }
+        }
+    )(input)
+}
+
 // 2002-04-02T12:00:00-01:00
 pub fn parse_date_time(input: &str) -> IResult<&str, Type> {
     map_res(

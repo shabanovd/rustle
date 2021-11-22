@@ -13,6 +13,7 @@ use std::fmt::{Debug, Formatter};
 use chrono::{Date, DateTime, FixedOffset, Local, TimeZone};
 use crate::eval::{Environment, ErrorInfo};
 use crate::eval::comparison::ValueOrdering;
+use crate::eval::sequence_type::SequenceType;
 use crate::parser::parse_duration::{parse_day_time_duration, parse_year_month_duration};
 use crate::tree::Reference;
 use crate::values::time::Time;
@@ -667,7 +668,7 @@ pub enum Object {
     Array(Vec<Object>),
     Map(HashMap<Type, Object>),
 
-    Function { parameters: Vec<Param>, body: Box<dyn Expression> },
+    Function { parameters: Vec<Param>, st: Option<SequenceType>, body: Box<dyn Expression> },
     FunctionRef { name: QNameResolved, arity: usize },
 
     Return(Box<Object>),

@@ -15,7 +15,7 @@ use crate::eval::piping::{Pipe, eval_pipe};
 use crate::parser::errors::{CustomError, ErrorCode};
 use crate::eval::sequence_type::SequenceType;
 use linked_hash_map::LinkedHashMap;
-use crate::namespaces::Namespace;
+use crate::namespaces::{Namespace, NS_heap};
 
 //internal
 #[derive(Clone, Debug)]
@@ -416,7 +416,7 @@ impl Expression for DeclareNamespace {
         let (mut new_env, uri) = self.uri.eval(new_env, context)?;
         let uri = object_to_string(&new_env, &uri);
 
-        let ns = Namespace { prefix, uri };
+        let ns = NS_heap { prefix, uri };
 
         new_env.namespaces.add(&ns);
 
@@ -1166,10 +1166,13 @@ impl Expression for InstanceOf {
 
         // TODO occurrence_indicator checks
 
-        process_items(current_env, object, |env, item| {
-            let result = self.st.is_castable(&env, &item)?;
-            Ok((env, Object::Atomic(Type::Boolean(result))))
-        })
+        let result = self.st.is_castable(&current_env, &object)?;
+        Ok((current_env, Object::Atomic(Type::Boolean(result))))
+
+        // process_items(current_env, object, |env, item| {
+        //     let result = self.st.is_castable(&env, &item)?;
+        //     Ok((env, Object::Atomic(Type::Boolean(result))))
+        // })
     }
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
@@ -1385,6 +1388,42 @@ impl NodeElement {
     ) -> Box<dyn Expression> {
         Box::new(NodeElement { name, attributes, children })
     }
+
+    fn process_items(&self, env: &mut Box<Environment>, object: Object) {
+        let elements = vec![];
+        let elements = self.processing(env, object, elements);
+
+        let content = elements.join(" ");
+        env.xml_writer(|w| w.text(content));
+    }
+
+    fn processing(&self, env: &mut Box<Environment>, object: Object, elements: Vec<String>) -> Vec<String> {
+        let mut elements = elements;
+        match object {
+            Object::Empty => {},
+            Object::Array(items) |
+            Object::Sequence(items) => {
+                for item in items {
+                    elements = self.processing(env, item, elements);
+                }
+            },
+            Object::Node(rf) => {
+                let content = elements.join(" ");
+                env.xml_writer(|w| w.text(content));
+
+                if env.xml_tree_id() != rf.xml_tree_id() {
+                    env.xml_writer(|w| w.link_node(&rf));
+                }
+            },
+            Object::Atomic(..) => {
+                let content = object_to_string(env, &object);
+                elements.push(content);
+            }
+            _ => panic!("unexpected object {:?}", object) //TODO: better error
+        };
+
+        elements
+    }
 }
 
 impl Expression for NodeElement {
@@ -1410,47 +1449,10 @@ impl Expression for NodeElement {
         }
 
         for child in &self.children {
-            let (new_env, evaluated_child) = child.eval(current_env, context)?;
+            let (new_env, evaluated) = child.eval(current_env, context)?;
             current_env = new_env;
 
-            match evaluated_child {
-                Object::Empty => {},
-                Object::Sequence(items) => {
-                    let mut add_space = false;
-                    for item in items {
-                        match item {
-                            Object::Node(rf) => {
-                                // println!("Object::Node {:?} at {:?}", rf, self.name);
-                                if current_env.xml_tree_id() != rf.xml_tree_id() {
-                                    current_env.xml_writer(|w| w.link_node(&rf));
-                                }
-                            },
-                            Object::Atomic(..) => {
-                                let mut content = object_to_string_xml(&current_env, &item);
-                                if add_space {
-                                    content.insert(0, ' ');
-                                }
-
-                                current_env.xml_writer(|w| w.text(content));
-
-                                add_space = true;
-                            }
-                            _ => panic!("unexpected object {:?}", item) //TODO: better error
-                        }
-                    }
-                },
-                Object::Node(rf) => {
-                    // println!("Object::Node {:?} at {:?}", rf, self.name);
-                    if current_env.xml_tree_id() != rf.xml_tree_id() {
-                        current_env.xml_writer(|w| w.link_node(&rf));
-                    }
-                },
-                Object::Atomic(..) => {
-                    let content = object_to_string(&current_env, &evaluated_child);
-                    current_env.xml_writer(|w| w.text(content));
-                }
-                _ => panic!("unexpected object {:?}", evaluated_child) //TODO: better error
-            };
+            self.process_items(&mut current_env, evaluated)
         }
 
         current_env.xml_writer(|w| w.end_element().unwrap()); // TODO check?
@@ -1703,6 +1705,15 @@ impl Expression for CurlyArrayConstructor {
 
         let values = match evaluated {
             Object::Empty => vec![],
+            Object::Array(items) |
+            Object::Sequence(items) => items,
+            Object::Range {..} |
+            Object::Node(_) |
+            Object::Atomic(_) => {
+                let mut items = Vec::with_capacity(1);
+                items.push(evaluated);
+                items
+            }
             _ => panic!("can't convert to array {:?}", evaluated)
         };
 
@@ -1832,21 +1843,32 @@ impl Expression for If {
         let (new_env, evaluated) = self.condition.eval(current_env, context)?;
         current_env = new_env;
 
-        process_items(current_env, evaluated, |env, item| {
-            let v = match object_to_bool(&item) {
-                Ok(v) => v,
-                Err(e) => return Err(e)
-            };
-            if v {
-                let (new_env, evaluated) = self.consequence.eval(env, context)?;
+        let v = match object_to_bool(&evaluated) {
+            Ok(v) => v,
+            Err(e) => return Err(e)
+        };
+        let (new_env, evaluated) = if v {
+            self.consequence.eval(current_env, context)?
+        } else {
+            self.alternative.eval(current_env, context)?
+        };
+        Ok((new_env, evaluated))
 
-                Ok((new_env, evaluated))
-            } else {
-                let (new_env, evaluated) = self.alternative.eval(env, context)?;
-
-                Ok((new_env, evaluated))
-            }
-        })
+        // process_items(current_env, evaluated, |env, item| {
+        //     let v = match object_to_bool(&item) {
+        //         Ok(v) => v,
+        //         Err(e) => return Err(e)
+        //     };
+        //     if v {
+        //         let (new_env, evaluated) = self.consequence.eval(env, context)?;
+        //
+        //         Ok((new_env, evaluated))
+        //     } else {
+        //         let (new_env, evaluated) = self.alternative.eval(env, context)?;
+        //
+        //         Ok((new_env, evaluated))
+        //     }
+        // })
     }
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
@@ -1857,12 +1879,13 @@ impl Expression for If {
 #[derive(Clone, Debug)]
 pub(crate) struct Function {
     pub(crate) arguments: Vec<Param>,
+    pub(crate) st: Option<SequenceType>,
     pub(crate) body: Box<dyn Expression>
 }
 
 impl Expression for Function {
     fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
-        Ok((env, Object::Function { parameters: self.arguments.clone(), body: self.body.clone() }))
+        Ok((env, Object::Function { parameters: self.arguments.clone(), st: self.st.clone(), body: self.body.clone() }))
     }
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
@@ -1883,7 +1906,7 @@ impl Expression for Call {
         let name = resolve_function_qname(&self.function, &current_env);
 
         let (parameters, body) = match current_env.get_variable(&name) {
-            Some(Object::Function {parameters, body}) => (parameters, body),
+            Some(Object::Function {parameters, st, body}) => (parameters, body),
             None => {
                 let mut evaluated_arguments = vec![];
                 for argument in &self.arguments {

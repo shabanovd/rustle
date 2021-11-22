@@ -1,5 +1,19 @@
 use crate::eval::{Environment, Object, Type, EvalResult, DynamicContext, comparison};
+use crate::eval::sequence_type::*;
+use crate::fns::FUNCTION;
+
 use bigdecimal::{BigDecimal, FromPrimitive};
+
+// fn:count($arg as item()*) as xs:integer
+pub(crate) fn FN_COUNT() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_more(ItemType::Item)].to_vec(),
+            SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_INTEGER.into()))
+        ),
+        fn_count
+    )
+}
 
 pub(crate) fn fn_count(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
@@ -42,8 +56,18 @@ pub(crate) fn fn_count(env: Box<Environment>, arguments: Vec<Object>, _context: 
     }
 }
 
-pub(crate) fn fn_avg(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+// fn:avg($arg as xs:anyAtomicType*) as xs:anyAtomicType?
+pub(crate) fn FN_AVG() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_more(ItemType::AnyAtomicType)].to_vec(),
+            SequenceType::zero_or_one(ItemType::AnyAtomicType)
+        ),
+        fn_avg
+    )
+}
 
+pub(crate) fn fn_avg(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Empty] => {
             Ok((env, Object::Empty))
@@ -72,6 +96,31 @@ pub(crate) fn fn_avg(env: Box<Environment>, arguments: Vec<Object>, _context: &D
         },
         _ => panic!("error")
     }
+}
+
+// fn:max($arg as xs:anyAtomicType*) as xs:anyAtomicType?
+pub(crate) fn FN_MAX_1() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_more(ItemType::AnyAtomicType)].to_vec(),
+            SequenceType::zero_or_one(ItemType::AnyAtomicType)
+        ),
+        fn_max
+    )
+}
+
+// fn:max($arg as xs:anyAtomicType*, $collation as xs:string) as xs:anyAtomicType?
+pub(crate) fn FN_MAX_2() -> FUNCTION {
+    (
+        (
+            [
+                SequenceType::zero_or_more(ItemType::AnyAtomicType),
+                SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_STRING.into()))
+            ].to_vec(),
+            SequenceType::zero_or_one(ItemType::AnyAtomicType)
+        ),
+        fn_max
+    )
 }
 
 pub(crate) fn fn_max(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
@@ -104,6 +153,31 @@ pub(crate) fn fn_max(env: Box<Environment>, arguments: Vec<Object>, _context: &D
     }
 }
 
+// fn:min($arg as xs:anyAtomicType*) as xs:anyAtomicType?
+pub(crate) fn FN_MIN_1() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_more(ItemType::AnyAtomicType)].to_vec(),
+            SequenceType::zero_or_one(ItemType::AnyAtomicType)
+        ),
+        fn_min
+    )
+}
+
+// fn:min($arg as xs:anyAtomicType*, $collation as xs:string) as xs:anyAtomicType?
+pub(crate) fn FN_MIN_2() -> FUNCTION {
+    (
+        (
+            [
+                SequenceType::zero_or_more(ItemType::AnyAtomicType),
+                SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_STRING.into()))
+            ].to_vec(),
+            SequenceType::zero_or_one(ItemType::AnyAtomicType)
+        ),
+        fn_min
+    )
+}
+
 pub(crate) fn fn_min(env: Box<Environment>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     let arg = arguments.remove(0);
     match arg {
@@ -129,4 +203,33 @@ pub(crate) fn fn_min(env: Box<Environment>, mut arguments: Vec<Object>, _context
         }
         _ => panic!("error {:?}", arguments)
     }
+}
+
+// fn:sum($arg as xs:anyAtomicType*) as xs:anyAtomicType
+pub(crate) fn FN_SUM_1() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_more(ItemType::AnyAtomicType)].to_vec(),
+            SequenceType::zero_or_one(ItemType::AnyAtomicType)
+        ),
+        fn_sum
+    )
+}
+
+// fn:sum($arg as xs:anyAtomicType*, $zero as xs:anyAtomicType?) as xs:anyAtomicType?
+pub(crate) fn FN_SUM_2() -> FUNCTION {
+    (
+        (
+            [
+                SequenceType::zero_or_more(ItemType::AnyAtomicType),
+                SequenceType::zero_or_one(ItemType::AnyAtomicType)
+            ].to_vec(),
+            SequenceType::zero_or_one(ItemType::AnyAtomicType)
+        ),
+        fn_sum
+    )
+}
+
+pub(crate) fn fn_sum(env: Box<Environment>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    todo!()
 }

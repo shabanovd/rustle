@@ -23,9 +23,10 @@ pub use crate::fns::boolean::object_to_bool;
 
 use crate::parser::errors::ErrorCode;
 use crate::eval::expression::Expression;
-use crate::eval::sequence_type::SequenceType;
+use crate::eval::sequence_type::{ItemType, SequenceType};
+use crate::fns::types::*;
 
-pub type FUNCTION = fn(Box<Environment>, Vec<Object>, &DynamicContext) -> EvalResult;
+pub type FUNCTION = ((Vec<SequenceType>, SequenceType), fn(Box<Environment>, Vec<Object>, &DynamicContext) -> EvalResult);
 
 #[derive(Clone)]
 pub struct Function {
@@ -60,191 +61,198 @@ impl FunctionsRegister {
             declared: HashMap::new(),
         };
 
-        instance.register(&*SCHEMA.uri, "untypedAtomic", 1, types::xs_untyped_atomic_eval);
-        instance.register(&*SCHEMA.uri, "boolean", 1, types::xs_boolean_eval);
-        instance.register(&*SCHEMA.uri, "string", 1, types::xs_string_eval);
-        instance.register(&*SCHEMA.uri, "NCName", 1, types::xs_ncname_eval);
-        instance.register(&*SCHEMA.uri, "anyURI", 1, types::xs_anyuri_eval);
-        instance.register(&*SCHEMA.uri, "date", 1, types::xs_date_eval);
-        instance.register(&*SCHEMA.uri, "dateTime", 1, types::xs_date_time_eval);
-        instance.register(&*SCHEMA.uri, "yearMonthDuration", 1, types::xs_year_month_duration_eval);
-        instance.register(&*SCHEMA.uri, "dayTimeDuration", 1, types::xs_day_time_duration_eval);
-        instance.register(&*SCHEMA.uri, "duration", 1, types::xs_duration_eval);
+        instance.register(&*SCHEMA.uri, "string", 1, types::FN_XS_STRING());
+        instance.register(&*SCHEMA.uri, "boolean", 1, types::FN_XS_BOOLEAN());
+        instance.register(&*SCHEMA.uri, "decimal", 1, types::FN_XS_DECIMAL());
+        instance.register(&*SCHEMA.uri, "float", 1, types::FN_XS_FLOAT());
+        instance.register(&*SCHEMA.uri, "double", 1, types::FN_XS_DOUBLE());
 
-        instance.register(&*SCHEMA.uri, "hexBinary", 1, types::xs_hex_binary_eval);
+        instance.register(&*SCHEMA.uri, "untypedAtomic", 1, types::FN_XS_UNTYPED_ATOMIC());
+        instance.register(&*SCHEMA.uri, "NCName", 1, types::FN_XS_NCNAME());
+        instance.register(&*SCHEMA.uri, "anyURI", 1, types::FN_XS_ANY_URI());
+        instance.register(&*SCHEMA.uri, "date", 1, types::FN_XS_DATE());
+        instance.register(&*SCHEMA.uri, "dateTime", 1, types::FN_XS_DATE_TIME());
+        instance.register(&*SCHEMA.uri, "yearMonthDuration", 1, types::FN_XS_YEAR_MONTH_DURATION());
+        instance.register(&*SCHEMA.uri, "dayTimeDuration", 1, types::FN_XS_DAY_TIME_DURATION());
+        instance.register(&*SCHEMA.uri, "duration", 1, types::FN_XS_DURATION());
 
-        instance.register(&*SCHEMA.uri, "integer", 1, types::xs_integer_eval);
-        instance.register(&*SCHEMA.uri, "decimal", 1, types::xs_decimal_eval);
-        instance.register(&*SCHEMA.uri, "float", 1, types::xs_float_eval);
-        instance.register(&*SCHEMA.uri, "double", 1, types::xs_double_eval);
+        instance.register(&*SCHEMA.uri, "hexBinary", 1, types::FN_XS_HEX_BINARY());
 
-        instance.register(&*SCHEMA.uri, "nonPositiveInteger", 1, types::xs_non_positive_integer_eval);
-        instance.register(&*SCHEMA.uri, "negativeInteger", 1, types::xs_negative_integer_eval);
-        instance.register(&*SCHEMA.uri, "long", 1, types::xs_long_eval);
-        instance.register(&*SCHEMA.uri, "int", 1, types::xs_int_eval);
-        instance.register(&*SCHEMA.uri, "short", 1, types::xs_short_eval);
-        instance.register(&*SCHEMA.uri, "byte", 1, types::xs_byte_eval);
-        instance.register(&*SCHEMA.uri, "nonNegativeInteger", 1, types::xs_non_negative_integer_eval);
-        instance.register(&*SCHEMA.uri, "unsignedLong", 1, types::xs_unsigned_long_eval);
-        instance.register(&*SCHEMA.uri, "unsignedInt", 1, types::xs_unsigned_int_eval);
-        instance.register(&*SCHEMA.uri, "unsignedShort", 1, types::xs_unsigned_short_eval);
-        instance.register(&*SCHEMA.uri, "unsignedByte", 1, types::xs_unsigned_byte_eval);
-        instance.register(&*SCHEMA.uri, "positiveInteger", 1, types::xs_positive_integer_eval);
+        instance.register(&*SCHEMA.uri, "integer", 1, types::FN_XS_INTEGER());
+        instance.register(&*SCHEMA.uri, "nonPositiveInteger", 1, types::FN_XS_NON_POSITIVE_INTEGER());
+        instance.register(&*SCHEMA.uri, "negativeInteger", 1, types::FN_XS_NEGATIVE_INTEGER());
+        instance.register(&*SCHEMA.uri, "long", 1, types::FN_XS_LONG());
+        instance.register(&*SCHEMA.uri, "int", 1, types::FN_XS_INT());
+        instance.register(&*SCHEMA.uri, "short", 1, types::FN_XS_SHORT());
+        instance.register(&*SCHEMA.uri, "byte", 1, types::FN_XS_BYTE());
+        instance.register(&*SCHEMA.uri, "nonNegativeInteger", 1, types::FN_XS_NON_NEGATIVE_INTEGER());
+        instance.register(&*SCHEMA.uri, "unsignedLong", 1, types::FN_XS_UNSIGNED_LONG());
+        instance.register(&*SCHEMA.uri, "unsignedInt", 1, types::FN_XS_UNSIGNED_INT());
+        instance.register(&*SCHEMA.uri, "unsignedShort", 1, types::FN_XS_UNSIGNED_SHORT());
+        instance.register(&*SCHEMA.uri, "unsignedByte", 1, types::FN_XS_UNSIGNED_BYTE());
+        instance.register(&*SCHEMA.uri, "positiveInteger", 1, types::FN_XS_POSITIVE_INTEGER());
 
-        instance.register(&*XPATH_FUNCTIONS.uri, "resolve-QName", 2, qname::fn_resolve_qname);
-        instance.register(&*XPATH_FUNCTIONS.uri, "QName", 2, qname::fn_qname);
-        instance.register(&*XPATH_FUNCTIONS.uri, "prefix-from-QName", 1, qname::fn_prefix_from_qname);
-        instance.register(&*XPATH_FUNCTIONS.uri, "local-name-from-QName", 1, qname::fn_local_name_from_qname);
-        instance.register(&*XPATH_FUNCTIONS.uri, "namespace-uri-from-QName", 1, qname::fn_namespace_uri_from_qname);
-        instance.register(&*XPATH_FUNCTIONS.uri, "namespace-uri-for-prefix", 1, qname::fn_namespace_uri_for_prefix);
-        instance.register(&*XPATH_FUNCTIONS.uri, "in-scope-prefixes", 1, qname::fn_in_scope_prefixes);
+        instance.register(&*XPATH_FUNCTIONS.uri, "resolve-QName", 2, qname::FN_RESOLVE_QNAME());
+        instance.register(&*XPATH_FUNCTIONS.uri, "QName", 2, qname::FN_QNAME());
+        instance.register(&*XPATH_FUNCTIONS.uri, "prefix-from-QName", 1, qname::FN_PREFIX_FROM_QNAME());
+        instance.register(&*XPATH_FUNCTIONS.uri, "local-name-from-QName", 1, qname::FN_LOCAL_NAME_FROM_QNAME());
+        instance.register(&*XPATH_FUNCTIONS.uri, "namespace-uri-from-QName", 1, qname::FN_NAMESPACE_URI_FROM_QNAME());
+        instance.register(&*XPATH_FUNCTIONS.uri, "namespace-uri-for-prefix", 1, qname::FN_NAMESPACE_URI_FOR_PREFIX());
+        instance.register(&*XPATH_FUNCTIONS.uri, "in-scope-prefixes", 1, qname::FN_IN_SCOPE_PREFIXES());
 
-        instance.register(&*XPATH_FUNCTIONS.uri, "node-name", 0, qname::fn_node_name);
-        instance.register(&*XPATH_FUNCTIONS.uri, "node-name", 1, qname::fn_node_name);
-
+        instance.register(&*XPATH_FUNCTIONS.uri, "node-name", 0, qname::FN_NODE_NAME_0());
+        instance.register(&*XPATH_FUNCTIONS.uri, "node-name", 1, qname::FN_NODE_NAME_1());
 
 //        instance.register("op", "same-key", 2, map::map_merge);
-        instance.register(&*XPATH_MAP.uri, "merge", 1, map::map_merge);
-        instance.register(&*XPATH_MAP.uri, "merge", 2, map::map_merge);
-        instance.register(&*XPATH_MAP.uri, "size", 1, map::map_size);
-        instance.register(&*XPATH_MAP.uri, "contains", 2, map::map_contains);
-        instance.register(&*XPATH_MAP.uri, "get", 2, map::map_get);
-        instance.register(&*XPATH_MAP.uri, "find", 2, map::map_find);
-        instance.register(&*XPATH_MAP.uri, "put", 3, map::map_put);
-        instance.register(&*XPATH_MAP.uri, "find", 2, map::map_find);
-        instance.register(&*XPATH_MAP.uri, "entry", 2, map::map_entry);
-        instance.register(&*XPATH_MAP.uri, "remove", 2, map::map_remove);
-        instance.register(&*XPATH_MAP.uri, "for-each", 2, map::map_for_each);
+        instance.register(&*XPATH_MAP.uri, "merge", 1, map::FN_MAP_MERGE_1());
+        instance.register(&*XPATH_MAP.uri, "merge", 2, map::FN_MAP_MERGE_2());
+        instance.register(&*XPATH_MAP.uri, "size", 1, map::FN_MAP_SIZE());
+        instance.register(&*XPATH_MAP.uri, "contains", 2, map::FN_MAP_CONTAINS());
+        instance.register(&*XPATH_MAP.uri, "get", 2, map::FN_MAP_GET());
+        instance.register(&*XPATH_MAP.uri, "find", 2, map::FN_MAP_FIND());
+        instance.register(&*XPATH_MAP.uri, "put", 3, map::FN_MAP_PUT());
+        instance.register(&*XPATH_MAP.uri, "find", 2, map::FN_MAP_FIND());
+        instance.register(&*XPATH_MAP.uri, "entry", 2, map::FN_MAP_ENTRY());
+        instance.register(&*XPATH_MAP.uri, "remove", 2, map::FN_MAP_REMOVE());
+        instance.register(&*XPATH_MAP.uri, "for-each", 2, map::FN_MAP_FOR_EACH());
 
-        instance.register(&*XPATH_ARRAY.uri, "size", 1, array::size);
-        instance.register(&*XPATH_ARRAY.uri, "get", 2, array::get);
-        instance.register(&*XPATH_ARRAY.uri, "put", 3, array::put);
-        instance.register(&*XPATH_ARRAY.uri, "append", 2, array::append);
-        instance.register(&*XPATH_ARRAY.uri, "subarray", 2, array::subarray);
-        instance.register(&*XPATH_ARRAY.uri, "subarray", 3, array::subarray);
-        instance.register(&*XPATH_ARRAY.uri, "insert-before", 3, array::insert_before);
-        instance.register(&*XPATH_ARRAY.uri, "head", 1, array::head);
-        instance.register(&*XPATH_ARRAY.uri, "tail", 1, array::tail);
-        instance.register(&*XPATH_ARRAY.uri, "reverse", 1, array::reverse);
-        instance.register(&*XPATH_ARRAY.uri, "join", usize::MAX, array::join);
-        instance.register(&*XPATH_ARRAY.uri, "for-each", 2, array::for_each);
-        instance.register(&*XPATH_ARRAY.uri, "filter", 2, array::filter);
-        instance.register(&*XPATH_ARRAY.uri, "fold-left", 3, array::fold_left);
-        instance.register(&*XPATH_ARRAY.uri, "fold-right", 3, array::fold_right);
-        instance.register(&*XPATH_ARRAY.uri, "for-each-pair", 3, array::for_each_pair);
-        instance.register(&*XPATH_ARRAY.uri, "sort", 1, array::sort);
-        instance.register(&*XPATH_ARRAY.uri, "sort", 2, array::sort);
-        instance.register(&*XPATH_ARRAY.uri, "sort", 3, array::sort);
-        instance.register(&*XPATH_ARRAY.uri, "flatten", 1, array::flatten);
+        instance.register(&*XPATH_ARRAY.uri, "size", 1, array::FN_ARRAY_SIZE());
+        instance.register(&*XPATH_ARRAY.uri, "get", 2, array::FN_ARRAY_GET());
+        instance.register(&*XPATH_ARRAY.uri, "put", 3, array::FN_ARRAY_PUT());
+        instance.register(&*XPATH_ARRAY.uri, "append", 2, array::FN_ARRAY_APPEND());
+        instance.register(&*XPATH_ARRAY.uri, "subarray", 2, array::FN_ARRAY_SUBARRAY_2());
+        instance.register(&*XPATH_ARRAY.uri, "subarray", 3, array::FN_ARRAY_SUBARRAY_2());
+        instance.register(&*XPATH_ARRAY.uri, "insert-before", 3, array::FN_ARRAY_INSERT_BEFORE());
+        instance.register(&*XPATH_ARRAY.uri, "head", 1, array::FN_ARRAY_HEAD());
+        instance.register(&*XPATH_ARRAY.uri, "tail", 1, array::FN_ARRAY_TAIL());
+        instance.register(&*XPATH_ARRAY.uri, "reverse", 1, array::FN_ARRAY_REVERSE());
+        instance.register(&*XPATH_ARRAY.uri, "join", usize::MAX, array::FN_ARRAY_JOIN());
+        instance.register(&*XPATH_ARRAY.uri, "for-each", 2, array::FN_ARRAY_FOR_EACH());
+        instance.register(&*XPATH_ARRAY.uri, "filter", 2, array::FN_ARRAY_FILTER());
+        instance.register(&*XPATH_ARRAY.uri, "fold-left", 3, array::FN_ARRAY_FOLD_LEFT());
+        instance.register(&*XPATH_ARRAY.uri, "fold-right", 3, array::FN_ARRAY_FOLD_RIGHT());
+        instance.register(&*XPATH_ARRAY.uri, "for-each-pair", 3, array::FN_ARRAY_FOR_EACH_PAIR());
+        instance.register(&*XPATH_ARRAY.uri, "sort", 1, array::FN_ARRAY_SORT_1());
+        instance.register(&*XPATH_ARRAY.uri, "sort", 2, array::FN_ARRAY_SORT_2());
+        instance.register(&*XPATH_ARRAY.uri, "sort", 3, array::FN_ARRAY_SORT_3());
+        instance.register(&*XPATH_ARRAY.uri, "flatten", 1, array::FN_ARRAY_FLATTEN());
 
-        instance.register(&*XPATH_FUNCTIONS.uri, "current-date", 0, datetime::fn_current_date);
-        instance.register(&*XPATH_FUNCTIONS.uri, "current-time", 0, datetime::fn_current_time);
-        instance.register(&*XPATH_FUNCTIONS.uri, "year-from-date", 1, datetime::fn_year_from_date);
-        instance.register(&*XPATH_FUNCTIONS.uri, "month-from-date", 1, datetime::fn_month_from_date);
-        instance.register(&*XPATH_FUNCTIONS.uri, "day-from-date", 1, datetime::fn_day_from_date);
-        instance.register(&*XPATH_FUNCTIONS.uri, "days-from-duration", 1, datetime::fn_days_from_duration);
+        instance.register(&*XPATH_FUNCTIONS.uri, "current-date", 0, datetime::FN_CURRENT_DATE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "current-time", 0, datetime::FN_CURRENT_TIME());
+        instance.register(&*XPATH_FUNCTIONS.uri, "year-from-date", 1, datetime::FN_YEAR_FROM_DATE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "month-from-date", 1, datetime::FN_MONTH_FROM_DATE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "day-from-date", 1, datetime::FN_DAY_FROM_DATE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "days-from-duration", 1, datetime::FN_DAYS_FROM_DURATION());
 
-        instance.register(&*XPATH_FUNCTIONS.uri, "timezone-from-time", 1, datetime::fn_timezone_from_time);
+        instance.register(&*XPATH_FUNCTIONS.uri, "timezone-from-time", 1, datetime::FN_TIMEZONE_FROM_DATE_TIME());
+        instance.register(&*XPATH_FUNCTIONS.uri, "timezone-from-time", 1, datetime::FN_TIMEZONE_FROM_DATE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "timezone-from-time", 1, datetime::FN_TIMEZONE_FROM_TIME());
 
-        instance.register(&*XPATH_FUNCTIONS.uri, "for-each", 2, fun::for_each);
-        instance.register(&*XPATH_FUNCTIONS.uri, "filter", 2, fun::filter);
-        instance.register(&*XPATH_FUNCTIONS.uri, "fold-left", 3, fun::fold_left);
-        instance.register(&*XPATH_FUNCTIONS.uri, "fold-right", 3, fun::fold_right);
-        instance.register(&*XPATH_FUNCTIONS.uri, "for-each-pair", 3, fun::for_each_pair);
-        instance.register(&*XPATH_FUNCTIONS.uri, "sort", 1, fun::sort);
-        instance.register(&*XPATH_FUNCTIONS.uri, "sort", 2, fun::sort);
-        instance.register(&*XPATH_FUNCTIONS.uri, "sort", 3, fun::sort);
-        instance.register(&*XPATH_FUNCTIONS.uri, "apply", 2, fun::apply);
+        instance.register(&*XPATH_FUNCTIONS.uri, "for-each", 2, fun::FN_FOR_EACH());
+        instance.register(&*XPATH_FUNCTIONS.uri, "filter", 2, fun::FN_FILTER());
+        instance.register(&*XPATH_FUNCTIONS.uri, "fold-left", 3, fun::FN_FOLD_LEFT());
+        instance.register(&*XPATH_FUNCTIONS.uri, "fold-right", 3, fun::FN_FOLD_RIGHT());
+        instance.register(&*XPATH_FUNCTIONS.uri, "for-each-pair", 3, fun::FN_FOR_EACH_PAIR());
+        instance.register(&*XPATH_FUNCTIONS.uri, "sort", 1, fun::FN_SORT_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "sort", 2, fun::FN_SORT_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "sort", 3, fun::FN_SORT_3());
+        instance.register(&*XPATH_FUNCTIONS.uri, "apply", 2, fun::FN_APPLY());
 
-        instance.register(&*XPATH_FUNCTIONS.uri, "error", 0, fun::error);
-        instance.register(&*XPATH_FUNCTIONS.uri, "error", 1, fun::error);
-        instance.register(&*XPATH_FUNCTIONS.uri, "error", 2, fun::error);
-        instance.register(&*XPATH_FUNCTIONS.uri, "error", 3, fun::error);
+        instance.register(&*XPATH_FUNCTIONS.uri, "error", 0, fun::FN_ERROR_0());
+        instance.register(&*XPATH_FUNCTIONS.uri, "error", 1, fun::FN_ERROR_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "error", 2, fun::FN_ERROR_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "error", 3, fun::FN_ERROR_3());
 
-        instance.register(&*XPATH_FUNCTIONS.uri, "format-number", 2, math::fn_format_number_eval);
-        instance.register(&*XPATH_FUNCTIONS.uri, "format-number", 3, math::fn_format_number_eval);
+        instance.register(&*XPATH_FUNCTIONS.uri, "format-number", 2, math::FN_MATH_FORMAT_NUMBER_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "format-number", 3, math::FN_MATH_FORMAT_NUMBER_3());
 
-        instance.register(&*XPATH_FUNCTIONS.uri, "number", 0, math::fn_number_eval);
-        instance.register(&*XPATH_FUNCTIONS.uri, "number", 1, math::fn_number_eval);
+        instance.register(&*XPATH_FUNCTIONS.uri, "number", 0, math::FN_MATH_NUMBER_0());
+        instance.register(&*XPATH_FUNCTIONS.uri, "number", 1, math::FN_MATH_NUMBER_1());
 
-        instance.register(&*XPATH_FUNCTIONS.uri, "count", 1, aggregates::fn_count);
-        instance.register(&*XPATH_FUNCTIONS.uri, "avg", 1, aggregates::fn_avg);
-        instance.register(&*XPATH_FUNCTIONS.uri, "max", 1, aggregates::fn_max);
-        instance.register(&*XPATH_FUNCTIONS.uri, "max", 2, aggregates::fn_max);
-        instance.register(&*XPATH_FUNCTIONS.uri, "min", 1, aggregates::fn_min);
-        instance.register(&*XPATH_FUNCTIONS.uri, "min", 2, aggregates::fn_min);
-        // instance.register(&*XPATH_FUNCTIONS.url, "sum", 1, aggregates::fn_sum);
-        // instance.register(&*XPATH_FUNCTIONS.url, "sum", 2, aggregates::fn_sum);
+        instance.register(&*XPATH_FUNCTIONS.uri, "count", 1, aggregates::FN_COUNT());
+        instance.register(&*XPATH_FUNCTIONS.uri, "avg", 1, aggregates::FN_AVG());
+        instance.register(&*XPATH_FUNCTIONS.uri, "max", 1, aggregates::FN_MAX_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "max", 2, aggregates::FN_MAX_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "min", 1, aggregates::FN_MIN_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "min", 2, aggregates::FN_MIN_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "sum", 1, aggregates::FN_SUM_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "sum", 2, aggregates::FN_SUM_2());
 
-        instance.register(&*XPATH_MATH.uri, "pi", 0, math::fn_pi);
+        instance.register(&*XPATH_MATH.uri, "pi", 0, math::FN_MATH_PI());
 
-        instance.register(&*XPATH_FUNCTIONS.uri, "abs", 1, math::fn_abs);
-        instance.register(&*XPATH_FUNCTIONS.uri, "floor", 1, math::fn_floor);
-        instance.register(&*XPATH_FUNCTIONS.uri, "round", 1, math::fn_round);
-        instance.register(&*XPATH_FUNCTIONS.uri, "round", 2, math::fn_round);
-        instance.register(&*XPATH_FUNCTIONS.uri, "round-half-to-even", 1, math::fn_round_half_to_even);
-        instance.register(&*XPATH_FUNCTIONS.uri, "round-half-to-even", 2, math::fn_round_half_to_even);
+        instance.register(&*XPATH_FUNCTIONS.uri, "abs", 1, math::FN_MATH_ABS());
+        instance.register(&*XPATH_FUNCTIONS.uri, "ceiling", 1, math::FN_MATH_CEILING());
+        instance.register(&*XPATH_FUNCTIONS.uri, "floor", 1, math::FN_MATH_FLOOR());
+        instance.register(&*XPATH_FUNCTIONS.uri, "round", 1, math::FN_MATH_ROUND_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "round", 2, math::FN_MATH_ROUND_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "round-half-to-even", 1, math::FN_MATH_ROUND_HALF_TO_EVEN_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "round-half-to-even", 2, math::FN_MATH_ROUND_HALF_TO_EVEN_2());
 
-        instance.register(&*XPATH_FUNCTIONS.uri, "boolean", 1, boolean::fn_boolean);
-        instance.register(&*XPATH_FUNCTIONS.uri, "true", 0, boolean::fn_true);
-        instance.register(&*XPATH_FUNCTIONS.uri, "false", 0, boolean::fn_false);
-        instance.register(&*XPATH_FUNCTIONS.uri, "not", 1, boolean::fn_not);
+        instance.register(&*XPATH_FUNCTIONS.uri, "boolean", 1, boolean::FN_BOOLEAN());
+        instance.register(&*XPATH_FUNCTIONS.uri, "true", 0, boolean::FN_TRUE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "false", 0, boolean::FN_FALSE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "not", 1, boolean::FN_NOT());
 
-        instance.register(&*XPATH_FUNCTIONS.uri, "string", 0, strings::fn_string);
-        instance.register(&*XPATH_FUNCTIONS.uri, "string", 1, strings::fn_string);
-        instance.register(&*XPATH_FUNCTIONS.uri, "concat", 2, strings::fn_concat); // TODO number of arguments 2 or more
-        instance.register(&*XPATH_FUNCTIONS.uri, "concat", 3, strings::fn_concat);
-        instance.register(&*XPATH_FUNCTIONS.uri, "string-join", 1, strings::fn_string_join);
-        instance.register(&*XPATH_FUNCTIONS.uri, "string-join", 2, strings::fn_string_join);
-        instance.register(&*XPATH_FUNCTIONS.uri, "string-length", 0, strings::fn_string_length);
-        instance.register(&*XPATH_FUNCTIONS.uri, "string-length", 1, strings::fn_string_length);
-        instance.register(&*XPATH_FUNCTIONS.uri, "normalize-space", 0, strings::fn_normalize_space);
-        instance.register(&*XPATH_FUNCTIONS.uri, "normalize-space", 1, strings::fn_normalize_space);
-        instance.register(&*XPATH_FUNCTIONS.uri, "upper-case", 1, strings::fn_upper_case);
-        instance.register(&*XPATH_FUNCTIONS.uri, "lower-case", 1, strings::fn_lower_case);
-        instance.register(&*XPATH_FUNCTIONS.uri, "string-to-codepoints", 1, strings::fn_string_to_codepoints);
+        instance.register(&*XPATH_FUNCTIONS.uri, "string", 0, strings::FN_STRING_0());
+        instance.register(&*XPATH_FUNCTIONS.uri, "string", 1, strings::FN_STRING_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "codepoints-to-string", 1, strings::FN_CODEPOINTS_TO_STRING());
+        instance.register(&*XPATH_FUNCTIONS.uri, "string-to-codepoints", 1, strings::FN_STRING_TO_CODEPOINTS());
+        instance.register(&*XPATH_FUNCTIONS.uri, "concat", 2, strings::FN_CONCAT_2()); // TODO number of arguments 2 or more
+        instance.register(&*XPATH_FUNCTIONS.uri, "concat", 3, strings::FN_CONCAT_3());
+        instance.register(&*XPATH_FUNCTIONS.uri, "string-join", 1, strings::FN_STRING_JOIN_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "string-join", 2, strings::FN_STRING_JOIN_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "string-length", 0, strings::FN_STRING_LENGTH_0());
+        instance.register(&*XPATH_FUNCTIONS.uri, "string-length", 1, strings::FN_STRING_LENGTH_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "normalize-space", 0, strings::FN_NORMALIZE_SPACE_0());
+        instance.register(&*XPATH_FUNCTIONS.uri, "normalize-space", 1, strings::FN_NORMALIZE_SPACE_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "upper-case", 1, strings::FN_UPPER_CASE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "lower-case", 1, strings::FN_LOWER_CASE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "starts-with", 2, strings::FN_STARTS_WITH_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "starts-with", 3, strings::FN_STARTS_WITH_3());
+        instance.register(&*XPATH_FUNCTIONS.uri, "ends-with", 2, strings::FN_ENDS_WITH_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "ends-with", 3, strings::FN_ENDS_WITH_3());
 
-        instance.register(&*XPATH_FUNCTIONS.uri, "starts-with", 2, strings::fn_starts_with);
-        instance.register(&*XPATH_FUNCTIONS.uri, "starts-with", 3, strings::fn_starts_with);
-        instance.register(&*XPATH_FUNCTIONS.uri, "ends-with", 2, strings::fn_ends_with);
-        instance.register(&*XPATH_FUNCTIONS.uri, "ends-with", 3, strings::fn_ends_with);
+        instance.register(&*XPATH_FUNCTIONS.uri, "position", 0, sequences::FN_POSITION());
+        instance.register(&*XPATH_FUNCTIONS.uri, "last", 0, sequences::FN_LAST());
+        instance.register(&*XPATH_FUNCTIONS.uri, "default-collation", 0, context::FN_DEFAULT_COLLATION());
+        instance.register(&*XPATH_FUNCTIONS.uri, "default-language", 0, context::FN_DEFAULT_LANGUAGE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "static-base-uri", 0, context::FN_STATIC_BASE_URI());
 
-        instance.register(&*XPATH_FUNCTIONS.uri, "position", 0, sequences::fn_position);
-        instance.register(&*XPATH_FUNCTIONS.uri, "last", 0, sequences::fn_last);
-        instance.register(&*XPATH_FUNCTIONS.uri, "default-collation", 0, context::fn_default_collation);
-        instance.register(&*XPATH_FUNCTIONS.uri, "default-language", 0, context::fn_default_language);
-        instance.register(&*XPATH_FUNCTIONS.uri, "static-base-uri", 0, context::fn_static_base_uri);
+        instance.register(&*XPATH_FUNCTIONS.uri, "function-lookup", 0, fun::FN_FUNCTION_LOOKUP());
+        instance.register(&*XPATH_FUNCTIONS.uri, "function-name", 0, fun::FN_FUNCTION_NAME());
+        instance.register(&*XPATH_FUNCTIONS.uri, "function-arity", 0, fun::FN_FUNCTION_ARITY());
 
-        instance.register(&*XPATH_FUNCTIONS.uri, "data", 0, sequences::fn_data);
-        instance.register(&*XPATH_FUNCTIONS.uri, "data", 1, sequences::fn_data);
-        instance.register(&*XPATH_FUNCTIONS.uri, "empty", 1, sequences::fn_empty);
-        instance.register(&*XPATH_FUNCTIONS.uri, "remove", 2, sequences::fn_remove);
-        instance.register(&*XPATH_FUNCTIONS.uri, "reverse", 1, sequences::fn_reverse);
-        instance.register(&*XPATH_FUNCTIONS.uri, "subsequence", 2, sequences::fn_subsequence);
-        instance.register(&*XPATH_FUNCTIONS.uri, "subsequence", 3, sequences::fn_subsequence);
+        instance.register(&*XPATH_FUNCTIONS.uri, "data", 0, sequences::FN_DATA_0());
+        instance.register(&*XPATH_FUNCTIONS.uri, "data", 1, sequences::FN_DATA_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "empty", 1, sequences::FN_EMPTY());
+        instance.register(&*XPATH_FUNCTIONS.uri, "remove", 2, sequences::FN_REMOVE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "reverse", 1, sequences::FN_REVERSE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "subsequence", 2, sequences::FN_SUBSEQUENCE_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "subsequence", 3, sequences::FN_SUBSEQUENCE_3());
 
-        instance.register(&*XPATH_FUNCTIONS.uri, "zero-or-one", 1, sequences::fn_zero_or_one);
-        instance.register(&*XPATH_FUNCTIONS.uri, "one-or-more", 1, sequences::fn_one_or_more);
-        instance.register(&*XPATH_FUNCTIONS.uri, "exactly-one", 1, sequences::fn_exactly_one);
+        instance.register(&*XPATH_FUNCTIONS.uri, "zero-or-one", 1, sequences::FN_ZERO_OR_ONE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "one-or-more", 1, sequences::FN_ONE_OR_MORE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "exactly-one", 1, sequences::FN_EXACTLY_ONE());
 
-        instance.register(&*XPATH_FUNCTIONS.uri, "deep-equal", 2, comparison::fn_deep_equal);
+        instance.register(&*XPATH_FUNCTIONS.uri, "deep-equal", 2, comparison::FN_DEEP_EQUAL_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "deep-equal", 3, comparison::FN_DEEP_EQUAL_3());
 
-        instance.register(&*XPATH_FUNCTIONS.uri, "name", 0, nodes::fn_name);
-        instance.register(&*XPATH_FUNCTIONS.uri, "name", 1, nodes::fn_name);
-        instance.register(&*XPATH_FUNCTIONS.uri, "local-name", 0, nodes::fn_local_name);
-        instance.register(&*XPATH_FUNCTIONS.uri, "local-name", 1, nodes::fn_local_name);
-        instance.register(&*XPATH_FUNCTIONS.uri, "namespace-uri", 0, nodes::fn_namespace_uri);
-        instance.register(&*XPATH_FUNCTIONS.uri, "namespace-uri", 1, nodes::fn_namespace_uri);
-        instance.register(&*XPATH_FUNCTIONS.uri, "lang", 1, nodes::fn_lang);
-        instance.register(&*XPATH_FUNCTIONS.uri, "lang", 2, nodes::fn_lang);
-        instance.register(&*XPATH_FUNCTIONS.uri, "root", 0, nodes::fn_root);
-        instance.register(&*XPATH_FUNCTIONS.uri, "root", 1, nodes::fn_root);
-        instance.register(&*XPATH_FUNCTIONS.uri, "path", 0, nodes::fn_path);
-        instance.register(&*XPATH_FUNCTIONS.uri, "path", 1, nodes::fn_path);
-        instance.register(&*XPATH_FUNCTIONS.uri, "has-children", 0, nodes::fn_has_children);
-        instance.register(&*XPATH_FUNCTIONS.uri, "has-children", 1, nodes::fn_has_children);
-        instance.register(&*XPATH_FUNCTIONS.uri, "innermost", 1, nodes::fn_innermost);
-        instance.register(&*XPATH_FUNCTIONS.uri, "outermost", 1, nodes::fn_outermost);
+        instance.register(&*XPATH_FUNCTIONS.uri, "name", 0, nodes::FN_NAME_0());
+        instance.register(&*XPATH_FUNCTIONS.uri, "name", 1, nodes::FN_NAME_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "local-name", 0, nodes::FN_LOCAL_NAME_0());
+        instance.register(&*XPATH_FUNCTIONS.uri, "local-name", 1, nodes::FN_LOCAL_NAME_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "namespace-uri", 0, nodes::FN_NAMESPACE_URI_0());
+        instance.register(&*XPATH_FUNCTIONS.uri, "namespace-uri", 1, nodes::FN_NAMESPACE_URI_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "lang", 1, nodes::FN_LANG_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "lang", 2, nodes::FN_LANG_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "root", 0, nodes::FN_ROOT_0());
+        instance.register(&*XPATH_FUNCTIONS.uri, "root", 1, nodes::FN_ROOT_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "path", 0, nodes::FN_PATH_0());
+        instance.register(&*XPATH_FUNCTIONS.uri, "path", 1, nodes::FN_PATH_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "has-children", 0, nodes::FN_HAS_CHILDREN_0());
+        instance.register(&*XPATH_FUNCTIONS.uri, "has-children", 1, nodes::FN_HAS_CHILDREN_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "innermost", 1, nodes::FN_INNERMOST());
+        instance.register(&*XPATH_FUNCTIONS.uri, "outermost", 1, nodes::FN_OUTERMOST());
 
         instance
     }
@@ -264,7 +272,7 @@ impl FunctionsRegister {
     pub(crate) fn get(&self, qname: &QNameResolved, arity: usize) -> Option<FUNCTION> {
         if let Some(list) = self.functions.get(qname) {
             if let Some(rf) = list.get(&arity) {
-                Some(*rf)
+                Some(rf.clone())
             } else {
                 None
             }
@@ -310,8 +318,8 @@ pub(crate) fn call<'a>(env: Box<Environment>, name: QNameResolved, arguments: Ve
     } else {
         let fun: Option<FUNCTION> = fn_env.get_function(&name, arguments.len());
 
-        if let Some(fun) = fun {
-            let (new_env, result) = fun(fn_env, arguments, context)?;
+        if let Some(((params, st), body)) = fun {
+            let (new_env, result) = body(fn_env, arguments, context)?;
             let env = new_env.prev();
 
             Ok((env, result))

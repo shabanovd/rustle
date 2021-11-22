@@ -184,8 +184,8 @@ fn eval_predicates(exprs: &Vec<PrimaryExprSuffix>, env: Box<Environment>, value:
             current_env = new_env;
             result = new_value;
         } else if let Some(arguments) = argument_list {
-            match result {
-                Object::Function { parameters, body } => {
+            result = match result {
+                Object::Function { parameters, st, body } => {
                     let mut evaluated_arguments = vec![];
                     for argument in arguments {
                         let (new_env, value) = argument.eval(current_env, context)?;
@@ -206,10 +206,29 @@ fn eval_predicates(exprs: &Vec<PrimaryExprSuffix>, env: Box<Environment>, value:
                     let (new_env, new_value) = body.eval(fn_env, context)?;
                     current_env = new_env.prev();
 
-                    result = new_value;
+                    new_value
                 },
+                Object::Array(items) => {
+                    if arguments.len() == 1 {
+                        let mut evaluated_arguments = vec![];
+                        for argument in arguments {
+                            let (new_env, value) = argument.eval(current_env, context)?;
+                            current_env = new_env;
+
+                            evaluated_arguments.push(value);
+                        }
+                        let index = object_to_integer(&current_env, evaluated_arguments.remove(0))?;
+                        if let Some(item) = items.get((index - 1) as usize) {
+                            item.clone()
+                        } else {
+                            todo!()
+                        }
+                    } else {
+                        todo!()
+                    }
+                }
                 _ => panic!() // return Err((ErrorCode::XPTY0004, String::from("TODO")))
-            }
+            };
         } else if let Some(key) = lookup {
             todo!()
         }

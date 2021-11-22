@@ -644,7 +644,7 @@ impl XMLTreeWriter for InMemoryXMLTree {
     }
 
     fn ns(&mut self, prefix: String, url: String) -> Reference {
-        let name = QName::ns(&*XML, prefix);
+        let name = QName::ns(&XML, prefix);
         self.attribute(name, url)
     }
 

@@ -87,6 +87,7 @@ pub fn _object_to_string(env: &Box<Environment>, object: &Object, ref_resolving:
         Object::Atomic(Type::Time(time)) => {
             time.format("%H:%M:%S").to_string()
         }
+        Object::Array(items) |
         Object::Sequence(items) => {
             let mut buf = Vec::with_capacity(items.len());
             for item in items {

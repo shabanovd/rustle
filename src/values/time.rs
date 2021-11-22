@@ -29,9 +29,14 @@ impl Time<FixedOffset> {
         Time { time: now.time(), offset: TimeZone::from_offset(now.offset()) }
     }
 
+    // #[inline]
+    // pub fn from(dt: DateTime<Local>) -> Time<FixedOffset> {
+    //     Time { time: dt.time(), offset: TimeZone::from_offset(dt.offset()) }
+    // }
+
     #[inline]
-    pub fn from(dt: DateTime<Local>) -> Time<FixedOffset> {
-        Time { time: dt.time(), offset: TimeZone::from_offset(dt.offset()) }
+    pub fn from(time: NaiveTime, offset: FixedOffset) -> Time<FixedOffset> {
+        Time { time, offset }
     }
 
     #[inline]

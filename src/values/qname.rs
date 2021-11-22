@@ -4,15 +4,6 @@ use crate::namespaces::{Namespace, SCHEMA};
 use std::cmp::Ordering;
 use crate::eval::expression::Expression;
 
-lazy_static! {
-    pub static ref XS_STRING: QName = QName::full("xs", "string", &SCHEMA.uri);
-    pub static ref XS_INTEGER: QName = QName::full("xs", "integer", &SCHEMA.uri);
-    pub static ref XS_DECIMAL: QName = QName::full("xs", "decimal", &SCHEMA.uri);
-    pub static ref XS_FLOAT: QName = QName::full("xs", "float", &SCHEMA.uri);
-    pub static ref XS_DOUBLE: QName = QName::full("xs", "double", &SCHEMA.uri);
-    pub static ref XS_UNTYPED_ATOMIC: QName = QName::full("xs", "untypedAtomic", &SCHEMA.uri);
-}
-
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub struct QNameResolved {
     pub url: String,
@@ -20,7 +11,7 @@ pub struct QNameResolved {
 }
 
 impl QNameResolved {
-    fn is_same(&self, qname: &QName) -> bool {
+    pub(crate) fn is_same(&self, qname: &QName) -> bool {
         if self.local_part == qname.local_part {
             if let Some(url) = &qname.url {
                 &self.url == url
@@ -31,11 +22,21 @@ impl QNameResolved {
             false
         }
     }
+
+    pub(crate) fn is_same_qn(&self, qname: &QN) -> bool {
+        self.local_part == qname.local_part && self.url == qname.url
+    }
 }
 
 impl PartialEq<QName> for QNameResolved {
     fn eq(&self, other: &QName) -> bool {
         self.is_same(other)
+    }
+}
+
+impl<'a> PartialEq<QN<'a>> for QNameResolved {
+    fn eq(&self, other: &QN) -> bool {
+        self.is_same_qn(other)
     }
 }
 
@@ -69,6 +70,30 @@ fn resolve_qname(qname: &QName, env: &Box<Environment>, default: &String) -> QNa
     }
 }
 
+pub struct QN<'a> {
+    pub prefix: &'a str,
+    pub url: &'a str,
+    pub local_part: &'a str,
+}
+
+impl<'a> QN<'a> {
+    pub const fn full(prefix: &'a str, local_part: &'a str, url: &'a str) -> Self {
+        QN { prefix, url, local_part }
+    }
+}
+
+impl<'a> Into<QName> for QN<'a> {
+    fn into(self) -> QName {
+        QName::full(self.prefix.to_string(), self.local_part.to_string(), self.url.to_string())
+    }
+}
+
+impl<'a> PartialEq<QNameResolved> for QN<'a> {
+    fn eq(&self, other: &QNameResolved) -> bool {
+        other.is_same_qn(self)
+    }
+}
+
 #[derive(Eq, PartialEq, Clone, Hash)]
 pub struct QName {
     pub prefix: Option<String>,
@@ -93,10 +118,10 @@ impl QName {
         }
     }
 
-    pub fn ns(ns: &Namespace, local_part: String) -> Self {
+    pub fn ns<N>(ns: &N, local_part: String) -> Self where N: Namespace {
         QName {
-            prefix: Some(ns.prefix.clone()),
-            url: Some(ns.uri.clone()),
+            prefix: Some(ns.prefix()),
+            url: Some(ns.uri()),
             local_part: local_part.into(),
         }
     }

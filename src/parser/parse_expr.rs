@@ -1775,11 +1775,16 @@ fn parse_inline_function_expr(input: &str) -> IResult<&str, Box<dyn Expression>,
 
     let (input, _) = ws_tag(")", input)?;
 
-    // TODO: ("as" SequenceType)?
+    let (input, st) = opt(
+        preceded(
+            tuple((ws1, tag("as"), ws1)),
+            parse_sequence_type
+        )
+    )(input)?;
 
     let (input, body) = parse_enclosed_expr(input)?;
 
-    found_expr(input, Box::new(Function { arguments, body }))
+    found_expr(input, Box::new(Function { arguments, st, body }))
 }
 
 // [170]    	MapConstructor 	   ::=    	"map" "{" (MapConstructorEntry ("," MapConstructorEntry)*)? "}"
@@ -1945,7 +1950,7 @@ fn parse_item_type(input: &str) -> IResult<&str, ItemType, CustomError<&str>> {
         let (input, test) = check?;
         Ok((input, ItemType::Node(test)))
     } else {
-        alt((parse_item, parse_atomic_or_union_type))(input)
+        alt((parse_item, parse_array_test, parse_function_test, parse_atomic_or_union_type))(input)
     }
 }
 
@@ -2140,6 +2145,64 @@ fn parse_eqname_or_wildcard(input: &str) -> IResult<&str, QName, CustomError<&st
 // [206]    	TypeName 	   ::=    	EQName
 fn parse_type_name(input: &str) -> IResult<&str, QName, CustomError<&str>> {
     parse_eqname(input)
+}
+
+// [207]    	FunctionTest 	   ::=    	Annotation* (AnyFunctionTest | TypedFunctionTest)
+// [208]    	AnyFunctionTest 	   ::=    	"function" "(" "*" ")"
+// [209]    	TypedFunctionTest 	   ::=    	"function" "(" (SequenceType ("," SequenceType)*)? ")" "as" SequenceType
+fn parse_function_test(input: &str) -> IResult<&str, ItemType, CustomError<&str>> {
+    map(
+        tuple((
+            delimited(
+                tuple((ws, tag("function"), ws, tag("("))),
+                alt((
+                    map(tag("*"), |_| None),
+                    opt(
+                        map(
+                            tuple((
+                                parse_sequence_type,
+                                many0(preceded(tag(","), parse_sequence_type))
+                            )),
+                            |(fst, rest)| {
+                                let mut args = Vec::with_capacity(1 + rest.len());
+                                args.push(fst);
+                                for arg in rest {
+                                    args.push(arg);
+                                }
+                                args
+                            }
+                        )
+                    ),
+                )),
+                tuple((ws, tag(")")))
+            ),
+            opt(
+                preceded(
+                    tuple((ws, tag("as"))),
+                    map(parse_sequence_type, |st| Box::new(st))
+                )
+            )
+        )),
+        |(args, st)| ItemType::Function { args, st }
+    )(input)
+}
+
+
+// [213]    	ArrayTest 	   ::=    	AnyArrayTest | TypedArrayTest
+// [214]    	AnyArrayTest 	   ::=    	"array" "(" "*" ")"
+// [215]    	TypedArrayTest 	   ::=    	"array" "(" SequenceType ")"
+fn parse_array_test(input: &str) -> IResult<&str, ItemType, CustomError<&str>> {
+    map(
+        delimited(
+            tuple((ws, tag("array"), ws, tag("("))),
+            alt((
+                map(tag("*"), |_| None),
+                map(parse_sequence_type, |st| Some(Box::new(st)))
+            )),
+            tuple((ws, tag(")")))
+        ),
+        |st| ItemType::Array(st)
+    )(input)
 }
 
 // [217]    	URILiteral 	   ::=    	StringLiteral
