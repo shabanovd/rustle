@@ -1,6 +1,5 @@
-use crate::eval::{Object, Type, DynamicContext, EvalResult, ErrorInfo};
-use crate::eval::Environment;
-use crate::parser::parse_duration::{string_to_dt_duration, string_to_ym_duration, string_to_duration, string_to_date, string_to_date_time, string_to_time};
+use crate::eval::{Environment, Object, Type, DynamicContext, EvalResult, ErrorInfo};
+use crate::parser::parse_duration::*;
 use crate::parser::errors::ErrorCode;
 use ordered_float::OrderedFloat;
 use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
@@ -8,6 +7,7 @@ use crate::eval::sequence_type::*;
 use crate::serialization::object_to_string;
 use crate::fns::boolean::object_casting_bool;
 use crate::fns::FUNCTION;
+use crate::values::{string_to_binary_base64, string_to_binary_hex};
 
 fn empty_or_type(env: Box<Environment>, arguments: Vec<Object>, processing: fn(&Box<Environment>, &Object) -> Result<Type, ErrorInfo>) -> EvalResult {
     let item = arguments.get(0).unwrap();
@@ -239,10 +239,7 @@ pub(crate) fn xs_duration_eval(env: Box<Environment>, arguments: Vec<Object>, _c
         [Object::Atomic(Type::String(string))] => {
             match string_to_duration(string) {
                 Ok(dt) => Ok((env, Object::Atomic(dt))),
-                Err(e) => {
-                    println!("{}", e);
-                    todo!()
-                }
+                Err(e) => todo!("{:?}", e),
             }
         },
         _ => todo!()
@@ -266,10 +263,7 @@ pub(crate) fn xs_date_time_eval(env: Box<Environment>, arguments: Vec<Object>, _
         [Object::Atomic(Type::String(string))] => {
             match string_to_date_time(string) {
                 Ok(dt) => Ok((env, Object::Atomic(dt))),
-                Err(e) => {
-                    println!("{}", e);
-                    todo!()
-                }
+                Err(e) => todo!("{:?}", e),
             }
         },
         _ => todo!()
@@ -293,10 +287,7 @@ pub(crate) fn xs_time_eval(env: Box<Environment>, arguments: Vec<Object>, _conte
         [Object::Atomic(Type::String(string))] => {
             match string_to_time(string) {
                 Ok(dt) => Ok((env, Object::Atomic(dt))),
-                Err(e) => {
-                    println!("{}", e);
-                    todo!()
-                }
+                Err(e) => todo!("{:?}", e),
             }
         },
         _ => todo!()
@@ -320,21 +311,132 @@ pub(crate) fn xs_date_eval(env: Box<Environment>, arguments: Vec<Object>, _conte
         [Object::Atomic(Type::String(string))] => {
             match string_to_date(string) {
                 Ok(dt) => Ok((env, Object::Atomic(dt))),
-                Err(e) => {
-                    println!("{}", e);
-                    todo!()
-                }
+                Err(e) => todo!("{:?}", e),
             }
         },
         _ => todo!()
     }
 }
 
-// TODO xs:gYearMonth($arg as xs:anyAtomicType?) as xs:gYearMonth?
-// TODO xs:gYear($arg as xs:anyAtomicType?) as xs:gYear?
-// TODO xs:gMonthDay($arg as xs:anyAtomicType?) as xs:gMonthDay?
-// TODO xs:gDay($arg as xs:anyAtomicType?) as xs:gDay?
-// TODO xs:gMonth($arg as xs:anyAtomicType?) as xs:gMonth?
+// xs:gYearMonth($arg as xs:anyAtomicType?) as xs:gYearMonth?
+pub(crate) fn FN_XS_G_YEAR_MONTH() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_one(ItemType::AnyAtomicType)].to_vec(),
+            SequenceType::zero_or_one(ItemType::AtomicOrUnionType(XS_G_YEAR_MONTH.into()))
+        ),
+        xs_g_year_month_eval
+    )
+}
+
+pub(crate) fn xs_g_year_month_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    match arguments.as_slice() {
+        [Object::Atomic(Type::Untyped(string))] |
+        [Object::Atomic(Type::String(string))] => {
+            match string_to_year_month(string) {
+                Ok(dt) => Ok((env, Object::Atomic(dt))),
+                Err(e) => todo!("{:?}", e),
+            }
+        },
+        _ => todo!()
+    }
+}
+
+// xs:gYear($arg as xs:anyAtomicType?) as xs:gYear?
+pub(crate) fn FN_XS_G_YEAR() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_one(ItemType::AnyAtomicType)].to_vec(),
+            SequenceType::zero_or_one(ItemType::AtomicOrUnionType(XS_G_YEAR.into()))
+        ),
+        xs_g_year_eval
+    )
+}
+
+pub(crate) fn xs_g_year_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    match arguments.as_slice() {
+        [Object::Atomic(Type::Untyped(string))] |
+        [Object::Atomic(Type::String(string))] => {
+            match string_to_year(string) {
+                Ok(dt) => Ok((env, Object::Atomic(dt))),
+                Err(e) => todo!("{:?}", e),
+            }
+        },
+        _ => todo!()
+    }
+}
+
+// xs:gMonthDay($arg as xs:anyAtomicType?) as xs:gMonthDay?
+pub(crate) fn FN_XS_G_MONTH_DAY() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_one(ItemType::AnyAtomicType)].to_vec(),
+            SequenceType::zero_or_one(ItemType::AtomicOrUnionType(XS_G_MONTH_DAY.into()))
+        ),
+        xs_g_month_day_eval
+    )
+}
+
+pub(crate) fn xs_g_month_day_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    match arguments.as_slice() {
+        [Object::Atomic(Type::Untyped(string))] |
+        [Object::Atomic(Type::String(string))] => {
+            match string_to_month_day(string) {
+                Ok(dt) => Ok((env, Object::Atomic(dt))),
+                Err(e) => todo!("{:?}", e),
+            }
+        },
+        _ => todo!()
+    }
+}
+
+// xs:gDay($arg as xs:anyAtomicType?) as xs:gDay?
+pub(crate) fn FN_XS_G_DAY() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_one(ItemType::AnyAtomicType)].to_vec(),
+            SequenceType::zero_or_one(ItemType::AtomicOrUnionType(XS_G_DAY.into()))
+        ),
+        xs_g_day_eval
+    )
+}
+
+pub(crate) fn xs_g_day_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    match arguments.as_slice() {
+        [Object::Atomic(Type::Untyped(string))] |
+        [Object::Atomic(Type::String(string))] => {
+            match string_to_day(string) {
+                Ok(dt) => Ok((env, Object::Atomic(dt))),
+                Err(e) => todo!("{:?}", e),
+            }
+        },
+        _ => todo!()
+    }
+}
+
+// xs:gMonth($arg as xs:anyAtomicType?) as xs:gMonth?
+pub(crate) fn FN_XS_G_MONTH() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_one(ItemType::AnyAtomicType)].to_vec(),
+            SequenceType::zero_or_one(ItemType::AtomicOrUnionType(XS_G_MONTH.into()))
+        ),
+        xs_g_month_eval
+    )
+}
+
+pub(crate) fn xs_g_month_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    match arguments.as_slice() {
+        [Object::Atomic(Type::Untyped(string))] |
+        [Object::Atomic(Type::String(string))] => {
+            match string_to_month(string) {
+                Ok(dt) => Ok((env, Object::Atomic(dt))),
+                Err(e) => todo!("{:?}", e),
+            }
+        },
+        _ => todo!()
+    }
+}
 
 // xs:hexBinary($arg as xs:anyAtomicType?) as xs:hexBinary?
 pub(crate) fn FN_XS_HEX_BINARY() -> FUNCTION {
@@ -348,14 +450,41 @@ pub(crate) fn FN_XS_HEX_BINARY() -> FUNCTION {
 }
 
 pub(crate) fn xs_hex_binary_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
-    let item = arguments.get(0).unwrap();
-
-    let str = object_to_string(&env, item);
-
-    Ok((env, Object::Atomic(Type::HexBinary(str))))
+    match arguments.as_slice() {
+        [Object::Atomic(Type::Untyped(string))] |
+        [Object::Atomic(Type::String(string))] => {
+            match string_to_binary_hex(string) {
+                Ok(binary) => Ok((env, Object::Atomic(Type::HexBinary(binary)))),
+                Err(e) => todo!("{:?}", e)
+            }
+        },
+        _ => todo!()
+    }
 }
 
-// TODO xs:base64Binary($arg as xs:anyAtomicType?) as xs:base64Binary?
+// xs:base64Binary($arg as xs:anyAtomicType?) as xs:base64Binary?
+pub(crate) fn FN_XS_BASE64_BINARY() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_one(ItemType::AnyAtomicType)].to_vec(),
+            SequenceType::zero_or_one(ItemType::AtomicOrUnionType(XS_BASE64_BINARY.into()))
+        ),
+        xs_base64_binary_eval
+    )
+}
+
+pub(crate) fn xs_base64_binary_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    match arguments.as_slice() {
+        [Object::Atomic(Type::Untyped(string))] |
+        [Object::Atomic(Type::String(string))] => {
+            match string_to_binary_base64(string) {
+                Ok(binary) => Ok((env, Object::Atomic(Type::Base64Binary(binary)))),
+                Err(e) => todo!("{:?}", e)
+            }
+        },
+        _ => todo!()
+    }
+}
 
 // xs:anyURI($arg as xs:anyAtomicType?) as xs:anyURI?
 pub(crate) fn FN_XS_ANY_URI() -> FUNCTION {
@@ -423,6 +552,7 @@ pub(crate) fn FN_XS_INTEGER() -> FUNCTION {
 }
 
 pub(crate) fn xs_integer_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    println!("xs_integer_eval {:?}", arguments);
     match arguments.as_slice() {
         [Object::Empty] => Ok((env, Object::Empty)),
         [Object::Atomic(Type::Untyped(string))] |
@@ -639,12 +769,9 @@ pub(crate) fn xs_day_time_duration_eval(env: Box<Environment>, arguments: Vec<Ob
     match arguments.as_slice() {
         [Object::Atomic(Type::Untyped(string))] |
         [Object::Atomic(Type::String(string))] => {
-            match string_to_dt_duration(string) {
+            match string_to_date_time_duration(string) {
                 Ok(dt) => Ok((env, Object::Atomic(dt))),
-                Err(e) => {
-                    println!("{}", e);
-                    todo!()
-                }
+                Err(e) => todo!("{:?}", e),
             }
         },
         _ => todo!()

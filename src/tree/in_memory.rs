@@ -403,7 +403,7 @@ impl XMLTreeReader for InMemoryXMLTree {
     }
 
     fn forward(&self, rf: &Reference, initial_node_sequence: &Option<INS>, axis: &Axis) -> Vec<Reference> {
-        // println!("forward {:?} {:?}", initial_node_sequence, axis);
+        println!("forward {:?} {:?} {}", initial_node_sequence, axis, rf.id);
         // println!("{}", self.dump());
 
         let (rf, all) = if let Some(initial_node) = initial_node_sequence {

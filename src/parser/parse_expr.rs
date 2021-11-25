@@ -542,7 +542,7 @@ fn parse_function_decl(input: &str) -> IResult<&str, Box<dyn Expression>, Custom
         (input, false, Some(body))
     };
 
-    found_expr(input, Box::new(FunctionDecl { name, params, external, type_declaration, body } ))
+    found_expr(input, Box::new(FunctionDecl { name, params, external, st: type_declaration, body } ))
 }
 
 // [36]    	EnclosedExpr 	   ::=    	"{" Expr? "}"

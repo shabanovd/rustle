@@ -8,10 +8,12 @@ use crate::parser::errors::ErrorCode;
 use crate::serialization::to_xml::object_to_xml;
 use crate::tree::InMemoryXMLTree;
 
-
 pub(crate) fn eval_on_spec(spec: &str, sources: Vec<(&str, &str)>, input: &str) -> EvalResult {
     match spec {
-        "XQ10" | "XQ10+" | "XP20+ XQ10+" | "XP30+ XQ10+" | "XQ30+" | "XP30+ XQ30+" | "XQ31+" | "XP31+ XQ31+" => {
+        "XQ10" | "XP20 XQ10" |
+        "XQ10+" | "XP20+ XQ10+" | "XP30+ XQ10+" |
+        "XQ30+" | "XP30+ XQ30+" |
+        "XQ31+" | "XP31+ XQ31+" => {
             eval(sources, input)
         }
         _ => panic!("unsupported spec {}", spec)
@@ -57,17 +59,9 @@ pub(crate) fn eval(sources: Vec<(&str, &str)>, input: &str) -> EvalResult {
         // println!("error: {:#?}", parsed);
 
         let e = match parsed {
-            Err(error) => {
-                let msg = error.as_ref();
-                let code = match msg {
-                    "XPST0003" => ErrorCode::XPST0003,
-                    "XQST0031" => ErrorCode::XQST0031,
-                    "XQST0039" => ErrorCode::XQST0039,
-                    "XQST0070" => ErrorCode::XQST0070,
-                    "XQST0087" => ErrorCode::XQST0087,
-                    _ => panic!("{}", msg),
-                };
-                (code, String::from(msg))
+            Err(code) => {
+                let msg = String::from(code.as_ref());
+                (code, msg)
             }
             _ => (ErrorCode::TODO, "err".to_string())
         };

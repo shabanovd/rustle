@@ -32,6 +32,7 @@ pub type FUNCTION = ((Vec<SequenceType>, SequenceType), fn(Box<Environment>, Vec
 pub struct Function {
     name: QNameResolved,
     parameters: Vec<Param>,
+    st: Option<SequenceType>,
     body: Box<dyn Expression>,
 }
 
@@ -70,13 +71,21 @@ impl FunctionsRegister {
         instance.register(&*SCHEMA.uri, "untypedAtomic", 1, types::FN_XS_UNTYPED_ATOMIC());
         instance.register(&*SCHEMA.uri, "NCName", 1, types::FN_XS_NCNAME());
         instance.register(&*SCHEMA.uri, "anyURI", 1, types::FN_XS_ANY_URI());
+        instance.register(&*SCHEMA.uri, "time", 1, types::FN_XS_TIME());
         instance.register(&*SCHEMA.uri, "date", 1, types::FN_XS_DATE());
         instance.register(&*SCHEMA.uri, "dateTime", 1, types::FN_XS_DATE_TIME());
         instance.register(&*SCHEMA.uri, "yearMonthDuration", 1, types::FN_XS_YEAR_MONTH_DURATION());
         instance.register(&*SCHEMA.uri, "dayTimeDuration", 1, types::FN_XS_DAY_TIME_DURATION());
         instance.register(&*SCHEMA.uri, "duration", 1, types::FN_XS_DURATION());
 
+        instance.register(&*SCHEMA.uri, "gYearMonth", 1, types::FN_XS_G_YEAR_MONTH());
+        instance.register(&*SCHEMA.uri, "gYear", 1, types::FN_XS_G_YEAR());
+        instance.register(&*SCHEMA.uri, "gMonthDay", 1, types::FN_XS_G_MONTH_DAY());
+        instance.register(&*SCHEMA.uri, "gDay", 1, types::FN_XS_G_DAY());
+        instance.register(&*SCHEMA.uri, "gMonth", 1, types::FN_XS_G_MONTH());
+
         instance.register(&*SCHEMA.uri, "hexBinary", 1, types::FN_XS_HEX_BINARY());
+        instance.register(&*SCHEMA.uri, "base64Binary", 1, types::FN_XS_BASE64_BINARY());
 
         instance.register(&*SCHEMA.uri, "integer", 1, types::FN_XS_INTEGER());
         instance.register(&*SCHEMA.uri, "nonPositiveInteger", 1, types::FN_XS_NON_POSITIVE_INTEGER());
@@ -263,10 +272,10 @@ impl FunctionsRegister {
             .insert(arity,fun);
     }
 
-    pub(crate) fn put(&mut self, name: QNameResolved, parameters: Vec<Param>, body: Box<dyn Expression>) {
+    pub(crate) fn put(&mut self, name: QNameResolved, parameters: Vec<Param>, st: Option<SequenceType>, body: Box<dyn Expression>) {
         self.declared.entry(name.clone())
             .or_insert_with(HashMap::new)
-            .insert(parameters.len(), Function { name, parameters, body });
+            .insert(parameters.len(), Function { name, parameters, st, body });
     }
 
     pub(crate) fn get(&self, qname: &QNameResolved, arity: usize) -> Option<FUNCTION> {

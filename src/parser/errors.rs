@@ -3,7 +3,7 @@ use nom::error::{ErrorKind, ParseError, FromExternalError};
 use nom::{IResult, Err};
 
 #[allow(dead_code)]
-#[derive(Debug, PartialEq, AsRefStr)]
+#[derive(Debug, Clone, PartialEq, AsRefStr)]
 pub enum ErrorCode {
     TODO,
     XPST0001,

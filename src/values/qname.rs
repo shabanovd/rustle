@@ -88,6 +88,12 @@ impl<'a> Into<QName> for QN<'a> {
     }
 }
 
+impl<'a> Into<QNameResolved> for QN<'a> {
+    fn into(self) -> QNameResolved {
+        QNameResolved { url: self.url.to_string(), local_part: self.local_part.to_string() }
+    }
+}
+
 impl<'a> PartialEq<QNameResolved> for QN<'a> {
     fn eq(&self, other: &QNameResolved) -> bool {
         other.is_same_qn(self)

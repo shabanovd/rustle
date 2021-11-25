@@ -517,7 +517,7 @@ impl Expression for VarDecl {
 pub(crate) struct FunctionDecl {
     pub(crate) name: QName,
     pub(crate) params: Vec<Param>,
-    pub(crate) type_declaration: Option<SequenceType>,
+    pub(crate) st: Option<SequenceType>,
     pub(crate) external: bool,
     pub(crate) body: Option<Box<dyn Expression>>
 }
@@ -529,7 +529,7 @@ impl Expression for FunctionDecl {
         // TODO: handle typeDeclaration
 
         if let Some(body) = self.body.clone() {
-            env.functions.put(name, self.params.clone(), body);
+            env.functions.put(name, self.params.clone(), self.st.clone(), body);
 
         } else {
             todo!()
@@ -1195,7 +1195,7 @@ impl Expression for Treat {
 
         // TODO occurrence_indicator checks
 
-        process_items(current_env, object, |env, item| {
+        process_items(current_env, object, |env, item, position, last| {
             let correct = self.st.is_castable(&env, &item)?;
 
             if correct {
@@ -1218,13 +1218,27 @@ impl Expression for Castable {
     fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
         let (new_env, object) = self.expr.eval(env, context)?;
 
-        // println!("st {:?}", self.st);
+        let v = self.st.is_castable(&new_env, &object)?;
 
-        Ok((new_env, object))
+        Ok((new_env, Object::Atomic(Type::Boolean(v))))
     }
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
-        todo!()
+        process_items(env, value, |env, item, position, last| {
+
+            let current_context = DynamicContext {
+                initial_node_sequence: None,
+                item: item.clone(), position: Some(position), last
+            };
+
+            let (new_env, object) = self.expr.eval(env, &current_context)?;
+
+            if self.st.is_castable(&new_env, &object)? {
+                Ok((new_env, item))
+            } else {
+                Ok((new_env, Object::Nothing))
+            }
+        })
     }
 }
 
@@ -1735,7 +1749,7 @@ impl Expression for Unary {
         let (new_env, evaluated) = self.expr.eval(current_env, context)?;
         current_env = new_env;
 
-        process_items(current_env, evaluated, |env, item| {
+        process_items(current_env, evaluated, |env, item, position, last| {
             match item {
                 Object::Empty => Ok((env, Object::Empty)),
                 _ => eval_unary(env, item, self.sign_is_positive)
@@ -1853,26 +1867,37 @@ impl Expression for If {
             self.alternative.eval(current_env, context)?
         };
         Ok((new_env, evaluated))
-
-        // process_items(current_env, evaluated, |env, item| {
-        //     let v = match object_to_bool(&item) {
-        //         Ok(v) => v,
-        //         Err(e) => return Err(e)
-        //     };
-        //     if v {
-        //         let (new_env, evaluated) = self.consequence.eval(env, context)?;
-        //
-        //         Ok((new_env, evaluated))
-        //     } else {
-        //         let (new_env, evaluated) = self.alternative.eval(env, context)?;
-        //
-        //         Ok((new_env, evaluated))
-        //     }
-        // })
     }
 
-    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
-        todo!()
+    fn predicate<'a>(&self, env: Box<Environment>, _context: &DynamicContext, value: Object) -> EvalResult {
+        process_items(env, value, |env, item, position, last| {
+
+            let current_context = DynamicContext {
+                initial_node_sequence: None,
+                item: item.clone(),
+                position: Some(position),
+                last
+            };
+
+            let (new_env, evaluated) = self.condition.eval(env, &current_context)?;
+
+            let v = match object_to_bool(&evaluated) {
+                Ok(v) => v,
+                Err(e) => return Err(e)
+            };
+
+            let (new_env, evaluated) = if v {
+                self.consequence.eval(new_env, &current_context)?
+            } else {
+                self.alternative.eval(new_env, &current_context)?
+            };
+
+            if object_to_bool(&evaluated)? {
+                Ok((new_env, item))
+            } else {
+                Ok((new_env, Object::Nothing))
+            }
+        })
     }
 }
 

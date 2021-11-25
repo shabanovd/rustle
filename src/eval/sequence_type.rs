@@ -3,7 +3,12 @@ use crate::values::*;
 use crate::eval::expression::{NodeTest, Expression};
 use crate::tree::Reference;
 use crate::namespaces::{Namespace, SCHEMA};
+use std::collections::HashMap;
+use bigdecimal::Zero;
+use nom::bytes::complete::is_a;
+use crate::parser::errors::ErrorCode;
 
+pub const XS_ANY_SIMPLE_TYPE: QN = QN::full("xs", "anySimpleType", SCHEMA.uri);
 pub const XS_ANY_ATOMIC_TYPE: QN = QN::full("xs", "anyAtomicType", SCHEMA.uri);
 pub const XS_STRING: QN = QN::full("xs", "string", SCHEMA.uri);
 pub const XS_BOOLEAN: QN = QN::full("xs", "boolean", SCHEMA.uri);
@@ -34,7 +39,7 @@ pub const XS_DATE: QN = QN::full("xs", "date", SCHEMA.uri);
 
 pub const XS_G_YEAR_MONTH: QN = QN::full("xs", "gYearMonth", SCHEMA.uri);
 pub const XS_G_YEAR: QN = QN::full("xs", "gYear", SCHEMA.uri);
-pub const XS_G_MONTH_DATE: QN = QN::full("xs", "gMonthDay", SCHEMA.uri);
+pub const XS_G_MONTH_DAY: QN = QN::full("xs", "gMonthDay", SCHEMA.uri);
 pub const XS_G_DAY: QN = QN::full("xs", "gDay", SCHEMA.uri);
 pub const XS_G_MONTH: QN = QN::full("xs", "gMonth", SCHEMA.uri);
 
@@ -51,13 +56,96 @@ pub const XS_LANGUAGE: QN = QN::full("xs", "language", SCHEMA.uri);
 pub const XS_NMTOKEN: QN = QN::full("xs", "NMTOKEN", SCHEMA.uri);
 pub const XS_NAME: QN = QN::full("xs", "Name", SCHEMA.uri);
 pub const XS_NCNAME: QN = QN::full("xs", "NCName", SCHEMA.uri);
+pub const XS_NOTATION: QN = QN::full("xs", "NOTATION", SCHEMA.uri);
 
 pub const XS_DURATION: QN = QN::full("xs", "duration", SCHEMA.uri);
 pub const XS_YEAR_MONTH_DURATION: QN = QN::full("xs", "yearMonthDuration", SCHEMA.uri);
 pub const XS_DAY_TIME_DURATION: QN = QN::full("xs", "dayTimeDuration", SCHEMA.uri);
 pub const XS_DATE_TIME_STAMP: QN = QN::full("xs", "dateTimeStamp", SCHEMA.uri);
 
+pub const XS_UNTYPED: QN = QN::full("xs", "untyped", SCHEMA.uri);
 pub const XS_UNTYPED_ATOMIC: QN = QN::full("xs", "untypedAtomic", SCHEMA.uri);
+
+lazy_static! {
+    pub static ref QNameToTypes: HashMap<QNameResolved, Types> = {
+        let mut map: HashMap<QNameResolved, Types> = HashMap::new();
+
+        for (qn, t) in [
+            (XS_UNTYPED_ATOMIC, Types::Untyped),
+            (XS_STRING, Types::String),
+            (XS_NORMALIZED_STRING, Types::NormalizedString),
+
+            (XS_BOOLEAN, Types::Boolean),
+
+            (XS_ANY_URI, Types::AnyURI),
+
+            (XS_NUMERIC, Types::Numeric),
+            (XS_INTEGER, Types::Integer),
+            (XS_DECIMAL, Types::Decimal),
+            (XS_FLOAT, Types::Float),
+            (XS_DOUBLE, Types::Double),
+
+            (XS_NON_POSITIVE_INTEGER, Types::Integer),
+            (XS_NEGATIVE_INTEGER, Types::Integer), // TODO negativeInteger,
+            (XS_LONG, Types::Integer), // TODO long,
+            (XS_INT, Types::Integer), // TODO int,
+            (XS_SHORT, Types::Integer), // TODO short,
+            (XS_BYTE, Types::Integer), // TODO byte,
+
+            (XS_NON_NEGATIVE_INTEGER, Types::Integer), // TODO nonNegativeInteger,
+            (XS_UNSIGNED_LONG, Types::Integer), // TODO unsignedLong,
+            (XS_UNSIGNED_INT, Types::Integer), // TODO unsignedInt,
+            (XS_UNSIGNED_SHORT, Types::Integer), // TODO unsignedShort,
+            (XS_UNSIGNED_BYTE, Types::Integer), // TODO unsignedByte,
+
+            (XS_POSITIVE_INTEGER, Types::Integer), // TODO positiveInteger,
+
+            (XS_DATE_TIME, Types::DateTime),
+            (XS_DATE_TIME_STAMP, Types::DateTimeStamp),
+
+            (XS_DATE, Types::Date),
+            (XS_TIME, Types::Time),
+
+            (XS_DURATION, Types::Duration),
+            (XS_YEAR_MONTH_DURATION, Types::YearMonthDuration),
+            (XS_DAY_TIME_DURATION, Types::DayTimeDuration),
+
+            (XS_G_YEAR_MONTH, Types::GYearMonth),
+            (XS_G_YEAR, Types::GYear),
+            (XS_G_MONTH_DAY, Types::GMonthDay),
+            (XS_G_DAY, Types::GDay),
+            (XS_G_MONTH, Types::GMonth),
+
+            (XS_NAME, Types::Name),
+            (XS_NCNAME, Types::NCName),
+            (XS_QNAME, Types::QName),
+
+            (XS_TOKEN, Types::Token),
+            (XS_LANGUAGE, Types::Language),
+            (XS_NMTOKEN, Types::NMTOKEN),
+
+            // TODO (XS_ID, Types::ID),
+            // TODO (XS_IDREF, Types::IDREF),
+            // TODO (XS_ENTITY, Types::ENTITY),
+
+            (XS_BASE64_BINARY, Types::Base64Binary),
+            (XS_HEX_BINARY, Types::HexBinary),
+
+            // TODO (XS_NOTATION, Types::NOTATION),
+        ] {
+            map.insert(qn.into(), t);
+        }
+
+        map
+    };
+}
+
+pub(crate) fn FN_ARRAY() -> (Vec<SequenceType>, SequenceType) {
+    (
+        [SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_INTEGER.into()))].to_vec(),
+        SequenceType::zero_or_more(ItemType::Item)
+    )
+}
 
 #[derive(Debug, Clone)]
 pub enum ItemType {
@@ -346,66 +434,303 @@ impl SequenceType {
         todo!()
     }
 
+    // https://www.w3.org/TR/xpath-functions-31/#casting-from-primitive-to-primitive
     pub fn is_castable(&self, env: &Environment, obj: &Object) -> Result<bool, ErrorInfo> {
-        println!("is_castable:\n st: {:?}\n ob: {:?}", self, obj);
+        self.is_castable_internal(env, obj, false, false)
+    }
+
+    fn is_castable_internal(&self, env: &Environment, obj: &Object, type_only: bool, is_array: bool) -> Result<bool, ErrorInfo> {
+        println!("is_castable:\n st: {:#?}\n ob: {:#?}", self, obj);
         let result = match &self.item_type {
             ItemType::Item => {
                 match obj {
+                    Object::Nothing => panic!("raise error?"),
+                    Object::Empty => {
+                        if type_only {
+                            todo!()
+                        } else {
+                            match self.occurrence_indicator {
+                                OccurrenceIndicator::OneOrMore |
+                                OccurrenceIndicator::ExactlyOne => false,
+                                OccurrenceIndicator::ZeroOrOne |
+                                OccurrenceIndicator::ZeroOrMore => true,
+                            }
+                        }
+                    }
+                    Object::Range { min, max } => {
+                        if type_only {
+                            todo!()
+                        } else {
+                            match self.occurrence_indicator {
+                                OccurrenceIndicator::ExactlyOne |
+                                OccurrenceIndicator::ZeroOrOne => min == max,
+                                OccurrenceIndicator::ZeroOrMore |
+                                OccurrenceIndicator::OneOrMore => true,
+                            }
+                        }
+                    }
                     Object::Atomic(_) |
                     Object::Node(_) |
-                    Object::Sequence(_) |
                     Object::Array(_) |
                     Object::Map(_) => true,
-                    _ => false
+                    Object::Sequence(items) => {
+                        if type_only {
+                            todo!()
+                        } else {
+                            match self.occurrence_indicator {
+                                OccurrenceIndicator::ExactlyOne => items.len() == 1,
+                                OccurrenceIndicator::ZeroOrOne => items.len() >= 0 && items.len() <= 1,
+                                OccurrenceIndicator::ZeroOrMore => items.len() >= 0,
+                                OccurrenceIndicator::OneOrMore => items.len() >= 1
+                            }
+                        }
+                    }
+                    Object::Error { .. } => todo!(),
+                    Object::CharRef { .. } => todo!(),
+                    Object::EntityRef(_) => todo!(),
+                    Object::Function { .. } => todo!(),
+                    Object::FunctionRef { .. } => todo!(),
+                    Object::Return(_) => todo!(),
                 }
             }
-            ItemType::AtomicOrUnionType(name) => {
-                let name = env.namespaces.resolve(name);
-                if name.is_same_qn(&XS_ANY_ATOMIC_TYPE) {
+            ItemType::AtomicOrUnionType(original_qname) => {
+                let name = env.namespaces.resolve(original_qname);
+                if name.is_same_qn(&XS_NOTATION) || name.is_same_qn(&XS_ANY_ATOMIC_TYPE) || name.is_same_qn(&XS_ANY_SIMPLE_TYPE) {
+                    return Err((ErrorCode::XPST0080, String::from("TODO")));
+                } else if name.is_same_qn(&XS_ANY_ATOMIC_TYPE) {
                     match obj {
                         Object::Empty => {
-                            self.occurrence_indicator == OccurrenceIndicator::ZeroOrMore
-                                || self.occurrence_indicator == OccurrenceIndicator::ZeroOrOne
+                            if is_array {
+                                true
+                            } else if type_only {
+                                todo!()
+                            } else {
+                                match self.occurrence_indicator {
+                                    OccurrenceIndicator::OneOrMore |
+                                    OccurrenceIndicator::ExactlyOne => false,
+                                    OccurrenceIndicator::ZeroOrOne |
+                                    OccurrenceIndicator::ZeroOrMore => true,
+                                }
+                            }
                         },
                         Object::Range { .. } |
                         Object::Atomic(_) => true,
-                        _ => false
+                        _ => todo!("{:?}", obj),
                     }
                 } else {
                     match obj {
                         Object::Empty => {
-                            self.occurrence_indicator == OccurrenceIndicator::ZeroOrMore
-                                || self.occurrence_indicator == OccurrenceIndicator::ZeroOrOne
+                            if is_array {
+                                true
+                            } else if type_only {
+                                todo!()
+                            } else {
+                                match self.occurrence_indicator {
+                                    OccurrenceIndicator::OneOrMore |
+                                    OccurrenceIndicator::ExactlyOne => false,
+                                    OccurrenceIndicator::ZeroOrOne |
+                                    OccurrenceIndicator::ZeroOrMore => true,
+                                }
+                            }
                         },
-                        Object::Atomic(Type::String(..)) => name == XS_STRING,
-                        Object::Atomic(Type::NormalizedString(..)) => name == XS_STRING,
-                        Object::Atomic(Type::Integer(..)) => name == XS_INTEGER || name == XS_DECIMAL || name == XS_FLOAT || name == XS_DOUBLE,
-                        Object::Atomic(Type::Decimal { .. }) => name == XS_DECIMAL || name == XS_FLOAT || name == XS_DOUBLE,
-                        Object::Atomic(Type::Float { .. }) => name == XS_FLOAT || name == XS_DOUBLE,
-                        Object::Atomic(Type::Double { .. }) => name == XS_DOUBLE,
-                        Object::Atomic(Type::Untyped(..)) => name == XS_UNTYPED_ATOMIC,
-                        Object::Sequence(items) => {
-                            if self.occurrence_indicator == OccurrenceIndicator::ExactlyOne {
+                        Object::Atomic(t) => {
+                            match t {
+                                Type::Untyped(str) |
+                                Type::String(str) |
+                                Type::NormalizedString(str) => {
+                                    if let Some(types) = QNameToTypes.get(&name) {
+                                        match types {
+                                            Types::Untyped |
+                                            Types::NormalizedString |
+                                            Types::String |
+                                            Types::AnyURI |
+                                            Types::QName |
+                                            Types::Boolean |
+                                            Types::Integer |
+                                            Types::Decimal |
+                                            Types::Float |
+                                            Types::Double |
+                                            Types::DateTime |
+                                            Types::DateTimeStamp |
+                                            Types::Date |
+                                            Types::Time |
+                                            Types::Duration |
+                                            Types::YearMonthDuration |
+                                            Types::DayTimeDuration |
+                                            Types::GYearMonth |
+                                            Types::GYear |
+                                            Types::GMonthDay |
+                                            Types::GDay |
+                                            Types::GMonth => {
+                                                match t.convert(types.clone()) {
+                                                    Ok(_) => true,
+                                                    Err(_) => false
+                                                }
+                                            }
+                                            Types::Base64Binary => {
+                                                str.chars().all(
+                                                    |c| (c >= 'A' && c <= 'Z')
+                                                        || (c >= 'a' && c <= 'z')
+                                                        || (c >= '0' && c <= '9')
+                                                        || c == '+'
+                                                        || c == '/'
+                                                )
+                                            }
+                                            Types::HexBinary => {
+                                                str.chars().all(
+                                                    |c| (c >= 'A' && c <= 'F')
+                                                        || (c >= 'a' && c <= 'f')
+                                                        || (c >= '0' && c <= '9')
+                                                ) && str.len() % 2 == 0
+                                            }
+                                            _ => todo!("{:?} {:?}", types, obj),
+                                        }
+                                    } else {
+                                        todo!("handle custom types")
+                                    }
+                                }
+                                Type::Integer(_) =>
+                                    name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
+                                Type::Decimal { .. } =>
+                                    name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
+                                Type::Float(num) =>
+                                    name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_DOUBLE || name == XS_FLOAT
+                                        || ((num.is_zero() || num.is_normal()) && (name == XS_DECIMAL || name == XS_INTEGER)),
+                                Type::Double(num) =>
+                                    name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_DOUBLE || name == XS_FLOAT
+                                        || ((num.is_zero() || num.is_normal()) && (name == XS_DECIMAL || name == XS_INTEGER)),
+                                Type::Duration { .. } => {
+                                    name == XS_UNTYPED_ATOMIC || name == XS_STRING
+                                        || name == XS_DURATION || name == XS_YEAR_MONTH_DURATION || name == XS_DAY_TIME_DURATION
+                                }
+                                Type::YearMonthDuration { .. } => {
+                                    name == XS_UNTYPED_ATOMIC || name == XS_STRING
+                                        || name == XS_DURATION || name == XS_YEAR_MONTH_DURATION || name == XS_DAY_TIME_DURATION
+                                }
+                                Type::DayTimeDuration { .. } => {
+                                    name == XS_UNTYPED_ATOMIC || name == XS_STRING
+                                        || name == XS_DURATION || name == XS_YEAR_MONTH_DURATION || name == XS_DAY_TIME_DURATION
+                                }
+                                Type::GYearMonth { .. } => {
+                                    name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_G_YEAR_MONTH
+                                }
+                                Type::GYear { .. } => {
+                                    name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_G_YEAR
+                                }
+                                Type::GMonthDay { .. } => {
+                                    name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_G_MONTH_DAY
+                                }
+                                Type::GDay { .. } => {
+                                    name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_G_DAY
+                                }
+                                Type::GMonth { .. } => {
+                                    name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_G_MONTH
+                                }
+                                Type::DateTime { .. } => {
+                                    name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_DATE_TIME
+                                        || name == XS_TIME || name == XS_DATE
+                                        || name == XS_G_YEAR_MONTH || name == XS_G_YEAR || name == XS_G_MONTH_DAY
+                                        || name == XS_G_DAY || name == XS_G_MONTH
+                                }
+                                Type::Time { .. } => {
+                                    name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_TIME
+                                }
+                                Type::Date { .. } => {
+                                    name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_DATE_TIME
+                                        || name == XS_DATE
+                                        || name == XS_G_YEAR_MONTH || name == XS_G_YEAR || name == XS_G_MONTH_DAY
+                                        || name == XS_G_DAY || name == XS_G_MONTH
+                                }
+                                Type::Boolean(_) => {
+                                    name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_DOUBLE || name == XS_FLOAT
+                                        || name == XS_DECIMAL || name == XS_INTEGER
+                                }
+                                Type::Base64Binary(_) |
+                                Type::HexBinary(_) => {
+                                    name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BASE64_BINARY || name == XS_HEX_BINARY
+                                }
+                                Type::AnyURI(_) => {
+                                    name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_ANY_URI
+                                }
+                                Type::QName { .. } => {
+                                    name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_QNAME
+                                }
+                                _ => todo!("{:?}", obj)
+                            }
+                        },
+                        Object::Range { .. } => {
+                            if match self.occurrence_indicator {
+                                OccurrenceIndicator::ZeroOrOne |
+                                OccurrenceIndicator::ExactlyOne => false,
+                                OccurrenceIndicator::OneOrMore |
+                                OccurrenceIndicator::ZeroOrMore => true,
+                            } {
+                                name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                    || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER
+                            } else {
                                 false
+                            }
+                        }
+                        Object::Sequence(items) => {
+                            if type_only || match self.occurrence_indicator {
+                                OccurrenceIndicator::ZeroOrOne |
+                                OccurrenceIndicator::ExactlyOne => false,
+                                OccurrenceIndicator::OneOrMore |
+                                OccurrenceIndicator::ZeroOrMore => true,
+                            } {
+                                for item in items {
+                                    if !self.is_castable_internal(env, item, false, false)? {
+                                        return Ok(false);
+                                    }
+                                }
+                                true
+                            } else {
+                                false
+                            }
+                        },
+                        Object::Array(items) => {
+                            if type_only {
+                                todo!()
                             } else {
                                 for item in items {
-                                    if !self.is_castable(env, item)? {
+                                    if !self.is_castable_internal(env, item, false, true)? {
                                         return Ok(false);
                                     }
                                 }
                                 true
                             }
-                        },
-                        _ => panic!("TODO: {:?}", obj)
+                        }
+                        Object::Map(items) => {
+                            return Err((ErrorCode::FOTY0013, String::from("TODO")));
+                        }
+                        Object::Node(rf) => {
+                            let str = match rf.to_typed_value() {
+                                Ok(str) => str,
+                                Err(msg) => todo!("{}", msg)
+                            };
+                            self.is_castable_internal(env, &Object::Atomic(Type::Untyped(str)), false, false)?
+                        }
+                        _ => todo!("{:?}", obj),
                     }
                 }
             },
             ItemType::Map(st) => {
                 match obj {
                     Object::Map(items) => {
-                        if let Some((k_it, v_st)) = st {
+                        if let Some((k_st, v_st)) = st {
                             for (k, v) in items {
-                                if !v_st.is_castable(env, v)? {
+                                if k_st.occurrence_indicator == OccurrenceIndicator::ExactlyOne
+                                    // TODO: optimize!!!
+                                    && !k_st.is_castable_internal(env,&Object::Atomic(k.clone()), true, false)?
+                                {
+                                    return Ok(false);
+                                }
+                                if !v_st.is_castable_internal(env, v, false, false)? {
                                     return Ok(false);
                                 }
                             }
@@ -420,15 +745,34 @@ impl SequenceType {
             ItemType::Array(st) => {
                 match obj {
                     Object::Array(items) => {
-                        if let Some(st) = st {
+                        if self.occurrence_indicator == OccurrenceIndicator::ExactlyOne {
+                            if let Some(st) = st {
+                                for item in items {
+                                    if !st.is_castable_internal(env, item, false, true)? {
+                                        return Ok(false);
+                                    }
+                                }
+                            }
+                            true
+                        } else {
+                            false
+                        }
+                    },
+                    Object::Sequence(items) => {
+                        if type_only || match self.occurrence_indicator {
+                            OccurrenceIndicator::ExactlyOne => items.len() == 1,
+                            OccurrenceIndicator::ZeroOrOne => items.len() >= 0 && items.len() <= 1,
+                            OccurrenceIndicator::ZeroOrMore => items.len() >= 0,
+                            OccurrenceIndicator::OneOrMore => items.len() >= 1,
+                        } {
                             for item in items {
-                                if !st.is_castable(env, item)? {
+                                if !self.is_castable_internal(env, item, true, false)? {
                                     return Ok(false);
                                 }
                             }
                             true
                         } else {
-                            true
+                            false
                         }
                     }
                     _ => false
@@ -437,7 +781,7 @@ impl SequenceType {
             ItemType::Function { args, st } => {
                 match obj {
                     Object::FunctionRef { name, arity } => {
-                        if let Some(((fn_args, fn_st), body )) = env.get_function(name, *arity) {
+                        if let Some(((fn_args, fn_st), body)) = env.get_function(name, *arity) {
                             println!("FN:\n {:?}\n {:?}", fn_args, fn_st);
                             if let Some(st) = st {
                                 if st.is_not_same(env, &fn_st) {

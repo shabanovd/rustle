@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
+use std::fmt::{Write, Debug, Formatter};
 use crate::values::{QName, QNameResolved};
 use crate::fns::Param;
 use crate::parser::op::{Representation};
@@ -9,12 +10,11 @@ use ordered_float::OrderedFloat;
 use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use crate::eval::helpers::sort_and_dedup;
 use crate::eval::expression::Expression;
-use std::fmt::{Debug, Formatter};
 use chrono::{Date, DateTime, FixedOffset, Local, TimeZone};
 use crate::eval::{Environment, ErrorInfo};
 use crate::eval::comparison::ValueOrdering;
 use crate::eval::sequence_type::SequenceType;
-use crate::parser::parse_duration::{parse_day_time_duration, parse_year_month_duration};
+use crate::parser::parse_duration::*;
 use crate::tree::Reference;
 use crate::values::time::Time;
 
@@ -64,7 +64,7 @@ use crate::values::time::Time;
 // xs:QName
 // xs:NOTATION
 
-#[derive(Debug, Eq, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Eq, PartialEq, PartialOrd)]
 pub enum Types {
     Untyped = 0,
     String = 1,
@@ -75,25 +75,25 @@ pub enum Types {
     AnyURI = 20,
 
     Numeric = 100,
-    Integer = 101,
-    Decimal = 102,
-    Float   = 103,
-    Double  = 104,
+    Integer = 110,
+    Decimal = 140,
+    Float   = 150,
+    Double  = 160,
 
-    // nonPositiveInteger,
-    // negativeInteger,
-    // long,
-    // int,
-    // short,
-    // byte,
-    //
-    // nonNegativeInteger,
-    // unsignedLong,
-    // unsignedInt,
-    // unsignedShort,
-    // unsignedByte,
-    //
-    // positiveInteger,
+    NonPositiveInteger = 111,
+    NegativeInteger = 112,
+    Long = 120,
+    Int = 121,
+    Short = 122,
+    Byte = 123,
+
+    NonNegativeInteger = 113,
+    UnsignedLong = 130,
+    UnsignedInt = 131,
+    UnsignedShort = 132,
+    UnsignedByte = 133,
+
+    PositiveInteger = 114,
 
     DateTime = 201,
     DateTimeStamp = 202,
@@ -169,11 +169,11 @@ pub enum Type {
     YearMonthDuration  { positive: bool, years: u32, months: u32 },
     DayTimeDuration { positive: bool, days: u32, hours: u32, minutes: u32, seconds: u32, microseconds: u32 },
 
-    GYearMonth(),
-    GYear(),
-    GMonthDay(),
-    GDay(),
-    GMonth(),
+    GYearMonth { year: i32, month: u32, tz_m: i32 },
+    GYear { year: i32, tz_m: i32},
+    GMonthDay { month: i32, day: u32, tz_m: i32 },
+    GDay { day: i32, tz_m: i32 },
+    GMonth { month: i32, tz_m: i32 },
 
     Token(String),
     Language(String),
@@ -189,8 +189,8 @@ pub enum Type {
 
     Boolean(bool),
 
-    Base64Binary(String),
-    HexBinary(String),
+    Base64Binary(Vec<u8>),
+    HexBinary(Vec<u8>),
 
     NOTATION(),
 }
@@ -229,11 +229,11 @@ impl Type {
             Type::YearMonthDuration { .. } => Types::YearMonthDuration,
             Type::DayTimeDuration { .. } => Types::DayTimeDuration,
 
-            Type::GYearMonth() => Types::GYearMonth,
-            Type::GYear() => Types::GYear,
-            Type::GMonthDay() => Types::GMonthDay,
-            Type::GDay() => Types::GDay,
-            Type::GMonth() => Types::GMonth,
+            Type::GYearMonth { .. } => Types::GYearMonth,
+            Type::GYear { .. } => Types::GYear,
+            Type::GMonthDay { .. } => Types::GMonthDay,
+            Type::GDay { .. } => Types::GDay,
+            Type::GMonth { .. } => Types::GMonth,
 
             Type::Token(_) => Types::Token,
             Type::Language(_) => Types::Language,
@@ -298,28 +298,77 @@ impl Type {
                     Types::Decimal => crate::values::string_to::decimal(str),
                     Types::Float => crate::values::string_to::float(str, false),
                     Types::Double => crate::values::string_to::double(str, false),
+                    Types::DateTime => {
+                        match parse_date_time_complete(str) {
+                            Ok((_, t)) => Ok(t),
+                            Err(_) => Err((ErrorCode::FORG0001, format!("can't convert to DateTime {:?}", str)))
+                        }
+                    }
+                    Types::DateTimeStamp => {
+                        todo!()
+                        // match parse_date_time_stamp_complete(str) {
+                        //     Ok((_, t)) => Ok(t),
+                        //     Err(_) => Err((ErrorCode::FORG0001, format!("can't convert to DateTime {:?}", str)))
+                        // }
+                    }
+                    Types::Date => {
+                        match parse_date_complete(str) {
+                            Ok((_, t)) => Ok(t),
+                            Err(_) => Err((ErrorCode::FORG0001, format!("can't convert to Date {:?}", str)))
+                        }
+                    }
+                    Types::Time => {
+                        match parse_time_complete(str) {
+                            Ok((_, t)) => Ok(t),
+                            Err(_) => Err((ErrorCode::FORG0001, format!("can't convert to Time {:?}", str)))
+                        }
+                    }
+                    Types::Duration => {
+                        match parse_duration_complete(str) {
+                            Ok((_, t)) => Ok(t),
+                            Err(_) => Err((ErrorCode::FORG0001, format!("can't convert to Duration {:?}", str)))
+                        }
+                    }
                     Types::DayTimeDuration => {
-                        match parse_day_time_duration(str) {
-                            Ok((rest, t)) => {
-                                if rest.is_empty() {
-                                    Ok(t)
-                                } else {
-                                    Err((ErrorCode::FORG0001, format!("can't convert to DayTimeDuration {:?}", str)))
-                                }
-                            },
+                        match parse_day_time_duration_complete(str) {
+                            Ok((_, t)) => Ok(t),
                             Err(_) => Err((ErrorCode::FORG0001, format!("can't convert to DayTimeDuration {:?}", str)))
                         }
                     }
                     Types::YearMonthDuration => {
-                        match parse_year_month_duration(str) {
-                            Ok((rest, t)) => {
-                                if rest.is_empty() {
-                                    Ok(t)
-                                } else {
-                                    Err((ErrorCode::FORG0001, format!("can't convert to DayTimeDuration {:?}", str)))
-                                }
-                            },
-                            Err(_) => Err((ErrorCode::FORG0001, format!("can't convert to DayTimeDuration {:?}", str)))
+                        match parse_year_month_duration_complete(str) {
+                            Ok((_, t)) => Ok(t),
+                            Err(_) => Err((ErrorCode::FORG0001, format!("can't convert to YearMonthDuration {:?}", str)))
+                        }
+                    }
+                    Types::GYearMonth => {
+                        match string_to_year_month(str) {
+                            Ok(t) => Ok(t),
+                            Err(msg) => Err((ErrorCode::FORG0001, msg))
+                        }
+                    }
+                    Types::GYear => {
+                        match string_to_year(str) {
+                            Ok(t) => Ok(t),
+                            Err(msg) => Err((ErrorCode::FORG0001, msg))
+                        }
+                    }
+                    Types::GMonthDay => {
+                        match string_to_month_day(str) {
+                            Ok(t) => Ok(t),
+                            Err(msg) => Err((ErrorCode::FORG0001, msg))
+                        }
+                    }
+                    Types::GDay => {
+                        match string_to_day(str) {
+                            Ok(t) => Ok(t),
+                            Err(msg) => Err((ErrorCode::FORG0001, msg))
+                        }
+                    }
+                    Types::GMonth => {
+                        match string_to_month(str) {
+                            Ok(t) => Ok(t),
+                            Err(msg) => Err((ErrorCode::FORG0001, msg))
                         }
                     }
                     _ => panic!("{:?} from {:?}", to, self) // Err((ErrorCode::XPTY0004, String::from("TODO")))
@@ -339,11 +388,11 @@ impl Type {
             Type::YearMonthDuration { .. } => panic!("{:?} from {:?}", to, self),
             Type::DayTimeDuration { .. } => panic!("{:?} from {:?}", to, self),
 
-            Type::GYearMonth() => panic!("{:?} from {:?}", to, self),
-            Type::GYear() => panic!("{:?} from {:?}", to, self),
-            Type::GMonthDay() => panic!("{:?} from {:?}", to, self),
-            Type::GDay() => panic!("{:?} from {:?}", to, self),
-            Type::GMonth() => panic!("{:?} from {:?}", to, self),
+            Type::GYearMonth { .. } => panic!("{:?} from {:?}", to, self),
+            Type::GYear { .. } => panic!("{:?} from {:?}", to, self),
+            Type::GMonthDay { .. } => panic!("{:?} from {:?}", to, self),
+            Type::GDay { .. } => panic!("{:?} from {:?}", to, self),
+            Type::GMonth { .. } => panic!("{:?} from {:?}", to, self),
 
             Type::Token(_) => panic!("{:?} from {:?}", to, self),
             Type::Language(_) => panic!("{:?} from {:?}", to, self),
@@ -491,11 +540,11 @@ impl Type {
             Type::Duration { .. } => Types::Duration,
             Type::YearMonthDuration { .. } => Types::YearMonthDuration,
             Type::DayTimeDuration { .. } => Types::DayTimeDuration,
-            Type::GYearMonth() => Types::GYearMonth,
-            Type::GYear() => Types::GYear,
-            Type::GMonthDay() => Types::GMonthDay,
-            Type::GDay() => Types::GDay,
-            Type::GMonth() => Types::GMonth,
+            Type::GYearMonth { .. } => Types::GYearMonth,
+            Type::GYear { .. } => Types::GYear,
+            Type::GMonthDay { .. } => Types::GMonthDay,
+            Type::GDay { .. } => Types::GDay,
+            Type::GMonth { .. } => Types::GMonth,
             Type::Token(_) => Types::Token,
             Type::Language(_) => Types::Language,
             Type::NMTOKEN(_) => Types::NMTOKEN,
@@ -647,6 +696,102 @@ pub fn string_to_decimal(string: &String) -> Result<BigDecimal, ErrorCode> {
         Ok(num) => Ok(num),
         Err(..) => Err(ErrorCode::FORG0001)
     }
+}
+
+pub fn string_to_binary_hex(string: &String) -> Result<Vec<u8>, ErrorCode> {
+    if string.len() % 2 != 0 {
+        Err(ErrorCode::FORG0001)
+    } else {
+        let result = (0..string.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&string[i..i + 2], 16).map_err(|e| ErrorCode::FORG0001))
+            .collect();
+
+        match result {
+            Ok(binary) => Ok(binary),
+            Err(code) => Err(code)
+        }
+    }
+}
+
+const HEX_BYTES: &str = "000102030405060708090a0b0c0d0e0f\
+101112131415161718191a1b1c1d1e1f\
+202122232425262728292a2b2c2d2e2f\
+303132333435363738393a3b3c3d3e3f\
+404142434445464748494a4b4c4d4e4f\
+505152535455565758595a5b5c5d5e5f\
+606162636465666768696a6b6c6d6e6f\
+707172737475767778797a7b7c7d7e7f\
+808182838485868788898a8b8c8d8e8f\
+909192939495969798999a9b9c9d9e9f\
+a0a1a2a3a4a5a6a7a8a9aaabacadaeaf\
+b0b1b2b3b4b5b6b7b8b9babbbcbdbebf\
+c0c1c2c3c4c5c6c7c8c9cacbcccdcecf\
+d0d1d2d3d4d5d6d7d8d9dadbdcdddedf\
+e0e1e2e3e4e5e6e7e8e9eaebecedeeef\
+f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff";
+
+pub fn binary_hex_to_string(binary: &Vec<u8>) -> Result<String, ErrorCode> {
+    let mut string = String::with_capacity(binary.len() * 2);
+    for &b in binary {
+        // write!(&mut string, "{:02x}", b).unwrap();
+        let i = 2 * b as usize;
+        if let Some(str) = HEX_BYTES.get(i..i + 2) {
+            string.push_str(str);
+        } else {
+            return Err(ErrorCode::TODO)
+        }
+    }
+    Ok(string)
+}
+
+const UPPERCASEOFFSET: i8 = 65;
+const LOWERCASEOFFSET: i8 = 71;
+const DIGITOFFSET: i8 = -4;
+
+pub fn string_to_binary_base64(string: &String) -> Result<Vec<u8>, ErrorCode> {
+    let mut binary = Vec::with_capacity(string.len());
+    for ch in string.chars() {
+        let ch = ch as i8;
+        let b = match ch {
+            // A-Z
+            65..=90 => ch - UPPERCASEOFFSET,
+            // a-z
+            97..=122 => ch - LOWERCASEOFFSET,
+            // 0-9
+            48..=57 => ch - DIGITOFFSET,
+            // +
+            43 => 62,
+            // /
+            47 => 63,
+            _ => return Err(ErrorCode::FORG0001),
+        } as u8;
+        binary.push(b);
+    };
+
+    Ok(binary)
+}
+
+pub fn binary_base64_string(binary: &Vec<u8>) -> Result<String, ErrorCode> {
+    let mut string = String::with_capacity(binary.len());
+    for b in binary {
+        let b = *b as i8;
+        let ch = match b {
+            // A-Z
+            0..=25 => b + UPPERCASEOFFSET,
+            // a-z
+            26..=51 => b + LOWERCASEOFFSET,
+            // 0-9
+            52..=61 => b + DIGITOFFSET,
+            // +
+            62 => 43,
+            // /
+            63 => 47,
+            _ => return Err(ErrorCode::TODO),
+        } as u8;
+        string.push(ch as char);
+    }
+    Ok(string)
 }
 
 #[derive(Clone)]

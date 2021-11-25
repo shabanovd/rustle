@@ -15,17 +15,26 @@ pub(crate) fn relax(env: Box<Environment>, items: Vec<Object>) -> EvalResult {
 }
 
 pub(crate) fn process_items<F>(env: Box<Environment>, object: Object, op: F) -> EvalResult
-    where F: Fn(Box<Environment>, Object) -> EvalResult
+    where F: Fn(Box<Environment>, Object, usize, Option<usize>) -> EvalResult
 {
     let mut current_env = env;
     let mut result = vec![];
 
     let items = object_owned_to_sequence(object);
+
+    let last = Some(items.len());
+    let mut position = 0;
+
     for item in items {
-        let (new_env, object) = op(current_env, item)?;
+        position += 1;
+
+        let (new_env, object) = op(current_env, item, position, last)?;
         current_env = new_env;
 
-        result.push(object);
+        match object {
+            Object::Nothing => {},
+            _ => result.push(object)
+        }
     }
 
     relax(current_env, result)

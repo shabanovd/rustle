@@ -1,3 +1,4 @@
+use bigdecimal::{BigDecimal, Zero};
 use crate::eval::ErrorInfo;
 use crate::parser::errors::ErrorCode;
 use crate::values::Type;
@@ -11,8 +12,15 @@ pub(crate) fn integer(str: &str) -> Result<Type, ErrorInfo> {
 }
 
 pub(crate) fn decimal(str: &str) -> Result<Type, ErrorInfo> {
-    match str.parse() {
-        Ok(num) => Ok(Type::Decimal(num)),
+    match str.parse::<BigDecimal>() {
+        Ok(num) => {
+            // workaround -0 and 'e|E' case
+            if str.chars().any(|c| c == 'e' || c == 'E') || (str.starts_with("-") && num.is_zero()) {
+                Err((ErrorCode::FORG0001, format!("can't convert to decimal {:?}", str)))
+            } else {
+                Ok(Type::Decimal(num))
+            }
+        },
         Err(_) => Err((ErrorCode::FORG0001, format!("can't convert to decimal {:?}", str)))
     }
 }
