@@ -2,19 +2,24 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::{Write, Debug, Formatter};
+use base64::DecodeError;
 use crate::values::{QName, QNameResolved};
 use crate::fns::Param;
 use crate::parser::op::{Representation};
 use crate::parser::errors::ErrorCode;
 use ordered_float::OrderedFloat;
-use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
+use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive, Zero};
+use bigdecimal::num_traits::real::Real;
 use crate::eval::helpers::sort_and_dedup;
 use crate::eval::expression::Expression;
-use chrono::{Date, DateTime, FixedOffset, Local, TimeZone};
+use chrono::{Date, Datelike, DateTime, FixedOffset, Local, Offset, TimeZone};
+use hex::FromHexError;
 use crate::eval::{Environment, ErrorInfo};
 use crate::eval::comparison::ValueOrdering;
 use crate::eval::sequence_type::SequenceType;
 use crate::parser::parse_duration::*;
+use crate::serialization::object_to_string;
+use crate::serialization::to_string::*;
 use crate::tree::Reference;
 use crate::values::time::Time;
 
@@ -159,21 +164,21 @@ pub enum Type {
 
     // positiveInteger(),
 
-    DateTime(DateTime<FixedOffset>),
+    DateTime { dt: DateTime<FixedOffset>, offset: bool },
     DateTimeStamp(),
 
-    Date(Date<FixedOffset>),
-    Time(Time<FixedOffset>),
+    Date { date: Date<FixedOffset>, offset: bool },
+    Time { time: Time<FixedOffset>, offset: bool },
 
     Duration { positive: bool, years: u32, months: u32, days: u32, hours: u32, minutes: u32, seconds: u32, microseconds: u32 },
     YearMonthDuration  { positive: bool, years: u32, months: u32 },
     DayTimeDuration { positive: bool, days: u32, hours: u32, minutes: u32, seconds: u32, microseconds: u32 },
 
-    GYearMonth { year: i32, month: u32, tz_m: i32 },
-    GYear { year: i32, tz_m: i32},
-    GMonthDay { month: i32, day: u32, tz_m: i32 },
-    GDay { day: i32, tz_m: i32 },
-    GMonth { month: i32, tz_m: i32 },
+    GYearMonth { year: i32, month: u32, tz_m: Option<i32> },
+    GYear { year: i32, tz_m: Option<i32>},
+    GMonthDay { month: u32, day: u32, tz_m: Option<i32> },
+    GDay { day: u32, tz_m: Option<i32> },
+    GMonth { month: u32, tz_m: Option<i32> },
 
     Token(String),
     Language(String),
@@ -201,11 +206,11 @@ impl Type {
         let now = Local::now();
         let date = Date::from_utc(now.date().naive_utc(), TimeZone::from_offset(now.offset()));
 
-        Type::Date(date)
+        Type::Date { date, offset: true }
     }
 
     pub(crate) fn time_now() -> Type {
-        Type::Time(Time::now())
+        Type::Time { time: Time::now(), offset: true }
     }
 
     pub(crate) fn to_type(&self) -> Types {
@@ -221,10 +226,10 @@ impl Type {
             Type::Float(_) => Types::Float,
             Type::Double(_) => Types::Double,
 
-            Type::DateTime(_) => Types::DateTime,
+            Type::DateTime { .. } => Types::DateTime,
             Type::DateTimeStamp() => Types::DateTimeStamp,
-            Type::Date(_) => Types::Date,
-            Type::Time(_) => Types::Time,
+            Type::Date { .. } => Types::Date,
+            Type::Time { .. } => Types::Time,
             Type::Duration { .. } => Types::Duration,
             Type::YearMonthDuration { .. } => Types::YearMonthDuration,
             Type::DayTimeDuration { .. } => Types::DayTimeDuration,
@@ -259,8 +264,10 @@ impl Type {
         match self {
             Type::AnyURI(str) => {
                 match to {
+                    Types::Untyped => Ok(Type::Untyped(str.clone())),
                     Types::String => Ok(Type::String(str.clone())),
-                    _ => panic!("{:?} from {:?}", to, self)
+                    Types::AnyURI => Ok(Type::AnyURI(str.clone())),
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
                 }
             },
             Type::Untyped(str) |
@@ -371,28 +378,427 @@ impl Type {
                             Err(msg) => Err((ErrorCode::FORG0001, msg))
                         }
                     }
+                    Types::Base64Binary => {
+                        match string_to_binary_base64(str) {
+                            Ok(binary) => Ok(Type::Base64Binary(binary)),
+                            Err(code) => Err((code, String::from("TODO")))
+                        }
+                    }
+                    Types::HexBinary => {
+                        match string_to_binary_hex(str) {
+                            Ok(binary) => Ok(Type::HexBinary(binary)),
+                            Err(code) => Err((code, String::from("TODO")))
+                        }
+                    }
                     _ => panic!("{:?} from {:?}", to, self) // Err((ErrorCode::XPTY0004, String::from("TODO")))
                 }
             }
 
-            Type::Integer(_) => panic!("{:?} from {:?}", to, self),
-            Type::Decimal(_) => panic!("{:?} from {:?}", to, self),
-            Type::Float(_) => panic!("{:?} from {:?}", to, self),
-            Type::Double(_) => panic!("{:?} from {:?}", to, self),
+            Type::Integer(number) => {
+                match to {
+                    Types::Untyped => {
+                        let data = number.to_string();
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = number.to_string();
+                        Ok(Type::String(data))
+                    }
+                    Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
+                    Types::Integer => {
+                        if let Some(num) = number.to_i128() {
+                            Ok(Type::Integer(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::Decimal => {
+                        match BigDecimal::from_i128(*number) {
+                            Some(number) => Ok((Type::Decimal(number))),
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Float => {
+                        match number.to_f32() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Float(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Double => {
+                        match number.to_f64() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Double(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Type::Decimal(number) => {
+                match to {
+                    Types::Untyped => {
+                        let data = number.to_string();
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = number.to_string();
+                        Ok(Type::String(data))
+                    }
+                    Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
+                    Types::Integer => {
+                        if let Some(num) = number.to_i128() {
+                            Ok(Type::Integer(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::Decimal => Ok((Type::Decimal(number.clone()))),
+                    Types::Float => {
+                        match number.to_f32() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Float(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Double => {
+                        match number.to_f64() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Double(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Type::Float(number) => {
+                match to {
+                    Types::Untyped => {
+                        let data = float_to_string(number, false);
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = float_to_string(number, false);
+                        Ok(Type::String(data))
+                    }
+                    Types::Boolean => {
+                        let b = if number.is_nan() || number.is_zero() {
+                            false
+                        } else {
+                            true
+                        };
+                        Ok(Type::Boolean(b))
+                    }
+                    Types::Integer => {
+                        if let Some(num) = number.0.round().to_i128() {
+                            Ok((Type::Integer(num)))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::Decimal => {
+                        match BigDecimal::from_f32(number.into_inner()) {
+                            Some(number) => Ok((Type::Decimal(number))),
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Float => Ok(Type::Float(*number)),
+                    Types::Double => Ok(Type::Double(OrderedFloat(number.0 as f64))),
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Type::Double(number) => {
+                match to {
+                    Types::Untyped => {
+                        let data = double_to_string(number, true);
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = double_to_string(number, true);
+                        Ok(Type::String(data))
+                    }
+                    Types::Boolean => {
+                        let b = if number.is_nan() || number.is_zero() {
+                            false
+                        } else {
+                            true
+                        };
+                        Ok(Type::Boolean(b))
+                    }
+                    Types::Integer => {
+                        if let Some(num) = number.0.round().to_i128() {
+                            Ok((Type::Integer(num)))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::Decimal => {
+                        match BigDecimal::from_f64(number.into_inner()) {
+                            Some(number) => Ok((Type::Decimal(number))),
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Float => Ok(Type::Float(OrderedFloat(number.0 as f32))),
+                    Types::Double => Ok(Type::Double(*number)),
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
 
-            Type::DateTime(_) => panic!("{:?} from {:?}", to, self),
+            Type::DateTime { dt, offset } => {
+                match to {
+                    Types::Untyped => {
+                        let data = date_time_to_string(dt, offset);
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = date_time_to_string(dt, offset);
+                        Ok(Type::String(data))
+                    }
+                    Types::DateTime => {
+                        Ok(Type::DateTime { dt: dt.clone(), offset: *offset })
+                    }
+                    Types::Time => {
+                        let time = Time::from(dt.time(), dt.offset().clone());
+                        Ok(Type::Time { time, offset: *offset })
+                    }
+                    Types::Date => {
+                        let date = dt.date();
+                        Ok(Type::Date { date, offset: *offset })
+                    }
+                    Types::GYearMonth => {
+                        let tz_m = if *offset { Some(dt.timezone().local_minus_utc() / 60) } else { None };
+                        Ok(Type::GYearMonth { year: dt.year(), month: dt.month(), tz_m })
+                    }
+                    Types::GYear => {
+                        let tz_m = if *offset { Some(dt.timezone().local_minus_utc() / 60) } else { None };
+                        Ok(Type::GYear { year: dt.year(), tz_m })
+                    }
+                    Types::GMonthDay => {
+                        let tz_m = if *offset { Some(dt.timezone().local_minus_utc() / 60) } else { None };
+                        Ok(Type::GMonthDay { month: dt.month(), day: dt.day(), tz_m })
+                    }
+                    Types::GDay => {
+                        let tz_m = if *offset { Some(dt.timezone().local_minus_utc() / 60) } else { None };
+                        Ok(Type::GDay { day: dt.day(), tz_m })
+                    }
+                    Types::GMonth => {
+                        let tz_m = if *offset { Some(dt.timezone().local_minus_utc() / 60) } else { None };
+                        Ok(Type::GMonth { month: dt.month(), tz_m })
+                    }
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            },
             Type::DateTimeStamp() => panic!("{:?} from {:?}", to, self),
-            Type::Date(_) => panic!("{:?} from {:?}", to, self),
-            Type::Time(_) => panic!("{:?} from {:?}", to, self),
-            Type::Duration { .. } => panic!("{:?} from {:?}", to, self),
-            Type::YearMonthDuration { .. } => panic!("{:?} from {:?}", to, self),
-            Type::DayTimeDuration { .. } => panic!("{:?} from {:?}", to, self),
+            Type::Date { date, offset } => {
+                match to {
+                    Types::Untyped => {
+                        let data = date_to_string(date, offset);
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = date_to_string(date, offset);
+                        Ok(Type::String(data))
+                    }
+                    Types::DateTime => {
+                        Ok(Type::DateTime { dt: date.and_hms(0,0,0), offset: *offset })
+                    }
+                    Types::Date => {
+                        Ok(Type::Date { date: date.clone(), offset: *offset })
+                    }
+                    Types::GYearMonth => {
+                        let tz_m = if *offset { Some(date.timezone().local_minus_utc() / 60) } else { None };
+                        Ok(Type::GYearMonth { year: date.year(), month: date.month(), tz_m })
+                    }
+                    Types::GYear => {
+                        let tz_m = if *offset { Some(date.timezone().local_minus_utc() / 60) } else { None };
+                        Ok(Type::GYear { year: date.year(), tz_m })
+                    }
+                    Types::GMonthDay => {
+                        let tz_m = if *offset { Some(date.timezone().local_minus_utc() / 60) } else { None };
+                        Ok(Type::GMonthDay { month: date.month(), day: date.day(), tz_m })
+                    }
+                    Types::GDay => {
+                        let tz_m = if *offset { Some(date.timezone().local_minus_utc() / 60) } else { None };
+                        Ok(Type::GDay { day: date.day(), tz_m })
+                    }
+                    Types::GMonth => {
+                        let tz_m = if *offset { Some(date.timezone().local_minus_utc() / 60) } else { None };
+                        Ok(Type::GMonth { month: date.month(), tz_m })
+                    }
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Type::Time { time, offset } => {
+                match to {
+                    Types::Untyped => {
+                        let data = time_to_string(time, offset);
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = time_to_string(time, offset);
+                        Ok(Type::String(data))
+                    }
+                    Types::Time => {
+                        Ok(Type::Time { time: time.clone(), offset: *offset })
+                    }
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Type::Duration { positive, years, months, days, hours, minutes, seconds, microseconds } => {
+                match to {
+                    Types::Untyped => {
+                        let data = duration_to_string(*positive, *years, *months, *days, *hours, *minutes, *seconds, *microseconds);
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = duration_to_string(*positive, *years, *months, *days, *hours, *minutes, *seconds, *microseconds);
+                        Ok(Type::String(data))
+                    }
+                    Types::Duration => {
+                        Ok(Type::Duration { positive: *positive, years: *years, months: *months, days: *days, hours: *hours, minutes: *minutes, seconds: *seconds, microseconds: *microseconds } )
+                    }
+                    Types::YearMonthDuration => {
+                        Ok(Type::YearMonthDuration { positive: *positive, years: *years, months: *months } )
+                    }
+                    Types::DayTimeDuration => {
+                        Ok(Type::DayTimeDuration { positive: *positive, days: *days, hours: *hours, minutes: *minutes, seconds: *seconds, microseconds: *microseconds } )
+                    }
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            },
+            Type::YearMonthDuration { positive, years, months } => {
+                match to {
+                    Types::Untyped => {
+                        let data = year_month_duration_to_string(*positive, *years, *months);
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = year_month_duration_to_string(*positive, *years, *months);
+                        Ok(Type::String(data))
+                    }
+                    Types::Duration => {
+                        Ok(Type::Duration { positive: *positive, years: *years, months: *months, days: 0, hours: 0, minutes: 0, seconds: 0, microseconds: 0 } )
+                    }
+                    Types::YearMonthDuration => {
+                        Ok(Type::YearMonthDuration { positive: *positive, years: *years, months: *months } )
+                    }
+                    Types::DayTimeDuration => {
+                        Ok(Type::DayTimeDuration { positive: *positive, days: 0, hours: 0, minutes: 0, seconds: 0, microseconds: 0 } )
+                    }
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            },
+            Type::DayTimeDuration { positive, days, hours, minutes, seconds, microseconds } => {
+                match to {
+                    Types::Untyped => {
+                        let data = day_time_duration_to_string(*positive, *days, *hours, *minutes, *seconds, *microseconds);
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = day_time_duration_to_string(*positive, *days, *hours, *minutes, *seconds, *microseconds);
+                        Ok(Type::String(data))
+                    }
+                    Types::Duration => {
+                        Ok(Type::Duration { positive: *positive, years: 0, months: 0, days: *days, hours: *hours, minutes: *minutes, seconds: *seconds, microseconds: *microseconds } )
+                    }
+                    Types::YearMonthDuration => {
+                        Ok(Type::YearMonthDuration { positive: *positive, years: 0, months: 0 } )
+                    }
+                    Types::DayTimeDuration => {
+                        Ok(Type::DayTimeDuration { positive: *positive, days: *days, hours: *hours, minutes: *minutes, seconds: *seconds, microseconds: *microseconds } )
+                    }
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            },
 
-            Type::GYearMonth { .. } => panic!("{:?} from {:?}", to, self),
-            Type::GYear { .. } => panic!("{:?} from {:?}", to, self),
-            Type::GMonthDay { .. } => panic!("{:?} from {:?}", to, self),
-            Type::GDay { .. } => panic!("{:?} from {:?}", to, self),
-            Type::GMonth { .. } => panic!("{:?} from {:?}", to, self),
+            Type::GYearMonth { year, month, tz_m } => {
+                match to {
+                    Types::Untyped => {
+                        let data = g_year_month_to_string(*year, *month, *tz_m);
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = g_year_month_to_string(*year, *month, *tz_m);
+                        Ok(Type::String(data))
+                    }
+                    Types::GYearMonth => {
+                        Ok(Type::GYearMonth { year: *year, month: *month, tz_m: *tz_m })
+                    }
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Type::GYear { year, tz_m } => {
+                match to {
+                    Types::Untyped => {
+                        let data = g_year_to_string(*year, *tz_m);
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = g_year_to_string(*year, *tz_m);
+                        Ok(Type::String(data))
+                    }
+                    Types::GYear => {
+                        Ok(Type::GYear { year: *year, tz_m: *tz_m })
+                    }
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Type::GMonthDay { month, day, tz_m } => {
+                match to {
+                    Types::Untyped => {
+                        let data = g_month_day_to_string(*month, *day, *tz_m);
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = g_month_day_to_string(*month, *day, *tz_m);
+                        Ok(Type::String(data))
+                    }
+                    Types::GMonthDay => {
+                        Ok(Type::GMonthDay { month: *month, day: *day, tz_m: *tz_m })
+                    }
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Type::GDay { day, tz_m } => {
+                match to {
+                    Types::Untyped => {
+                        let data = g_day_to_string(*day, *tz_m);
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = g_day_to_string(*day, *tz_m);
+                        Ok(Type::String(data))
+                    }
+                    Types::GDay => {
+                        Ok(Type::GDay { day: *day, tz_m: *tz_m })
+                    }
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Type::GMonth { month, tz_m } => {
+                match to {
+                    Types::Untyped => {
+                        let data = g_month_to_string(*month, *tz_m);
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = g_month_to_string(*month, *tz_m);
+                        Ok(Type::String(data))
+                    }
+                    Types::GMonth => {
+                        Ok(Type::GMonth { month: *month, tz_m: *tz_m })
+                    }
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
 
             Type::Token(_) => panic!("{:?} from {:?}", to, self),
             Type::Language(_) => panic!("{:?} from {:?}", to, self),
@@ -408,13 +814,77 @@ impl Type {
 
             Type::Boolean(v) => {
                 match to {
+                    Types::Untyped => {
+                        let data = if *v { "true".to_string() } else { "false".to_string() };
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = if *v { "true".to_string() } else { "false".to_string() };
+                        Ok(Type::String(data))
+                    }
+                    Types::Integer => {
+                        let data = if *v { 1 } else { 0 };
+                        Ok(Type::Integer(data))
+                    }
+                    Types::Decimal => {
+                        let number = if *v { 1 } else { 0 };
+                        if let Some(num) = BigDecimal::from_i128(number) {
+                            Ok(Type::Decimal(num))
+                        } else {
+                            Err((ErrorCode::XPTY0004, String::from("TODO")))
+                        }
+                    }
+                    Types::Float => {
+                        let number = if *v { 1 } else { 0 } as f32;
+                        Ok(Type::Float(OrderedFloat::from(number)))
+                    }
+                    Types::Double => {
+                        let number = if *v { 1 } else { 0 } as f64;
+                        Ok(Type::Double(OrderedFloat::from(number)))
+                    }
                     Types::Boolean => Ok(Type::Boolean(v.clone())),
-                    _ => panic!("{:?} from {:?}", to, self)
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
                 }
             },
 
-            Type::Base64Binary(_) => panic!("{:?} from {:?}", to, self),
-            Type::HexBinary(_) => panic!("{:?} from {:?}", to, self),
+            Type::Base64Binary(binary) => {
+                match to {
+                    Types::Untyped => {
+                        match binary_base64_to_string(binary) {
+                            Ok(data) => Ok(Type::Untyped(data)),
+                            Err(code) => Err((code, String::from("TODO")))
+                        }
+                    }
+                    Types::String => {
+                        match binary_base64_to_string(binary) {
+                            Ok(data) => Ok(Type::String(data)),
+                            Err(code) => Err((code, String::from("TODO")))
+                        }
+                    }
+                    Types::Base64Binary => Ok(Type::Base64Binary(binary.clone())),
+                    Types::HexBinary => Ok(Type::HexBinary(binary.clone())),
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            },
+            Type::HexBinary(binary) => {
+                match to {
+                    Types::Untyped => {
+                        match binary_hex_to_string(binary) {
+                            Ok(data) => Ok(Type::Untyped(data)),
+                            Err(code) => Err((code, String::from("TODO")))
+                        }
+                    }
+                    Types::String => {
+                        match binary_hex_to_string(binary) {
+                            Ok(data) => Ok(Type::String(data)),
+                            Err(code) => Err((code, String::from("TODO")))
+                        }
+                    }
+                    Types::Base64Binary => Ok(Type::Base64Binary(binary.clone())),
+                    Types::HexBinary => Ok(Type::HexBinary(binary.clone())),
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
 
             Type::NOTATION() => panic!("{:?} from {:?}", to, self),
         }
@@ -533,10 +1003,10 @@ impl Type {
             Type::Decimal(_) |
             Type::Float(_) |
             Type::Double(_) => Types::Numeric,
-            Type::DateTime(_) => Types::DateTime,
+            Type::DateTime { .. } => Types::DateTime,
             Type::DateTimeStamp() => Types::DateTimeStamp,
-            Type::Date(_) => Types::Date,
-            Type::Time(_) => Types::Time,
+            Type::Date { .. } => Types::Date,
+            Type::Time { .. } => Types::Time,
             Type::Duration { .. } => Types::Duration,
             Type::YearMonthDuration { .. } => Types::YearMonthDuration,
             Type::DayTimeDuration { .. } => Types::DayTimeDuration,
@@ -699,99 +1169,25 @@ pub fn string_to_decimal(string: &String) -> Result<BigDecimal, ErrorCode> {
 }
 
 pub fn string_to_binary_hex(string: &String) -> Result<Vec<u8>, ErrorCode> {
-    if string.len() % 2 != 0 {
-        Err(ErrorCode::FORG0001)
-    } else {
-        let result = (0..string.len())
-            .step_by(2)
-            .map(|i| u8::from_str_radix(&string[i..i + 2], 16).map_err(|e| ErrorCode::FORG0001))
-            .collect();
-
-        match result {
-            Ok(binary) => Ok(binary),
-            Err(code) => Err(code)
-        }
+    match hex::decode(string) {
+        Ok(binary) => Ok(binary),
+        Err(_) => Err(ErrorCode::FORG0001)
     }
 }
-
-const HEX_BYTES: &str = "000102030405060708090a0b0c0d0e0f\
-101112131415161718191a1b1c1d1e1f\
-202122232425262728292a2b2c2d2e2f\
-303132333435363738393a3b3c3d3e3f\
-404142434445464748494a4b4c4d4e4f\
-505152535455565758595a5b5c5d5e5f\
-606162636465666768696a6b6c6d6e6f\
-707172737475767778797a7b7c7d7e7f\
-808182838485868788898a8b8c8d8e8f\
-909192939495969798999a9b9c9d9e9f\
-a0a1a2a3a4a5a6a7a8a9aaabacadaeaf\
-b0b1b2b3b4b5b6b7b8b9babbbcbdbebf\
-c0c1c2c3c4c5c6c7c8c9cacbcccdcecf\
-d0d1d2d3d4d5d6d7d8d9dadbdcdddedf\
-e0e1e2e3e4e5e6e7e8e9eaebecedeeef\
-f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff";
 
 pub fn binary_hex_to_string(binary: &Vec<u8>) -> Result<String, ErrorCode> {
-    let mut string = String::with_capacity(binary.len() * 2);
-    for &b in binary {
-        // write!(&mut string, "{:02x}", b).unwrap();
-        let i = 2 * b as usize;
-        if let Some(str) = HEX_BYTES.get(i..i + 2) {
-            string.push_str(str);
-        } else {
-            return Err(ErrorCode::TODO)
-        }
-    }
-    Ok(string)
+    Ok(hex::encode(binary).to_uppercase())
 }
-
-const UPPERCASEOFFSET: i8 = 65;
-const LOWERCASEOFFSET: i8 = 71;
-const DIGITOFFSET: i8 = -4;
 
 pub fn string_to_binary_base64(string: &String) -> Result<Vec<u8>, ErrorCode> {
-    let mut binary = Vec::with_capacity(string.len());
-    for ch in string.chars() {
-        let ch = ch as i8;
-        let b = match ch {
-            // A-Z
-            65..=90 => ch - UPPERCASEOFFSET,
-            // a-z
-            97..=122 => ch - LOWERCASEOFFSET,
-            // 0-9
-            48..=57 => ch - DIGITOFFSET,
-            // +
-            43 => 62,
-            // /
-            47 => 63,
-            _ => return Err(ErrorCode::FORG0001),
-        } as u8;
-        binary.push(b);
-    };
-
-    Ok(binary)
+    match base64::decode(string) {
+        Ok(binary) => Ok(binary),
+        Err(_) => Err(ErrorCode::FORG0001)
+    }
 }
 
-pub fn binary_base64_string(binary: &Vec<u8>) -> Result<String, ErrorCode> {
-    let mut string = String::with_capacity(binary.len());
-    for b in binary {
-        let b = *b as i8;
-        let ch = match b {
-            // A-Z
-            0..=25 => b + UPPERCASEOFFSET,
-            // a-z
-            26..=51 => b + LOWERCASEOFFSET,
-            // 0-9
-            52..=61 => b + DIGITOFFSET,
-            // +
-            62 => 43,
-            // /
-            63 => 47,
-            _ => return Err(ErrorCode::TODO),
-        } as u8;
-        string.push(ch as char);
-    }
-    Ok(string)
+pub fn binary_base64_to_string(binary: &Vec<u8>) -> Result<String, ErrorCode> {
+    Ok(base64::encode(binary))
 }
 
 #[derive(Clone)]

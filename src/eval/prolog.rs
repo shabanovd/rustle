@@ -13,9 +13,10 @@ use crate::eval::arithmetic::{eval_unary, eval_arithmetic};
 use crate::eval::comparison::{eval_comparison, eval_comparison_item};
 use crate::eval::piping::{Pipe, eval_pipe};
 use crate::parser::errors::{CustomError, ErrorCode};
-use crate::eval::sequence_type::SequenceType;
+use crate::eval::sequence_type::{ItemType, OccurrenceIndicator, SequenceType};
 use linked_hash_map::LinkedHashMap;
 use crate::namespaces::{Namespace, NS_heap};
+use crate::eval::sequence_type::QNameToTypes;
 
 //internal
 #[derive(Clone, Debug)]
@@ -1247,7 +1248,31 @@ pub(crate) struct Cast { pub(crate) expr: Box<dyn Expression>, pub(crate) st: Se
 
 impl Expression for Cast {
     fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
-        todo!()
+        let (new_env, object) = self.expr.eval(env, context)?;
+
+        match object {
+            Object::Empty => {
+                if self.st.occurrence_indicator == OccurrenceIndicator::ZeroOrOne {
+                    Ok((new_env, Object::Empty))
+                } else {
+                    Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Object::Atomic(t) => {
+                match &self.st.item_type {
+                    ItemType::AtomicOrUnionType(name) => {
+                        let name = new_env.namespaces.resolve(&name);
+                        if let Some(types) = QNameToTypes.get(&name) {
+                            Ok((new_env, Object::Atomic(t.convert(types.clone())?)))
+                        } else {
+                            todo!("custom types")
+                        }
+                    }
+                    _ => panic!("raise error?")
+                }
+            }
+            _ => panic!("raise error?")
+        }
     }
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {

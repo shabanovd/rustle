@@ -485,7 +485,7 @@ pub(crate) fn fn_year_from_date(env: Box<Environment>, arguments: Vec<Object>, _
         [Object::Empty] => {
             Ok((env, Object::Empty))
         }
-        [Object::Atomic(Type::Date(date))] => {
+        [Object::Atomic(Type::Date { date, offset })] => {
             Ok((env, Object::Atomic(Type::Integer(date.year() as i128))))
         },
         _ => panic!("error")
@@ -508,7 +508,7 @@ pub(crate) fn fn_month_from_date(env: Box<Environment>, arguments: Vec<Object>, 
         [Object::Empty] => {
             Ok((env, Object::Empty))
         }
-        [Object::Atomic(Type::Date(date))] => {
+        [Object::Atomic(Type::Date { date, ..})] => {
             Ok((env, Object::Atomic(Type::Integer(date.month() as i128))))
         },
         _ => panic!("error")
@@ -531,7 +531,7 @@ pub(crate) fn fn_day_from_date(env: Box<Environment>, arguments: Vec<Object>, _c
         [Object::Empty] => {
             Ok((env, Object::Empty))
         }
-        [Object::Atomic(Type::Date(date))] => {
+        [Object::Atomic(Type::Date { date, .. })] => {
             Ok((env, Object::Atomic(Type::Integer(date.day() as i128))))
         },
         _ => panic!("error")
@@ -612,7 +612,7 @@ pub(crate) fn FN_TIMEZONE_FROM_TIME() -> FUNCTION {
 pub(crate) fn fn_timezone_from_time(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Empty] => Ok((env, Object::Empty)),
-        [Object::Atomic(Type::Time(time))] => {
+        [Object::Atomic(Type::Time { time, offset })] => {
             let seconds = time.offset.local_minus_utc();
 
             let (seconds, positive) = if seconds < 0 {

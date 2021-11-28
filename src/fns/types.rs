@@ -552,7 +552,6 @@ pub(crate) fn FN_XS_INTEGER() -> FUNCTION {
 }
 
 pub(crate) fn xs_integer_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
-    println!("xs_integer_eval {:?}", arguments);
     match arguments.as_slice() {
         [Object::Empty] => Ok((env, Object::Empty)),
         [Object::Atomic(Type::Untyped(string))] |

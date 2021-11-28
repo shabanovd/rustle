@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::eval::{Object, DynamicContext, EvalResult};
+use crate::eval::{Object, DynamicContext, EvalResult, ErrorInfo};
 use crate::eval::Environment;
 use crate::namespaces::*;
 use crate::values::{QName, QNameResolved, resolve_element_qname};
@@ -304,7 +304,24 @@ impl FunctionsRegister {
     }
 }
 
-pub(crate) fn call<'a>(env: Box<Environment>, name: QNameResolved, arguments: Vec<Object>, context: &'a DynamicContext) -> EvalResult {
+pub(crate) fn cascade(env: &Environment, arguments: Vec<Object>, params: Vec<SequenceType>) -> Result<Vec<Object>, ErrorInfo> {
+    if arguments.len() != params.len() {
+        todo!("raise error?")
+    } else {
+        let mut args = Vec::with_capacity(arguments.len());
+        for (arg, st) in arguments.into_iter()
+            .zip(params.into_iter())
+            .into_iter()
+        {
+            args.push(
+                st.cascade(env, arg)?
+            );
+        }
+        Ok(args)
+    }
+}
+
+pub(crate) fn call(env: Box<Environment>, name: QNameResolved, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
     // println!("call: {:?} {:?}", name, arguments);
     let mut fn_env = env.next();
 

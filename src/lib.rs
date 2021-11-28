@@ -2,6 +2,7 @@
 #![feature(const_precise_live_drops)]
 #![feature(const_panic)]
 #![feature(map_first_last)]
+#![feature(destructuring_assignment)]
 
 mod namespaces;
 mod parser;

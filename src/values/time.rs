@@ -1,7 +1,9 @@
 use core::borrow::Borrow;
 use std::cmp::Ordering;
-use chrono::{DateTime, FixedOffset, Local, NaiveTime, Timelike, TimeZone};
-use chrono::format::{DelayedFormat, Item, StrftimeItems};
+use chrono::{DateTime, FixedOffset, Local, NaiveTime, SecondsFormat, Timelike, TimeZone};
+use chrono::format::{DelayedFormat, Fixed, Item, StrftimeItems};
+use chrono::format::Numeric::{Hour, Minute, Second};
+use chrono::format::Pad::Zero;
 use num_integer::div_mod_floor;
 
 impl PartialOrd for Time<FixedOffset> {
@@ -47,7 +49,47 @@ impl Time<FixedOffset> {
     pub fn hms(&self) -> (u32, u32, u32, u32) {
         let (min, sec) = div_mod_floor(self.time.num_seconds_from_midnight(), 60);
         let (hour, min) = div_mod_floor(min, 60);
-        (hour, min, sec, 0)
+        (hour, min, sec, self.time.nanosecond())
+    }
+
+    pub fn nanosecond(&self) -> u32 {
+        self.time.nanosecond()
+    }
+
+    pub fn to_rfc3339_opts(&self, secform: SecondsFormat, use_z: bool) -> String {
+        use chrono::format::Numeric::*;
+        use chrono::format::Pad::Zero;
+        use chrono::SecondsFormat::*;
+
+        debug_assert!(secform != __NonExhaustive, "Do not use __NonExhaustive!");
+
+        const PREFIX: &'static [Item<'static>] = &[
+            Item::Numeric(Hour, Zero),
+            Item::Literal(":"),
+            Item::Numeric(Minute, Zero),
+            Item::Literal(":"),
+            Item::Numeric(Second, Zero),
+        ];
+
+        let ssitem = match secform {
+            Secs => None,
+            Millis => Some(Item::Fixed(Fixed::Nanosecond3)),
+            Micros => Some(Item::Fixed(Fixed::Nanosecond6)),
+            Nanos => Some(Item::Fixed(Fixed::Nanosecond9)),
+            AutoSi => Some(Item::Fixed(Fixed::Nanosecond)),
+            __NonExhaustive => unreachable!(),
+        };
+
+        let tzitem = Item::Fixed(if use_z {
+            Fixed::TimezoneOffsetColonZ
+        } else {
+            Fixed::TimezoneOffsetColon
+        });
+
+        match ssitem {
+            None => self.format_with_items(PREFIX.iter().chain([tzitem].iter())).to_string(),
+            Some(s) => self.format_with_items(PREFIX.iter().chain([s, tzitem].iter())).to_string(),
+        }
     }
 
     #[inline]

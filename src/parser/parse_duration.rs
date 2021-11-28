@@ -108,17 +108,20 @@ pub fn string_to_year_month(input: &str) -> Result<Type, String> {
 pub fn parse_g_year_month(input: &str) -> IResult<&str, Type> {
     map(
         tuple((
-            many0(tag("-")),
+            opt(tag("-")),
             take_digits, // parse_year,
             tag("-"),
             parse_month,
             opt(alt((timezone_hour, timezone_utc))),
         )),
         |(sign, year, _, month, z)| {
-            let (tz_h, tz_m) = z.unwrap_or((0, 0));
-            let tz_m = tz_m + tz_h * 60;
+            let tz_m = if let Some((tz_h, tz_m)) = z {
+                Some(tz_m + tz_h * 60)
+            } else {
+                None
+            };
 
-            let year = if sign.len() % 2 == 1 {
+            let year = if sign.is_some() {
                 -(year as i32)
             } else {
                 year as i32
@@ -139,15 +142,18 @@ pub fn string_to_year(input: &str) -> Result<Type, String> {
 pub fn parse_g_year(input: &str) -> IResult<&str, Type> {
     map(
         tuple((
-            many0(tag("-")),
+            opt(tag("-")),
             take_digits, // parse_year,
             opt(alt((timezone_hour, timezone_utc))),
         )),
         |(sign, year, z)| {
-            let (tz_h, tz_m) = z.unwrap_or((0, 0));
-            let tz_m = tz_m + tz_h * 60;
+            let tz_m = if let Some((tz_h, tz_m)) = z {
+                Some(tz_m + tz_h * 60)
+            } else {
+                None
+            };
 
-            let year = if sign.len() % 2 == 1 {
+            let year = if sign.is_some() {
                 -(year as i32)
             } else {
                 year as i32
@@ -168,21 +174,24 @@ pub fn string_to_month_day(input: &str) -> Result<Type, String> {
 pub fn parse_g_month_day(input: &str) -> IResult<&str, Type> {
     map(
         tuple((
-            many0(tag("-")),
+            tag("--"),
             take_digits, // parse_month,
             tag("-"),
             parse_day,
             opt(alt((timezone_hour, timezone_utc))),
         )),
-        |(sign, month, _, day, z)| {
-            let (tz_h, tz_m) = z.unwrap_or((0, 0));
-            let tz_m = tz_m + tz_h * 60;
-
-            let month = if sign.len() % 2 == 1 {
-                -(month as i32)
+        |(_, month, _, day, z)| {
+            let tz_m = if let Some((tz_h, tz_m)) = z {
+                Some(tz_m + tz_h * 60)
             } else {
-                month as i32
+                None
             };
+
+            // let month = if sign.len() % 2 == 1 {
+            //     -(month as i32)
+            // } else {
+            //     month as i32
+            // };
 
             Type::GMonthDay { month, day, tz_m }
         }
@@ -199,19 +208,22 @@ pub fn string_to_day(input: &str) -> Result<Type, String> {
 pub fn parse_g_day(input: &str) -> IResult<&str, Type> {
     map(
         tuple((
-            many0(tag("-")),
+            tag("---"),
             take_digits, // parse_day,
             opt(alt((timezone_hour, timezone_utc))),
         )),
-        |(sign, day, z)| {
-            let (tz_h, tz_m) = z.unwrap_or((0, 0));
-            let tz_m = tz_m + tz_h * 60;
-
-            let day = if sign.len() % 2 == 0 {
-                -(day as i32)
+        |(_, day, z)| {
+            let tz_m = if let Some((tz_h, tz_m)) = z {
+                Some(tz_m + tz_h * 60)
             } else {
-                day as i32
+                None
             };
+
+            // let day = if sign.len() % 2 == 0 {
+            //     -(day as i32)
+            // } else {
+            //     day as i32
+            // };
 
             Type::GDay { day, tz_m }
         }
@@ -232,19 +244,22 @@ pub fn parse_g_month_complete(input: &str) -> IResult<&str, Type> {
 pub fn parse_g_month(input: &str) -> IResult<&str, Type> {
     map(
         tuple((
-            many0(tag("-")),
+            tag("--"),
             take_digits, // parse_day,
             opt(alt((timezone_hour, timezone_utc))),
         )),
         |(sign, month, z)| {
-            let (tz_h, tz_m) = z.unwrap_or((0, 0));
-            let tz_m = tz_m + tz_h * 60;
-
-            let month = if sign.len() % 2 == 1 {
-                -(month as i32)
+            let tz_m = if let Some((tz_h, tz_m)) = z {
+                Some(tz_m + tz_h * 60)
             } else {
-                month as i32
+                None
             };
+
+            // let month = if sign.len() % 2 == 1 {
+            //     -(month as i32)
+            // } else {
+            //     month as i32
+            // };
 
             Type::GMonth { month, tz_m }
         }
@@ -277,9 +292,9 @@ pub fn parse_date(input: &str) -> IResult<&str, Type> {
                 let offset = if tz_h > 0 {
                     FixedOffset::east(((tz_h * 60) + tz_m) * 60)
                 } else {
-                    FixedOffset::west(((tz_h * 60) + tz_m) * 60)
+                    FixedOffset::west(((-tz_h * 60) + tz_m) * 60)
                 };
-                Ok(Type::Date(Date::from_utc(date, offset)))
+                Ok(Type::Date { date: Date::from_utc(date, offset), offset: z.is_some() })
             } else {
                 Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
             }
@@ -324,7 +339,7 @@ pub fn parse_time(input: &str) -> IResult<&str, Type> {
                 FixedOffset::west(((-tz_h * 60) + tz_m) * 60)
             };
             let dt = time - offset;
-            Ok(Type::Time(crate::values::time::Time::from(time, offset)))
+            Ok(Type::Time { time: crate::values::time::Time::from(time, offset), offset: z.is_some() })
         }
     )(input)
 }
@@ -365,8 +380,8 @@ pub fn parse_date_time(input: &str) -> IResult<&str, Type> {
                     } else {
                         FixedOffset::west(((-tz_h * 60) + tz_m) * 60)
                     };
-                    let dt = NaiveDateTime::new(date, time - offset);
-                    Ok(Type::DateTime(DateTime::from_utc(dt, offset)))
+                    let dt = NaiveDateTime::new(date, time) - offset;
+                    Ok(Type::DateTime { dt: DateTime::from_utc(dt, offset), offset: z.is_some() })
                 } else {
                     Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
                 }
@@ -525,7 +540,7 @@ fn parse_duration_time(input: &str) -> IResult<&str, Type> {
             let (h, ad) = norm(h + ah, 24);
 
             if let Some(time) = NaiveTime::from_hms_milli_opt(h, m, s, ms) {
-                Ok(Type::Time(crate::values::time::Time::from_utc(time)))
+                Ok(Type::Time { time: crate::values::time::Time::from_utc(time), offset: false })
             } else {
                 Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
             }
@@ -552,7 +567,7 @@ fn parse_duration_time_as_u32(input: &str) -> IResult<&str, (u32,u32,u32,u32)> {
                 // normalization
                 let (s, am) = norm(s, 60);
                 let (m, ah) = norm(m + am, 60);
-                let (h, ad) = norm(h + ah, 24);
+                let h = h + ah; // let (h, ad) = norm(h + ah, 24);
 
                 Ok((h, m, s, ms))
             }
@@ -654,7 +669,7 @@ fn take_digits(input: &str) -> IResult<&str, u32> {
 fn norm(value: u32, max: u32) -> (u32, u32) {
     let mut v = value;
     let mut count = 0;
-    while v > max {
+    while v >= max {
         v = v - max;
         count += 1;
     }
