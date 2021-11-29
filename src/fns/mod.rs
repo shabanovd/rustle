@@ -101,6 +101,9 @@ impl FunctionsRegister {
         instance.register(&*SCHEMA.uri, "unsignedByte", 1, types::FN_XS_UNSIGNED_BYTE());
         instance.register(&*SCHEMA.uri, "positiveInteger", 1, types::FN_XS_POSITIVE_INTEGER());
 
+        instance.register(&*SCHEMA.uri, "QName", 1, types::FN_XS_QNAME());
+        instance.register(&*SCHEMA.uri, "token", 1, types::FN_XS_TOKEN());
+
         instance.register(&*XPATH_FUNCTIONS.uri, "resolve-QName", 2, qname::FN_RESOLVE_QNAME());
         instance.register(&*XPATH_FUNCTIONS.uri, "QName", 2, qname::FN_QNAME());
         instance.register(&*XPATH_FUNCTIONS.uri, "prefix-from-QName", 1, qname::FN_PREFIX_FROM_QNAME());
@@ -234,6 +237,7 @@ impl FunctionsRegister {
         instance.register(&*XPATH_FUNCTIONS.uri, "data", 0, sequences::FN_DATA_0());
         instance.register(&*XPATH_FUNCTIONS.uri, "data", 1, sequences::FN_DATA_1());
         instance.register(&*XPATH_FUNCTIONS.uri, "empty", 1, sequences::FN_EMPTY());
+        instance.register(&*XPATH_FUNCTIONS.uri, "exists", 1, sequences::FN_EXISTS());
         instance.register(&*XPATH_FUNCTIONS.uri, "remove", 2, sequences::FN_REMOVE());
         instance.register(&*XPATH_FUNCTIONS.uri, "reverse", 1, sequences::FN_REVERSE());
         instance.register(&*XPATH_FUNCTIONS.uri, "subsequence", 2, sequences::FN_SUBSEQUENCE_2());

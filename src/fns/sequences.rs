@@ -112,7 +112,12 @@ pub(crate) fn FN_EXISTS() -> FUNCTION {
 }
 
 pub(crate) fn fn_exists(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
-    todo!()
+    let result = match arguments.as_slice() {
+        [Object::Empty] => false,
+        _ => true
+    };
+
+    Ok((env, Object::Atomic(Type::Boolean(result))))
 }
 
 // fn:head($arg as item()*) as item()?
@@ -302,7 +307,7 @@ pub(crate) fn fn_subsequence(env: Box<Environment>, arguments: Vec<Object>, _con
                     break
                 }
             }
-            Ok((env, Object::Sequence(result)))
+            relax(env, result)
         },
         _ => panic!("error {:?}", arguments)
     }

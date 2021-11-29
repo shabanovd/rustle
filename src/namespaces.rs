@@ -43,7 +43,7 @@ pub struct NS<'a> {
 }
 
 impl<'a> NS<'a> {
-    const fn new(prefix: &'a str, uri: &'a str) -> Self {
+    pub(crate) const fn new(prefix: &'a str, uri: &'a str) -> Self {
         NS { prefix, uri }
     }
 }

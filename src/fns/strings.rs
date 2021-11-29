@@ -1,3 +1,5 @@
+use std::convert::TryFrom;
+use std::iter::FromIterator;
 use crate::eval::{Environment, Object, Type, DynamicContext, EvalResult};
 use crate::eval::sequence_type::*;
 use crate::fns::FUNCTION;
@@ -53,8 +55,32 @@ pub(crate) fn FN_CODEPOINTS_TO_STRING() -> FUNCTION {
     )
 }
 
-pub(crate) fn fn_codepoints_to_string(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
-    todo!()
+pub(crate) fn fn_codepoints_to_string(env: Box<Environment>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    let codes = arguments.remove(0);
+    match codes {
+        Object::Sequence(items) => {
+            let mut result = Vec::with_capacity(items.len());
+            for item in items {
+                match item {
+                    Object::Atomic(Type::Integer(num)) => {
+                        if let Ok(code) = u32::try_from(num) {
+                            if let Some(ch) = char::from_u32(code) {
+                                result.push(ch)
+                            } else {
+                                todo!("raise error?")
+                            }
+                        } else {
+                            todo!("raise error?")
+                        }
+                    }
+                    _ => todo!()
+                }
+            }
+            let str = String::from_iter(result);
+            Ok((env, Object::Atomic(Type::String(str))))
+        }
+        _ => todo!()
+    }
 }
 
 // fn:string-to-codepoints($arg as xs:string?) as xs:integer*
@@ -81,7 +107,7 @@ pub(crate) fn fn_string_to_codepoints(env: Box<Environment>, arguments: Vec<Obje
 
             Object::Sequence(codes)
         },
-        _ => panic!("error")
+        _ => panic!("{:?}", arguments)
     };
 
     Ok((env, result))

@@ -1133,6 +1133,113 @@ impl Type {
                     _ => panic!("internal error")
                 }
             },
+            Type::DateTime { dt: l_dt, offset: l_offset } => {
+                if let Type::DateTime { dt: r_dt, offset: r_offset } = other.convert(Types::DateTime)? {
+                    Ok(ValueOrdering::from(l_dt.cmp(&r_dt)))
+                } else {
+                    Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Type::Time { time: l_time, offset: l_offset } => {
+                if let Type::Time { time: r_time, offset: r_offset } = other.convert(Types::Time)? {
+                    Ok(ValueOrdering::from(l_time.cmp(&r_time)))
+                } else {
+                    Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Type::Date { date: l_date, offset: l_offset } => {
+                if let Type::Date { date: r_date, offset: r_offset } = other.convert(Types::Date)? {
+                    Ok(ValueOrdering::from(l_date.cmp(&r_date)))
+                } else {
+                    Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            // TODO priority for durations!
+            Type::Duration {
+                positive: l_positive,
+                years: l_years, months: l_months, days: l_days,
+                hours: l_hours, minutes: l_minutes, seconds: l_seconds, microseconds: l_microseconds
+            } => {
+                if let Type::Duration {
+                        positive: r_positive,
+                        years: r_years, months: r_months, days: r_days,
+                        hours: r_hours, minutes: r_minutes, seconds: r_seconds, microseconds: r_microseconds
+                    } = other.convert(Types::Duration)?
+                {
+                    let l_sign = if *l_positive { 1 } else { -1 };
+                    let l_ms = l_sign * *l_microseconds as i128 + (1000 * (*l_seconds as i128 + 60 * (*l_minutes as i128 + 60 * (*l_hours as i128 + 24 * (*l_days as i128 + 31 * (*l_months as i128 + 12 * *l_years as i128))))));
+                    let r_sign = if r_positive { 1 } else { -1 };
+                    let r_ms = r_sign * r_microseconds as i128 + (1000 * (r_seconds as i128 + 60 * (r_minutes as i128 + 60 * (r_hours as i128 + 24 * (r_days as i128 + 31 * (r_months as i128 + 12 * r_years as i128))))));
+                    Ok(ValueOrdering::from(l_ms.cmp(&r_ms)))
+                } else {
+                    Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Type::YearMonthDuration { positive: l_positive, years: l_years, months: l_months } => {
+                if let Type::YearMonthDuration { positive: r_positive, years: r_years, months: r_months } = other.convert(Types::YearMonthDuration)? {
+                    let l_sign = if *l_positive { 1 } else { -1 };
+                    let l_ms = l_sign * *l_months as i128 + (12 * *l_years as i128);
+                    let r_sign = if r_positive { 1 } else { -1 };
+                    let r_ms = r_sign * r_months as i128 + (12 * r_years as i128);
+                    Ok(ValueOrdering::from(l_ms.cmp(&r_ms)))
+                } else {
+                    Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Type::DayTimeDuration {
+                positive: l_positive, days: l_days,
+                hours: l_hours, minutes: l_minutes, seconds: l_seconds, microseconds: l_microseconds
+            } => {
+                if let Type::DayTimeDuration {
+                    positive: r_positive, days: r_days,
+                    hours: r_hours, minutes: r_minutes, seconds: r_seconds, microseconds: r_microseconds
+                } = other.convert(Types::DayTimeDuration)?
+                {
+                    let l_sign = if *l_positive { 1 } else { -1 };
+                    let l_ms = l_sign * *l_microseconds as i128 + (1000 * (*l_seconds as i128 + 60 * (*l_minutes as i128 + 60 * (*l_hours as i128 + 24 * (*l_days as i128)))));
+                    let r_sign = if r_positive { 1 } else { -1 };
+                    let r_ms = r_sign * r_microseconds as i128 + (1000 * (r_seconds as i128 + 60 * (r_minutes as i128 + 60 * (r_hours as i128 + 24 * (r_days as i128)))));
+                    Ok(ValueOrdering::from(l_ms.cmp(&r_ms)))
+                } else {
+                    Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+
+            Type::GYearMonth { year: l_year, month: l_month, tz_m: l_tz_m } => {
+                if let Type::GYearMonth { year: r_year, month: r_month, tz_m: r_tz_m } = other.convert(Types::GYearMonth)? {
+                    Ok(ValueOrdering::from(((*l_year * 12) + *l_month as i32).cmp(&((r_year * 12) + r_month as i32))))
+                } else {
+                    Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Type::GYear { year: l_year,  tz_m: l_tz_m } => {
+                if let Type::GYear { year: r_year, tz_m: r_tz_m } = other.convert(Types::GYear)? {
+                    Ok(ValueOrdering::from((*l_year).cmp(&r_year)))
+                } else {
+                    Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Type::GMonthDay { month: l_month, day: l_day, tz_m: l_tz_m } => {
+                if let Type::GMonthDay { month: r_month, day: r_day, tz_m: r_tz_m } = other.convert(Types::GMonthDay)? {
+                    Ok(ValueOrdering::from((*l_month * 31 + *l_day).cmp(&(r_month * 31 + r_day))))
+                } else {
+                    Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Type::GDay { day: l_day, tz_m: l_tz_m } => {
+                if let Type::GDay { day: r_day, tz_m: r_tz_m } = other.convert(Types::GDay)? {
+                    Ok(ValueOrdering::from((*l_day).cmp(&r_day)))
+                } else {
+                    Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Type::GMonth { month: l_month, tz_m: l_tz_m } => {
+                if let Type::GMonth { month: r_month, tz_m: r_tz_m } = other.convert(Types::GMonth)? {
+                    Ok(ValueOrdering::from((*l_month).cmp(&r_month)))
+                } else {
+                    Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
             _ => panic!("{:?} vs {:?}", self, other) // Err((ErrorCode::XPTY0004, String::from("TODO")))
         }
     }
@@ -1149,6 +1256,19 @@ pub(crate) fn object_to_qname(t: Object) -> QName {
         Object::Atomic(Type::QName { prefix, url, local_part }) =>
                        QName { prefix, url, local_part },
         _ => panic!("can't convert to QName {:?}", t)
+    }
+}
+
+pub(crate) fn string_to_qname(env: &Environment, str: String) -> QName {
+    if str.contains(":") {
+        let mut parts = str.split(":").map(|s| s.to_string()).collect::<Vec<_>>();
+        if parts.len() == 2 {
+            QName::new(parts.remove(0), parts.remove(0))
+        } else {
+            panic!("raise error!")
+        }
+    } else {
+        QName::local_part(str)
     }
 }
 

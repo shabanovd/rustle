@@ -62,6 +62,22 @@ struct Environment {
     sources: Vec<Source>,
 }
 
+impl Environment {
+    fn empty() -> Self {
+        Environment {
+            path: "".to_string(),
+            reference: None,
+            name: None,
+            namespaces: vec![],
+            sources: vec![],
+        }
+    }
+
+    fn is_not_empty(&self) -> bool {
+        self.sources.len() != 0 || self.namespaces.len() != 0
+    }
+}
+
 #[derive(Clone)]
 struct Namespace {
     prefix: String,
@@ -418,22 +434,36 @@ impl TestState {
 
         generated.push_str("() {\n");
         if let Some(env) = &self.env {
-            if env.sources.len() != 0 {
-
-                generated.push_str("        let mut sources: Vec<(&str,&str)> = vec![];\n");
-                for source in &env.sources {
-                    generated.push_str("        sources.push((\"");
-                    generated.push_str(source.role.as_str());
-                    generated.push_str("\",\"./qt3tests/");
-                    generated.push_str(env.path.as_str());
-                    generated.push_str(source.file.as_str());
-                    generated.push_str("\"));\n");
+            if env.is_not_empty() {
+                if env.sources.len() != 0 {
+                    generated.push_str("        let mut sources: Vec<(&str,&str)> = vec![];\n");
+                    for source in &env.sources {
+                        generated.push_str("        sources.push((\"");
+                        generated.push_str(source.role.as_str());
+                        generated.push_str("\",\"./qt3tests/");
+                        generated.push_str(env.path.as_str());
+                        generated.push_str(source.file.as_str());
+                        generated.push_str("\"));\n");
+                    }
+                } else {
+                    generated.push_str("        let sources: Vec<(&str,&str)> = vec![];\n");
                 }
-            } else {
-                generated.push_str("        let sources: Vec<(&str,&str)> = vec![];\n");
+
+                if env.namespaces.len() != 0 {
+                    generated.push_str("        let mut namespaces: Vec<(&str,&str)> = vec![];\n");
+                    for namespace in &env.namespaces {
+                        generated.push_str("        namespaces.push((\"");
+                        generated.push_str(namespace.prefix.as_str());
+                        generated.push_str("\",\"");
+                        generated.push_str(namespace.uri.as_str());
+                        generated.push_str("\"));\n");
+                    }
+                } else {
+                    generated.push_str("        let namespaces: Vec<(&str,&str)> = vec![];\n");
+                }
+
+                generated.push_str("        let env = Some((sources, namespaces));\n");
             }
-        } else {
-            generated.push_str("        let sources: Vec<(&str,&str)> = vec![];\n");
         }
     }
 
@@ -449,7 +479,11 @@ impl TestState {
             generated.push_str("\").unwrap();\n");
         }
 
-        generated.push_str("        let result = eval(sources, script.as_str());\n");
+        if self.env.as_ref().unwrap_or(&Environment::empty()).is_not_empty() {
+            generated.push_str("        let result = eval(env, script.as_str());\n");
+        } else {
+            generated.push_str("        let result = eval(None, script.as_str());\n");
+        }
         // generated.push_str("        println!(\"{:?}\", result);\n");
     }
 
@@ -460,11 +494,21 @@ impl TestState {
         self.generate_head(generated);
 
         if let Some(spec) = &self.spec {
-            generated.push_str("        let result = eval_on_spec(\"");
-            generated.push_str(spec.as_str());
-            generated.push_str("\",sources,\"");
+            if self.env.as_ref().unwrap_or(&Environment::empty()).is_not_empty() {
+                generated.push_str("        let result = eval_on_spec(\"");
+                generated.push_str(spec.as_str());
+                generated.push_str("\", env, \"");
+            } else {
+                generated.push_str("        let result = eval_on_spec(\"");
+                generated.push_str(spec.as_str());
+                generated.push_str("\", None, \"");
+            }
         } else {
-            generated.push_str("        let result = eval(sources,\"");
+            if self.env.as_ref().unwrap_or(&Environment::empty()).is_not_empty() {
+                generated.push_str("        let result = eval(env, \"");
+            } else {
+                generated.push_str("        let result = eval(None, \"");
+            }
         }
         generated.push_str(script.as_str());
         generated.push_str("\");\n\n");

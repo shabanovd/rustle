@@ -9,97 +9,55 @@ use nom::sequence::{terminated, preceded, tuple};
 use nom::combinator::{opt, map, map_res, complete, all_consuming};
 
 use crate::parser::parse_literal::is_digits;
-use chrono::{Date, NaiveDate, FixedOffset, NaiveTime, DateTime, NaiveDateTime};
+use chrono::{Date, NaiveDate, FixedOffset, NaiveTime, DateTime, NaiveDateTime, TimeZone, LocalResult};
 use nom::error::{ParseError, ErrorKind};
 use nom::multi::many0;
 use crate::values::Type;
 
 pub fn string_to_date(input: &str) -> Result<Type, String> {
-    match parse_date(input) {
-        Ok((input, dt)) => {
-            if input.is_empty() {
-                Ok(dt)
-            } else {
-                Err(String::from(input))
-            }
-        },
-        Err(e) => {
-            Err(format!("{:?}", e))
-        }
+    match all_consuming(parse_date)(input.trim()) {
+        Ok((_, date)) => Ok(date),
+        Err(e) => Err(String::from("TODO"))
     }
 }
 
 pub fn string_to_time(input: &str) -> Result<Type, String> {
-    match parse_time(input) {
-        Ok((input, dt)) => {
-            if input.is_empty() {
-                Ok(dt)
-            } else {
-                Err(String::from(input))
-            }
-        },
-        Err(e) => {
-            Err(format!("{:?}", e))
-        }
+    match all_consuming(parse_time)(input.trim()) {
+        Ok((_, time)) => Ok(time),
+        Err(e) => Err(String::from("TODO"))
     }
 }
 
 pub fn string_to_date_time(input: &str) -> Result<Type, String> {
-    match parse_date_time(input) {
-        Ok((input, dt)) => {
-            if input.is_empty() {
-                Ok(dt)
-            } else {
-                Err(String::from(input))
-            }
-        },
-        Err(e) => {
-            Err(format!("{:?}", e))
-        }
+    match all_consuming(parse_date_time)(input.trim()) {
+        Ok((_, dt)) => Ok(dt),
+        Err(e) => Err(String::from("TODO"))
     }
 }
 
 pub fn string_to_duration(input: &str) -> Result<Type, String> {
-    match parse_duration(input) {
-        Ok((input, dt)) => {
-            if input.is_empty() {
-                Ok(dt)
-            } else {
-                Err(String::from(input))
-            }
-        },
-        Err(e) => {
-            Err(format!("{:?}", e))
-        }
+    match all_consuming(parse_duration)(input.trim()) {
+        Ok((_, duration)) => Ok(duration),
+        Err(e) => Err(String::from("TODO"))
     }
 }
 
 pub fn string_to_ym_duration(input: &str) -> Result<Type, String> {
-    match parse_year_month_duration(input) {
-        Ok((input, dt)) => {
-            if input.is_empty() {
-                Ok(dt)
-            } else {
-                Err(String::from(input))
-            }
-        },
-        Err(e) => {
-            Err(format!("{:?}", e))
-        }
+    match all_consuming(parse_year_month_duration)(input.trim()) {
+        Ok((_, duration)) => Ok(duration),
+        Err(e) => Err(String::from("TODO"))
     }
 }
 
 pub fn string_to_date_time_duration(input: &str) -> Result<Type, String> {
-    match all_consuming(parse_day_time_duration)(input) {
+    match all_consuming(parse_day_time_duration)(input.trim()) {
         Ok((_, dt)) => Ok(dt),
-        Err(e) => {
-            Err(format!("{:?}", e))
-        }
+        Err(e) => Err(String::from("TODO"))
     }
 }
 
 pub fn string_to_year_month(input: &str) -> Result<Type, String> {
-    match all_consuming(parse_g_year_month)(input) {
+    match all_consuming(parse_g_year_month)(input.trim()) {
         Ok((_, dt)) => Ok(dt),
         Err(e) => Err(format!("can't convert to GYearMonth: {:?}", input))
     }
@@ -114,13 +72,7 @@ pub fn parse_g_year_month(input: &str) -> IResult<&str, Type> {
             parse_month,
             opt(alt((timezone_hour, timezone_utc))),
         )),
-        |(sign, year, _, month, z)| {
-            let tz_m = if let Some((tz_h, tz_m)) = z {
-                Some(tz_m + tz_h * 60)
-            } else {
-                None
-            };
-
+        |(sign, year, _, month, tz_m)| {
             let year = if sign.is_some() {
                 -(year as i32)
             } else {
@@ -133,7 +85,7 @@ pub fn parse_g_year_month(input: &str) -> IResult<&str, Type> {
 }
 
 pub fn string_to_year(input: &str) -> Result<Type, String> {
-    match all_consuming(parse_g_year)(input) {
+    match all_consuming(parse_g_year)(input.trim()) {
         Ok((_, dt)) => Ok(dt),
         Err(e) => Err(format!("can't convert to GYear: {:?}", input))
     }
@@ -146,13 +98,7 @@ pub fn parse_g_year(input: &str) -> IResult<&str, Type> {
             take_digits, // parse_year,
             opt(alt((timezone_hour, timezone_utc))),
         )),
-        |(sign, year, z)| {
-            let tz_m = if let Some((tz_h, tz_m)) = z {
-                Some(tz_m + tz_h * 60)
-            } else {
-                None
-            };
-
+        |(sign, year, tz_m)| {
             let year = if sign.is_some() {
                 -(year as i32)
             } else {
@@ -165,7 +111,7 @@ pub fn parse_g_year(input: &str) -> IResult<&str, Type> {
 }
 
 pub fn string_to_month_day(input: &str) -> Result<Type, String> {
-    match all_consuming(parse_g_month_day)(input) {
+    match all_consuming(parse_g_month_day)(input.trim()) {
         Ok((_, dt)) => Ok(dt),
         Err(e) => Err(format!("can't convert to GMonthDay: {:?}", input))
     }
@@ -180,26 +126,14 @@ pub fn parse_g_month_day(input: &str) -> IResult<&str, Type> {
             parse_day,
             opt(alt((timezone_hour, timezone_utc))),
         )),
-        |(_, month, _, day, z)| {
-            let tz_m = if let Some((tz_h, tz_m)) = z {
-                Some(tz_m + tz_h * 60)
-            } else {
-                None
-            };
-
-            // let month = if sign.len() % 2 == 1 {
-            //     -(month as i32)
-            // } else {
-            //     month as i32
-            // };
-
+        |(_, month, _, day, tz_m)| {
             Type::GMonthDay { month, day, tz_m }
         }
     )(input)
 }
 
 pub fn string_to_day(input: &str) -> Result<Type, String> {
-    match all_consuming(parse_g_day)(input) {
+    match all_consuming(parse_g_day)(input.trim()) {
         Ok((_, dt)) => Ok(dt),
         Err(e) => Err(format!("can't convert to GDay: {:?}", input))
     }
@@ -212,33 +146,21 @@ pub fn parse_g_day(input: &str) -> IResult<&str, Type> {
             take_digits, // parse_day,
             opt(alt((timezone_hour, timezone_utc))),
         )),
-        |(_, day, z)| {
-            let tz_m = if let Some((tz_h, tz_m)) = z {
-                Some(tz_m + tz_h * 60)
-            } else {
-                None
-            };
-
-            // let day = if sign.len() % 2 == 0 {
-            //     -(day as i32)
-            // } else {
-            //     day as i32
-            // };
-
+        |(_, day, tz_m)| {
             Type::GDay { day, tz_m }
         }
     )(input)
 }
 
 pub fn string_to_month(input: &str) -> Result<Type, String> {
-    match all_consuming(parse_g_month)(input) {
+    match all_consuming(parse_g_month)(input.trim()) {
         Ok((_, dt)) => Ok(dt),
         Err(e) => Err(format!("can't convert to GMonth: {:?}", input))
     }
 }
 
 pub fn parse_g_month_complete(input: &str) -> IResult<&str, Type> {
-    all_consuming(parse_g_month)(input)
+    all_consuming(parse_g_month)(input.trim())
 }
 
 pub fn parse_g_month(input: &str) -> IResult<&str, Type> {
@@ -248,26 +170,14 @@ pub fn parse_g_month(input: &str) -> IResult<&str, Type> {
             take_digits, // parse_day,
             opt(alt((timezone_hour, timezone_utc))),
         )),
-        |(sign, month, z)| {
-            let tz_m = if let Some((tz_h, tz_m)) = z {
-                Some(tz_m + tz_h * 60)
-            } else {
-                None
-            };
-
-            // let month = if sign.len() % 2 == 1 {
-            //     -(month as i32)
-            // } else {
-            //     month as i32
-            // };
-
+        |(sign, month, tz_m)| {
             Type::GMonth { month, tz_m }
         }
     )(input)
 }
 
 pub fn parse_date_complete(input: &str) -> IResult<&str, Type> {
-    all_consuming(parse_date)(input)
+    all_consuming(parse_date)(input.trim())
 }
 
 pub fn parse_date(input: &str) -> IResult<&str, Type> {
@@ -281,29 +191,35 @@ pub fn parse_date(input: &str) -> IResult<&str, Type> {
             parse_day,
             opt(alt((timezone_hour, timezone_utc))),
         )),
-        |(sign, y, _, m, _, d, z)| {
-            let (tz_h, tz_m) = z.unwrap_or((0, 0));
+        |(sign, y, _, m, _, d, tz)| {
             let y = if sign.is_some() {
                 -(y as i32)
             } else {
                 y as i32
             };
-            if let Some(date) = NaiveDate::from_ymd_opt(y, m, d) {
-                let offset = if tz_h > 0 {
-                    FixedOffset::east(((tz_h * 60) + tz_m) * 60)
-                } else {
-                    FixedOffset::west(((-tz_h * 60) + tz_m) * 60)
-                };
-                Ok(Type::Date { date: Date::from_utc(date, offset), offset: z.is_some() })
+
+            let tz_m = tz.unwrap_or(0);
+            let offset = if tz_m >= 0 {
+                FixedOffset::east(tz_m * 60)
             } else {
-                Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
+                FixedOffset::west(-tz_m * 60)
+            };
+
+            match offset.ymd_opt(y, m, d) {
+                LocalResult::Single(date) => {
+                    Ok(Type::Date { date, offset: tz.is_some() })
+                }
+                LocalResult::None |
+                LocalResult::Ambiguous(_, _) => {
+                    Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
+                }
             }
         }
     )(input)
 }
 
 pub fn parse_time_complete(input: &str) -> IResult<&str, Type> {
-    all_consuming(parse_time)(input)
+    all_consuming(parse_time)(input.trim())
 }
 
 // 12:00:00-01:00
@@ -317,8 +233,7 @@ pub fn parse_time(input: &str) -> IResult<&str, Type> {
             parse_second_and_ms,
             opt(alt((timezone_hour, timezone_utc))),
         )),
-        |(h, _, m, _, (s, ms), z)| {
-            let (tz_h, tz_m) = z.unwrap_or((0, 0));
+        |(h, _, m, _, (s, ms), tz)| {
             let time = if let Some(ms) = ms {
                 if let Some(time) = NaiveTime::from_hms_milli_opt(h, m, s, ms) {
                     time
@@ -333,19 +248,19 @@ pub fn parse_time(input: &str) -> IResult<&str, Type> {
                 }
             };
 
-            let offset = if tz_h > 0 {
-                FixedOffset::east(((tz_h * 60) + tz_m) * 60)
+            let tz_m = tz.unwrap_or(0);
+            let offset = if tz_m > 0 {
+                FixedOffset::east(tz_m * 60)
             } else {
-                FixedOffset::west(((-tz_h * 60) + tz_m) * 60)
+                FixedOffset::west(-tz_m * 60)
             };
-            let dt = time - offset;
-            Ok(Type::Time { time: crate::values::time::Time::from(time, offset), offset: z.is_some() })
+            Ok(Type::Time { time: crate::values::time::Time::from(time, offset), offset: tz.is_some() })
         }
     )(input)
 }
 
 pub fn parse_date_time_complete(input: &str) -> IResult<&str, Type> {
-    all_consuming(parse_date_time)(input)
+    all_consuming(parse_date_time)(input.trim())
 }
 
 // 2002-04-02T12:00:00-01:00
@@ -366,33 +281,41 @@ pub fn parse_date_time(input: &str) -> IResult<&str, Type> {
             parse_second,
             opt(alt((timezone_hour, timezone_utc))),
         )),
-        |(sign, yy, _, mm, _, dd, _, h, _, m, _, s, z)| {
-            let (tz_h, tz_m) = z.unwrap_or((0, 0));
+        |(sign, yy, _, mm, _, dd, _, h, _, m, _, s, tz)| {
             let yy = if sign.is_some() {
                 -(yy as i32)
             } else {
                 yy as i32
             };
-            if let Some(date) = NaiveDate::from_ymd_opt(yy, mm, dd) {
-                if let Some(time) = NaiveTime::from_hms_opt(h, m, s) {
-                    let offset = if tz_h > 0 {
-                        FixedOffset::east(((tz_h * 60) + tz_m) * 60)
-                    } else {
-                        FixedOffset::west(((-tz_h * 60) + tz_m) * 60)
-                    };
-                    let dt = NaiveDateTime::new(date, time) - offset;
-                    Ok(Type::DateTime { dt: DateTime::from_utc(dt, offset), offset: z.is_some() })
-                } else {
+
+            let tz_m = tz.unwrap_or(0);
+            let offset = if tz_m >= 0 {
+                FixedOffset::east(tz_m * 60)
+            } else {
+                FixedOffset::west(-tz_m * 60)
+            };
+
+            match offset.ymd_opt(yy, mm, dd) {
+                LocalResult::Single(date) => {
+                    match date.and_hms_opt(h, m, s) {
+                        Some(dt) => {
+                            Ok(Type::DateTime { dt, offset: tz.is_some() })
+                        }
+                        None => {
+                            Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
+                        }
+                    }
+                }
+                LocalResult::None |
+                LocalResult::Ambiguous(_, _) => {
                     Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
                 }
-            } else {
-                Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
             }
         }
     )(input)
 }
 
-fn timezone_hour(input: &str) -> IResult<&str, (i32, i32)> {
+fn timezone_hour(input: &str) -> IResult<&str, i32> {
     map(
         tuple((
             opt(alt((tag("+"), tag("-")))),
@@ -400,7 +323,7 @@ fn timezone_hour(input: &str) -> IResult<&str, (i32, i32)> {
             opt(preceded(tag(":"), parse_minute))
         )),
         |(sign, h, m)| {
-            let s = if let Some(ch) = sign {
+            let s: i32 = if let Some(ch) = sign {
                 match ch {
                     "+" => 1,
                     "-" => -1,
@@ -408,17 +331,17 @@ fn timezone_hour(input: &str) -> IResult<&str, (i32, i32)> {
                 }
             } else { 1 };
 
-            (s * h as i32, s * m.unwrap_or(0) as i32)
+            s * ((h * 60) + m.unwrap_or(0)) as i32
         }
     )(input)
 }
 
-fn timezone_utc(input: &str) -> IResult<&str, (i32, i32)> {
-    map(tag("Z"), |_| (0, 0))(input)
+fn timezone_utc(input: &str) -> IResult<&str, i32> {
+    map(tag("Z"), |_| 0)(input)
 }
 
 pub(crate) fn parse_duration_complete(input: &str) -> IResult<&str, Type> {
-    all_consuming(parse_duration)(input)
+    all_consuming(parse_duration)(input.trim())
 }
 
 fn parse_duration(input: &str) -> IResult<&str, Type> {
@@ -460,7 +383,7 @@ fn parse_duration(input: &str) -> IResult<&str, Type> {
 }
 
 pub fn parse_year_month_duration_complete(input: &str) -> IResult<&str, Type> {
-    all_consuming(parse_year_month_duration)(input)
+    all_consuming(parse_year_month_duration)(input.trim())
 }
 
 pub fn parse_year_month_duration(input: &str) -> IResult<&str, Type> {
@@ -488,7 +411,7 @@ pub fn parse_year_month_duration(input: &str) -> IResult<&str, Type> {
     )(input)
 }
 pub fn parse_day_time_duration_complete(input: &str) -> IResult<&str, Type> {
-    all_consuming(parse_day_time_duration)(input)
+    all_consuming(parse_day_time_duration)(input.trim())
 }
 
 pub fn parse_day_time_duration(input: &str) -> IResult<&str, Type> {

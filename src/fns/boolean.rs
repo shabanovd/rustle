@@ -4,6 +4,7 @@ use crate::fns::FUNCTION;
 use crate::parser::errors::ErrorCode;
 
 use bigdecimal::Zero;
+use crate::values::Types;
 
 // fn:true() as xs:boolean
 pub(crate) fn FN_TRUE() -> FUNCTION {
@@ -46,13 +47,11 @@ pub(crate) fn FN_BOOLEAN() -> FUNCTION {
     )
 }
 
-pub(crate) fn fn_boolean(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
-    let item = arguments.get(0).unwrap();
+pub(crate) fn fn_boolean(env: Box<Environment>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    let item = arguments.remove(0);
 
-    match object_to_bool(item) {
-        Ok(v) => Ok((env, Object::Atomic(Type::Boolean(v)))),
-        Err(e) => Err(e)
-    }
+    let v = effective_boolean_value(item)?;
+    Ok((env, Object::Atomic(Type::Boolean(v))))
 }
 
 // fn:not($arg as item()*) as xs:boolean
@@ -66,17 +65,41 @@ pub(crate) fn FN_NOT() -> FUNCTION {
     )
 }
 
-pub(crate) fn fn_not(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
-    let result = match arguments.as_slice() {
-        [object] => {
-            object_to_bool(object)
-        },
-        _ => panic!("error")
-    };
+pub(crate) fn fn_not(env: Box<Environment>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    let item = arguments.remove(0);
 
-    match result {
-        Ok(v) => Ok((env, Object::Atomic(Type::Boolean(!v)))),
-        Err(e) => Err(e)
+    let v = effective_boolean_value(item)?;
+    Ok((env, Object::Atomic(Type::Boolean(!v))))
+}
+
+pub fn effective_boolean_value(object: Object) ->  Result<bool, ErrorInfo> {
+    match object {
+        Object::Empty => Ok(false),
+        Object::Atomic(t) => {
+            match t {
+                Type::Boolean(v) => Ok(v),
+
+                Type::String(str) |
+                Type::NormalizedString(str) |
+                Type::AnyURI(str) |
+                Type::Untyped(str) => Ok(str.len() != 0),
+
+                Type::Integer(number) => Ok(number != 0),
+                Type::Decimal(number) => Ok(!number.is_zero()),
+                Type::Float(number) => Ok(!number.is_zero() && !number.is_nan()),
+                Type::Double(number) => Ok(!number.is_zero() && !number.is_nan()),
+
+                _ => Err((ErrorCode::FORG0006, String::from("TODO")))
+            }
+        },
+        Object::Sequence(items) => {
+            match items[0] {
+                Object::Node(_) => Ok(true),
+                _ => Err((ErrorCode::FORG0006, String::from("TODO")))
+            }
+
+        }
+        _ => Err((ErrorCode::FORG0006, String::from("TODO")))
     }
 }
 

@@ -100,8 +100,13 @@ pub(crate) fn FN_LOCAL_NAME_FROM_QNAME() -> FUNCTION {
 }
 
 pub(crate) fn fn_local_name_from_qname(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
-    println!("arguments {:?}", arguments);
-    todo!()
+    match arguments.as_slice() {
+        [Object::Empty] => Ok((env, Object::Empty)),
+        [Object::Atomic(Type::QName { local_part, .. })] => {
+            Ok((env, Object::Atomic(Type::NCName(local_part.clone()))))
+        },
+        _ => panic!()
+    }
 }
 
 // fn:namespace-uri-from-QName($arg as xs:QName?) as xs:anyURI?
@@ -116,7 +121,6 @@ pub(crate) fn FN_NAMESPACE_URI_FROM_QNAME() -> FUNCTION {
 }
 
 pub(crate) fn fn_namespace_uri_from_qname(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
-    println!("arguments {:?}", arguments);
     match arguments.as_slice() {
         [Object::Empty] => Ok((env, Object::Empty)),
         [Object::Atomic(Type::QName { url, .. })] => {
@@ -126,7 +130,7 @@ pub(crate) fn fn_namespace_uri_from_qname(env: Box<Environment>, arguments: Vec<
                 Ok((env, Object::Atomic(Type::AnyURI(String::new()))))
             }
         },
-        _ => panic!()
+        _ => panic!("{:?}", arguments)
     }
 }
 

@@ -2,7 +2,7 @@ use crate::eval::expression::{Expression, NodeTest};
 use crate::parser::op::{Representation, OperatorArithmetic, OperatorComparison};
 use bigdecimal::BigDecimal;
 use ordered_float::OrderedFloat;
-use crate::values::{QName, resolve_function_qname, resolve_element_qname};
+use crate::values::{QName, resolve_function_qname, resolve_element_qname, Types, QNameResolved};
 use crate::fns::{Param, call, object_to_bool};
 use crate::eval::{Environment, DynamicContext, EvalResult, Object, Type, eval_predicates, Axis, step_and_test, object_to_qname, object_owned_to_sequence, object_to_integer, ErrorInfo, INS};
 use crate::serialization::{object_to_string};
@@ -13,7 +13,7 @@ use crate::eval::arithmetic::{eval_unary, eval_arithmetic};
 use crate::eval::comparison::{eval_comparison, eval_comparison_item};
 use crate::eval::piping::{Pipe, eval_pipe};
 use crate::parser::errors::{CustomError, ErrorCode};
-use crate::eval::sequence_type::{ItemType, OccurrenceIndicator, SequenceType};
+use crate::eval::sequence_type::{ItemType, OccurrenceIndicator, SequenceType, XS_NOTATION};
 use linked_hash_map::LinkedHashMap;
 use crate::namespaces::{Namespace, NS_heap};
 use crate::eval::sequence_type::QNameToTypes;
@@ -1261,8 +1261,10 @@ impl Expression for Cast {
             Object::Atomic(t) => {
                 match &self.st.item_type {
                     ItemType::AtomicOrUnionType(name) => {
-                        let name = new_env.namespaces.resolve(&name);
-                        if let Some(types) = QNameToTypes.get(&name) {
+                        let name: QNameResolved = new_env.namespaces.resolve(&name);
+                        if name == XS_NOTATION {
+                            Err((ErrorCode::XPST0080, String::from("TODO")))
+                        } else if let Some(types) = QNameToTypes.get(&name) {
                             Ok((new_env, Object::Atomic(t.convert(types.clone())?)))
                         } else {
                             todo!("custom types")
@@ -1271,7 +1273,7 @@ impl Expression for Cast {
                     _ => panic!("raise error?")
                 }
             }
-            _ => panic!("raise error?")
+            _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
         }
     }
 

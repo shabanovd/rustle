@@ -5,6 +5,7 @@ use crate::eval::{Object, Type, RangeIterator, Environment};
 use crate::parser::op::Representation;
 use crate::values::{binary_base64_to_string, binary_hex_to_string};
 use crate::values::time::Time;
+use std::num;
 
 pub fn object_to_string_xml(env: &Box<Environment>, object: &Object) -> String {
     _object_to_string(env, object, false, " ")
@@ -152,7 +153,16 @@ pub(crate) fn float_to_string(number: &OrderedFloat<f32>, rules: bool) -> String
             format!("{:+E}", number.0)
         } else {
             // science notation
-            format!("{:.precision$E}", number.0, precision = 1)
+            // format!("{:.precision$E}", number.0, precision = 1)
+            let mut str = format!("{:E}", number.0);
+            // workarounds
+            str = if str.contains(".") {
+                str
+            } else {
+                str.replace("E", ".0E")
+            };
+
+            str
         }
     } else {
         number.to_string()
@@ -187,7 +197,16 @@ pub(crate) fn double_to_string(number: &OrderedFloat<f64>, rules: bool) -> Strin
             format!("{:+E}", number.0)
         } else {
             // science notation
-            format!("{:.precision$E}", number.0, precision = 1)
+            // format!("{:.precision$E}", number.0, precision = 1)
+            let mut str = format!("{:E}", number.0);
+            // workarounds
+            str = if str.contains(".") {
+                str
+            } else {
+                str.replace("E", ".0E")
+            };
+
+            str
         }
     } else {
         number.to_string()
@@ -235,7 +254,7 @@ pub(crate) fn g_year_month_to_string(year: i32, month: u32, tz_m: Option<i32>) -
         let (sign, mut tz) = if tz >= 0 { ("+", tz) } else { ("-", -tz) };
         let m = tz % 60;
         let h = tz / 60;
-        if h == 0 && h == 0 {
+        if h == 0 && m == 0 {
             format!("{}{:04}-{:02}Z", date_sign, year, month)
         } else {
             format!("{}{:04}-{:02}{}{:02}:{:02}", date_sign, year, month, sign, h, m)
@@ -251,7 +270,7 @@ pub(crate) fn g_year_to_string(year: i32, tz_m: Option<i32>) -> String {
         let (sign, mut tz) = if tz >= 0 { ("+", tz) } else { ("-", -tz) };
         let m = tz % 60;
         let h = tz / 60;
-        if h == 0 && h == 0 {
+        if h == 0 && m == 0 {
             format!("{}{:04}Z", date_sign, year)
         } else {
             format!("{}{:04}{}{:02}:{:02}", date_sign, year, sign, h, m)
@@ -266,7 +285,7 @@ pub(crate) fn g_month_day_to_string(month: u32, day: u32, tz_m: Option<i32>) -> 
         let (sign, mut tz) = if tz >= 0 { ("+", tz) } else { ("-", -tz) };
         let m = tz % 60;
         let h = tz / 60;
-        if h == 0 && h == 0 {
+        if h == 0 && m == 0 {
             format!("--{:02}-{:02}Z", month, day)
         } else {
             format!("--{:02}-{:02}{}{:02}:{:02}", month, day, sign, h, m)
@@ -281,7 +300,7 @@ pub(crate) fn g_day_to_string(day: u32, tz_m: Option<i32>) -> String {
         let (sign, mut tz) = if tz >= 0 { ("+", tz) } else { ("-", -tz) };
         let m = tz % 60;
         let h = tz / 60;
-        if h == 0 && h == 0 {
+        if h == 0 && m == 0 {
             format!("---{:02}Z", day)
         } else {
             format!("---{:02}{}{:02}:{:02}", day, sign, h, m)
@@ -296,7 +315,7 @@ pub(crate) fn g_month_to_string(month: u32, tz_m: Option<i32>) -> String {
         let (sign, mut tz) = if tz >= 0 { ("+", tz) } else { ("-", -tz) };
         let m = tz % 60;
         let h = tz / 60;
-        if h == 0 && h == 0 {
+        if h == 0 && m == 0 {
             format!("--{:02}Z", month)
         } else {
             format!("--{:02}{}{:02}:{:02}", month, sign, h, m)

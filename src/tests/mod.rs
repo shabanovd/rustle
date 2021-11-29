@@ -4,23 +4,32 @@ use crate::parser::parse;
 use crate::values::{resolve_element_qname, QName, QNameResolved};
 use crate::serialization::object_to_string;
 use crate::fns::object_to_bool;
+use crate::namespaces::NS;
 use crate::parser::errors::ErrorCode;
 use crate::serialization::to_xml::object_to_xml;
 use crate::tree::InMemoryXMLTree;
 
-pub(crate) fn eval_on_spec(spec: &str, sources: Vec<(&str, &str)>, input: &str) -> EvalResult {
+// (sources, namespaces)
+pub(crate) fn eval_on_spec(
+    spec: &str,
+    sources_namespaces: Option<(Vec<(&str, &str)>, Vec<(&str, &str)>)>,
+    input: &str
+) -> EvalResult {
     match spec {
         "XQ10" | "XP20 XQ10" |
         "XQ10+" | "XP20+ XQ10+" | "XP30+ XQ10+" |
         "XQ30+" | "XP30+ XQ30+" |
         "XQ31+" | "XP31+ XQ31+" => {
-            eval(sources, input)
+            eval(sources_namespaces, input)
         }
         _ => panic!("unsupported spec {}", spec)
     }
 }
 
-pub(crate) fn eval(sources: Vec<(&str, &str)>, input: &str) -> EvalResult {
+pub(crate) fn eval(
+    sources_namespaces: Option<(Vec<(&str, &str)>, Vec<(&str, &str)>)>,
+    input: &str
+) -> EvalResult {
     println!("script: {:?}", input);
 
     let parsed = parse(input);
@@ -33,23 +42,29 @@ pub(crate) fn eval(sources: Vec<(&str, &str)>, input: &str) -> EvalResult {
 
         let mut context = DynamicContext::nothing();
 
-        for (name, path) in sources {
-            let tree = InMemoryXMLTree::load(env.next_id(), path);
-            if name == "." {
-                let writer = tree.lock().unwrap();
-                if let Some(rf) = writer.as_reader().first() {
-                    context.item = Object::Node(rf);
-                    context.position = Some(1)
+        if let Some(sources_namespaces) = sources_namespaces {
+            let (sources, namespaces) = sources_namespaces;
+            for (name, path) in sources {
+                let tree = InMemoryXMLTree::load(env.next_id(), path);
+                if name == "." {
+                    let writer = tree.lock().unwrap();
+                    if let Some(rf) = writer.as_reader().first() {
+                        context.item = Object::Node(rf);
+                        context.position = Some(1)
+                    }
+                } else if name.starts_with("$") {
+                    let writer = tree.lock().unwrap();
+                    if let Some(rf) = writer.as_reader().first() {
+                        let var_name = QNameResolved { url: "".to_string(), local_part: name[1..].to_string() };
+                        env.set_variable(var_name, Object::Node(rf));
+                    }
+                } else {
+                    panic!("unknown source name {}", name);
                 }
-            } else if name.starts_with("$") {
-                let writer = tree.lock().unwrap();
-                if let Some(rf) = writer.as_reader().first() {
-                    let var_name = QNameResolved { url: "".to_string(), local_part: name[1..].to_string() };
-                    env.set_variable(var_name, Object::Node(rf));
-                }
+            }
 
-            } else {
-                panic!("unknown source name {}", name);
+            for (prefix, uri) in namespaces {
+                env.namespaces.add(&NS::new(prefix, uri));
             }
         }
 
@@ -114,7 +129,7 @@ fn eval_assert(result: &EvalResult, check: &str) -> EvalResult {
 pub(crate) fn check_assert_eq(result: &EvalResult, check: &str) {
     let (env, obj) = result.as_ref().unwrap();
 
-    match eval(vec![], check) {
+    match eval(None, check) {
         Ok((expected_env, expected_obj)) => {
             match comparison::eq((&expected_env, &expected_obj), (env, obj)) {
                 Ok(v) => if !v { assert_eq!(&expected_obj, obj) },
@@ -127,7 +142,7 @@ pub(crate) fn check_assert_eq(result: &EvalResult, check: &str) {
 
 pub(crate) fn bool_check_assert_eq(result: &EvalResult, check: &str) -> bool {
     let (env, obj) = result.as_ref().unwrap();
-    let (expected_env, expected_obj) = eval(vec![], check).unwrap();
+    let (expected_env, expected_obj) = eval(None, check).unwrap();
     match comparison::eq((&expected_env, &expected_obj), (env, obj)) {
         Ok(v) => !v,
         Err(code) => panic!("Error {:?}", code)
@@ -150,7 +165,7 @@ pub(crate) fn bool_check_assert_count(result: &EvalResult, check: &str) -> bool 
 
 pub(crate) fn check_assert_deep_eq(result: &EvalResult, check: &str) {
     let (env, obj) = result.as_ref().unwrap();
-    let (expected_env, expected_obj) = eval(vec![], check).unwrap();
+    let (expected_env, expected_obj) = eval(None, check).unwrap();
     if comparison::deep_eq((&expected_env, &expected_obj), (env, obj)).unwrap() {
         assert_eq!(&expected_obj, obj);
     }
@@ -158,7 +173,7 @@ pub(crate) fn check_assert_deep_eq(result: &EvalResult, check: &str) {
 
 pub(crate) fn bool_check_assert_deep_eq(result: &EvalResult, check: &str) -> bool {
     let (env, obj) = result.as_ref().unwrap();
-    let (expected_env, expected_obj) = eval(vec![], check).unwrap();
+    let (expected_env, expected_obj) = eval(None, check).unwrap();
     comparison::deep_eq((&expected_env, &expected_obj), (env, obj)).unwrap()
 }
 
