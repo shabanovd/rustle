@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::fmt;
 use std::fmt::{Write, Debug, Formatter};
 use base64::DecodeError;
@@ -80,25 +81,25 @@ pub enum Types {
     AnyURI = 20,
 
     Numeric = 100,
-    Integer = 110,
+    Integer = 120,
     Decimal = 140,
     Float   = 150,
     Double  = 160,
 
-    NonPositiveInteger = 111,
-    NegativeInteger = 112,
-    Long = 120,
-    Int = 121,
-    Short = 122,
-    Byte = 123,
+    Byte = 111,
+    Short = 112,
+    Int = 113,
+    Long = 114,
 
-    NonNegativeInteger = 113,
-    UnsignedLong = 130,
-    UnsignedInt = 131,
-    UnsignedShort = 132,
-    UnsignedByte = 133,
+    UnsignedByte = 115,
+    UnsignedShort = 116,
+    UnsignedInt = 117,
+    UnsignedLong = 118,
 
-    PositiveInteger = 114,
+    PositiveInteger = 121,
+    NonNegativeInteger = 122,
+    NonPositiveInteger = 123,
+    NegativeInteger = 124,
 
     DateTime = 201,
     DateTimeStamp = 202,
@@ -149,20 +150,20 @@ pub enum Type {
     Float(OrderedFloat<f32>),
     Double(OrderedFloat<f64>),
 
-    // nonPositiveInteger(),
-    // negativeInteger(),
-    // long(),
-    // int(),
-    // short(),
-    // byte(),
+    PositiveInteger(i128),
+    NonNegativeInteger(i128),
+    NonPositiveInteger(i128),
+    NegativeInteger(i128),
 
-    // nonNegativeInteger(),
-    // unsignedLong(),
-    // unsignedInt(),
-    // unsignedShort(),
-    // unsignedByte(),
+    Long(i64),
+    Int(i32),
+    Short(i16),
+    Byte(i8),
 
-    // positiveInteger(),
+    UnsignedLong(u64),
+    UnsignedInt(u32),
+    UnsignedShort(u16),
+    UnsignedByte(u8),
 
     DateTime { dt: DateTime<FixedOffset>, offset: bool },
     DateTimeStamp(),
@@ -220,6 +221,22 @@ impl Type {
             Type::NormalizedString(_) => Types::NormalizedString,
 
             Type::AnyURI(_) => Types::AnyURI,
+
+            Type::UnsignedByte(_) => Types::UnsignedByte,
+            Type::UnsignedShort(_) => Types::UnsignedShort,
+            Type::UnsignedInt(_) => Types::UnsignedInt,
+            Type::UnsignedLong(_) => Types::UnsignedLong,
+
+            Type::Byte(_) => Types::Byte,
+            Type::Short(_) => Types::Short,
+            Type::Int(_) => Types::Int,
+            Type::Long(_) => Types::Long,
+
+            Type::PositiveInteger(_) => Types::PositiveInteger,
+            Type::NonPositiveInteger(_) => Types::NonPositiveInteger,
+
+            Type::NegativeInteger(_) => Types::NegativeInteger,
+            Type::NonNegativeInteger(_) => Types::NonNegativeInteger,
 
             Type::Integer(_) => Types::Integer,
             Type::Decimal(_) => Types::Decimal,
@@ -301,6 +318,22 @@ impl Type {
                             Err((ErrorCode::FORG0001, format!("The string {:?} cannot be cast to a boolean", str)))
                         }
                     }
+
+                    Types::Byte => crate::values::string_to::byte(str),
+                    Types::Short => crate::values::string_to::short(str),
+                    Types::Int => crate::values::string_to::int(str),
+                    Types::Long => crate::values::string_to::long(str),
+
+                    Types::UnsignedByte => crate::values::string_to::unsigned_byte(str),
+                    Types::UnsignedShort => crate::values::string_to::unsigned_short(str),
+                    Types::UnsignedInt => crate::values::string_to::unsigned_int(str),
+                    Types::UnsignedLong => crate::values::string_to::unsigned_long(str),
+
+                    Types::PositiveInteger => crate::values::string_to::positive_integer(str),
+                    Types::NonNegativeInteger => crate::values::string_to::non_negative_integer(str),
+                    Types::NonPositiveInteger => crate::values::string_to::non_positive_integer(str),
+                    Types::NegativeInteger => crate::values::string_to::negative_integer(str),
+
                     Types::Integer => crate::values::string_to::integer(str),
                     Types::Decimal => crate::values::string_to::decimal(str),
                     Types::Float => crate::values::string_to::float(str, false),
@@ -394,6 +427,1797 @@ impl Type {
                 }
             }
 
+            Type::Byte(number) => {
+                match to {
+                    Types::Untyped => {
+                        let data = number.to_string();
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = number.to_string();
+                        Ok(Type::String(data))
+                    }
+                    Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
+
+                    Types::UnsignedLong => {
+                        if let Some(num) = number.to_u64() {
+                            Ok(Type::UnsignedLong(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedInt => {
+                        if let Some(num) = number.to_u32() {
+                            Ok(Type::UnsignedInt(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedShort => {
+                        if let Some(num) = number.to_u16() {
+                            Ok(Type::UnsignedShort(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedByte => {
+                        if let Some(num) = number.to_u8() {
+                            Ok(Type::UnsignedByte(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+
+                    Types::Long => {
+                        if let Some(num) = number.to_i64() {
+                            Ok(Type::Long(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Int => {
+                        if let Some(num) = number.to_i32() {
+                            Ok(Type::Int(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Short => {
+                        if let Some(num) = number.to_i16() {
+                            Ok(Type::Short(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Byte => {
+                        if let Some(num) = number.to_i8() {
+                            Ok(Type::Byte(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+
+                    Types::PositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num > 0 {
+                                Ok(Type::PositiveInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonNegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num >= 0 {
+                                Ok(Type::NonNegativeInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonPositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num <= 0 {
+                                Ok(Type::NonPositiveInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num < 0 {
+                                Ok(Type::NegativeInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+
+                    Types::Integer => {
+                        if let Some(num) = number.to_i128() {
+                            Ok(Type::Integer(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::Decimal => {
+                        match BigDecimal::from_i8(*number) {
+                            Some(number) => Ok((Type::Decimal(number))),
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Float => {
+                        match number.to_f32() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Float(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Double => {
+                        match number.to_f64() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Double(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Type::Short(number) => {
+                match to {
+                    Types::Untyped => {
+                        let data = number.to_string();
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = number.to_string();
+                        Ok(Type::String(data))
+                    }
+                    Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
+
+                    Types::UnsignedLong => {
+                        if let Some(num) = number.to_u64() {
+                            Ok(Type::UnsignedLong(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedInt => {
+                        if let Some(num) = number.to_u32() {
+                            Ok(Type::UnsignedInt(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedShort => {
+                        if let Some(num) = number.to_u16() {
+                            Ok(Type::UnsignedShort(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedByte => {
+                        if let Some(num) = number.to_u8() {
+                            Ok(Type::UnsignedByte(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+
+                    Types::Long => {
+                        if let Some(num) = number.to_i64() {
+                            Ok(Type::Long(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Int => {
+                        if let Some(num) = number.to_i32() {
+                            Ok(Type::Int(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Short => {
+                        if let Some(num) = number.to_i16() {
+                            Ok(Type::Short(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Byte => {
+                        if let Some(num) = number.to_i8() {
+                            Ok(Type::Byte(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+
+                    Types::PositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num > 0 {
+                                Ok(Type::PositiveInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonNegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num >= 0 {
+                                Ok(Type::NonNegativeInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonPositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num <= 0 {
+                                Ok(Type::NonPositiveInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num < 0 {
+                                Ok(Type::NegativeInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+
+                    Types::Integer => {
+                        if let Some(num) = number.to_i128() {
+                            Ok(Type::Integer(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::Decimal => {
+                        match BigDecimal::from_i16(*number) {
+                            Some(number) => Ok((Type::Decimal(number))),
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Float => {
+                        match number.to_f32() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Float(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Double => {
+                        match number.to_f64() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Double(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Type::Int(number) => {
+                match to {
+                    Types::Untyped => {
+                        let data = number.to_string();
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = number.to_string();
+                        Ok(Type::String(data))
+                    }
+                    Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
+
+                    Types::UnsignedLong => {
+                        if let Some(num) = number.to_u64() {
+                            Ok(Type::UnsignedLong(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedInt => {
+                        if let Some(num) = number.to_u32() {
+                            Ok(Type::UnsignedInt(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedShort => {
+                        if let Some(num) = number.to_u16() {
+                            Ok(Type::UnsignedShort(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedByte => {
+                        if let Some(num) = number.to_u8() {
+                            Ok(Type::UnsignedByte(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+
+                    Types::Long => {
+                        if let Some(num) = number.to_i64() {
+                            Ok(Type::Long(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Int => {
+                        if let Some(num) = number.to_i32() {
+                            Ok(Type::Int(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Short => {
+                        if let Some(num) = number.to_i16() {
+                            Ok(Type::Short(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Byte => {
+                        if let Some(num) = number.to_i8() {
+                            Ok(Type::Byte(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+
+                    Types::PositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num > 0 {
+                                Ok(Type::PositiveInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonNegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num >= 0 {
+                                Ok(Type::NonNegativeInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonPositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num <= 0 {
+                                Ok(Type::NonPositiveInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num < 0 {
+                                Ok(Type::NegativeInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+
+                    Types::Integer => {
+                        if let Some(num) = number.to_i128() {
+                            Ok(Type::Integer(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::Decimal => {
+                        match BigDecimal::from_i32(*number) {
+                            Some(number) => Ok((Type::Decimal(number))),
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Float => {
+                        match number.to_f32() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Float(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Double => {
+                        match number.to_f64() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Double(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Type::Long(number) => {
+                match to {
+                    Types::Untyped => {
+                        let data = number.to_string();
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = number.to_string();
+                        Ok(Type::String(data))
+                    }
+                    Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
+
+                    Types::UnsignedLong => {
+                        if let Some(num) = number.to_u64() {
+                            Ok(Type::UnsignedLong(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedInt => {
+                        if let Some(num) = number.to_u32() {
+                            Ok(Type::UnsignedInt(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedShort => {
+                        if let Some(num) = number.to_u16() {
+                            Ok(Type::UnsignedShort(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedByte => {
+                        if let Some(num) = number.to_u8() {
+                            Ok(Type::UnsignedByte(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+
+                    Types::Long => {
+                        if let Some(num) = number.to_i64() {
+                            Ok(Type::Long(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Int => {
+                        if let Some(num) = number.to_i32() {
+                            Ok(Type::Int(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Short => {
+                        if let Some(num) = number.to_i16() {
+                            Ok(Type::Short(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Byte => {
+                        if let Some(num) = number.to_i8() {
+                            Ok(Type::Byte(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+
+                    Types::PositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num > 0 {
+                                Ok(Type::PositiveInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonNegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num >= 0 {
+                                Ok(Type::NonNegativeInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonPositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num <= 0 {
+                                Ok(Type::NonPositiveInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num < 0 {
+                                Ok(Type::NegativeInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+
+                    Types::Integer => {
+                        if let Some(num) = number.to_i128() {
+                            Ok(Type::Integer(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::Decimal => {
+                        match BigDecimal::from_i64(*number) {
+                            Some(number) => Ok((Type::Decimal(number))),
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Float => {
+                        match number.to_f32() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Float(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Double => {
+                        match number.to_f64() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Double(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+
+            Type::UnsignedByte(number) => {
+                match to {
+                    Types::Untyped => {
+                        let data = number.to_string();
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = number.to_string();
+                        Ok(Type::String(data))
+                    }
+                    Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
+
+                    Types::UnsignedLong => {
+                        if let Some(num) = number.to_u64() {
+                            Ok(Type::UnsignedLong(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedInt => {
+                        if let Some(num) = number.to_u32() {
+                            Ok(Type::UnsignedInt(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedShort => {
+                        if let Some(num) = number.to_u16() {
+                            Ok(Type::UnsignedShort(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedByte => {
+                        if let Some(num) = number.to_u8() {
+                            Ok(Type::UnsignedByte(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+
+                    Types::Long => {
+                        if let Some(num) = number.to_i64() {
+                            Ok(Type::Long(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Int => {
+                        if let Some(num) = number.to_i32() {
+                            Ok(Type::Int(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Short => {
+                        if let Some(num) = number.to_i16() {
+                            Ok(Type::Short(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Byte => {
+                        if let Some(num) = number.to_i8() {
+                            Ok(Type::Byte(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+
+                    Types::PositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num > 0 {
+                                Ok(Type::PositiveInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonNegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num >= 0 {
+                                Ok(Type::NonNegativeInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonPositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num <= 0 {
+                                Ok(Type::NonPositiveInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num < 0 {
+                                Ok(Type::NegativeInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+
+                    Types::Integer => {
+                        if let Some(num) = number.to_i128() {
+                            Ok(Type::Integer(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::Decimal => {
+                        match BigDecimal::from_u8(*number) {
+                            Some(number) => Ok((Type::Decimal(number))),
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Float => {
+                        match number.to_f32() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Float(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Double => {
+                        match number.to_f64() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Double(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Type::UnsignedShort(number) => {
+                match to {
+                    Types::Untyped => {
+                        let data = number.to_string();
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = number.to_string();
+                        Ok(Type::String(data))
+                    }
+                    Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
+
+                    Types::UnsignedLong => {
+                        if let Some(num) = number.to_u64() {
+                            Ok(Type::UnsignedLong(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedInt => {
+                        if let Some(num) = number.to_u32() {
+                            Ok(Type::UnsignedInt(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedShort => {
+                        if let Some(num) = number.to_u16() {
+                            Ok(Type::UnsignedShort(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedByte => {
+                        if let Some(num) = number.to_u8() {
+                            Ok(Type::UnsignedByte(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+
+                    Types::Long => {
+                        if let Some(num) = number.to_i64() {
+                            Ok(Type::Long(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Int => {
+                        if let Some(num) = number.to_i32() {
+                            Ok(Type::Int(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Short => {
+                        if let Some(num) = number.to_i16() {
+                            Ok(Type::Short(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Byte => {
+                        if let Some(num) = number.to_i8() {
+                            Ok(Type::Byte(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+
+                    Types::PositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num > 0 {
+                                Ok(Type::PositiveInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonNegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num >= 0 {
+                                Ok(Type::NonNegativeInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonPositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num <= 0 {
+                                Ok(Type::NonPositiveInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num < 0 {
+                                Ok(Type::NegativeInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+
+                    Types::Integer => {
+                        if let Some(num) = number.to_i128() {
+                            Ok(Type::Integer(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::Decimal => {
+                        match BigDecimal::from_u16(*number) {
+                            Some(number) => Ok((Type::Decimal(number))),
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Float => {
+                        match number.to_f32() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Float(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Double => {
+                        match number.to_f64() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Double(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Type::UnsignedInt(number) => {
+                match to {
+                    Types::Untyped => {
+                        let data = number.to_string();
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = number.to_string();
+                        Ok(Type::String(data))
+                    }
+                    Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
+
+                    Types::UnsignedLong => {
+                        if let Some(num) = number.to_u64() {
+                            Ok(Type::UnsignedLong(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedInt => {
+                        if let Some(num) = number.to_u32() {
+                            Ok(Type::UnsignedInt(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedShort => {
+                        if let Some(num) = number.to_u16() {
+                            Ok(Type::UnsignedShort(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedByte => {
+                        if let Some(num) = number.to_u8() {
+                            Ok(Type::UnsignedByte(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+
+                    Types::Long => {
+                        if let Some(num) = number.to_i64() {
+                            Ok(Type::Long(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Int => {
+                        if let Some(num) = number.to_i32() {
+                            Ok(Type::Int(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Short => {
+                        if let Some(num) = number.to_i16() {
+                            Ok(Type::Short(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Byte => {
+                        if let Some(num) = number.to_i8() {
+                            Ok(Type::Byte(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+
+                    Types::PositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num > 0 {
+                                Ok(Type::PositiveInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonNegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num >= 0 {
+                                Ok(Type::NonNegativeInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonPositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num <= 0 {
+                                Ok(Type::NonPositiveInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num < 0 {
+                                Ok(Type::NegativeInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+
+                    Types::Integer => {
+                        if let Some(num) = number.to_i128() {
+                            Ok(Type::Integer(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::Decimal => {
+                        match BigDecimal::from_u32(*number) {
+                            Some(number) => Ok((Type::Decimal(number))),
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Float => {
+                        match number.to_f32() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Float(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Double => {
+                        match number.to_f64() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Double(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Type::UnsignedLong(number) => {
+                match to {
+                    Types::Untyped => {
+                        let data = number.to_string();
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = number.to_string();
+                        Ok(Type::String(data))
+                    }
+                    Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
+
+                    Types::UnsignedLong => {
+                        if let Some(num) = number.to_u64() {
+                            Ok(Type::UnsignedLong(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedInt => {
+                        if let Some(num) = number.to_u32() {
+                            Ok(Type::UnsignedInt(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedShort => {
+                        if let Some(num) = number.to_u16() {
+                            Ok(Type::UnsignedShort(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedByte => {
+                        if let Some(num) = number.to_u8() {
+                            Ok(Type::UnsignedByte(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+
+                    Types::Long => {
+                        if let Some(num) = number.to_i64() {
+                            Ok(Type::Long(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Int => {
+                        if let Some(num) = number.to_i32() {
+                            Ok(Type::Int(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Short => {
+                        if let Some(num) = number.to_i16() {
+                            Ok(Type::Short(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Byte => {
+                        if let Some(num) = number.to_i8() {
+                            Ok(Type::Byte(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+
+                    Types::PositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num > 0 {
+                                Ok(Type::PositiveInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonNegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num >= 0 {
+                                Ok(Type::NonNegativeInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonPositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num <= 0 {
+                                Ok(Type::NonPositiveInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num < 0 {
+                                Ok(Type::NegativeInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+
+                    Types::Integer => {
+                        if let Some(num) = number.to_i128() {
+                            Ok(Type::Integer(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::Decimal => {
+                        match BigDecimal::from_u64(*number) {
+                            Some(number) => Ok((Type::Decimal(number))),
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Float => {
+                        match number.to_f32() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Float(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Double => {
+                        match number.to_f64() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Double(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+
+            Type::PositiveInteger(number) => {
+                match to {
+                    Types::Untyped => {
+                        let data = number.to_string();
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = number.to_string();
+                        Ok(Type::String(data))
+                    }
+                    Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
+
+                    Types::UnsignedLong => {
+                        if let Some(num) = number.to_u64() {
+                            Ok(Type::UnsignedLong(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedInt => {
+                        if let Some(num) = number.to_u32() {
+                            Ok(Type::UnsignedInt(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedShort => {
+                        if let Some(num) = number.to_u16() {
+                            Ok(Type::UnsignedShort(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedByte => {
+                        if let Some(num) = number.to_u8() {
+                            Ok(Type::UnsignedByte(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+
+                    Types::Long => {
+                        if let Some(num) = number.to_i64() {
+                            Ok(Type::Long(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Int => {
+                        if let Some(num) = number.to_i32() {
+                            Ok(Type::Int(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Short => {
+                        if let Some(num) = number.to_i16() {
+                            Ok(Type::Short(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Byte => {
+                        if let Some(num) = number.to_i8() {
+                            Ok(Type::Byte(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+
+                    Types::PositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num > 0 {
+                                Ok(Type::PositiveInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonNegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num >= 0 {
+                                Ok(Type::NonNegativeInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonPositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num <= 0 {
+                                Ok(Type::NonPositiveInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num < 0 {
+                                Ok(Type::NegativeInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+
+                    Types::Integer => {
+                        if let Some(num) = number.to_i128() {
+                            Ok(Type::Integer(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::Decimal => {
+                        match BigDecimal::from_i128(*number) {
+                            Some(number) => Ok((Type::Decimal(number))),
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Float => {
+                        match number.to_f32() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Float(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Double => {
+                        match number.to_f64() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Double(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Type::NonNegativeInteger(number) => {
+                match to {
+                    Types::Untyped => {
+                        let data = number.to_string();
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = number.to_string();
+                        Ok(Type::String(data))
+                    }
+                    Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
+
+                    Types::UnsignedLong => {
+                        if let Some(num) = number.to_u64() {
+                            Ok(Type::UnsignedLong(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedInt => {
+                        if let Some(num) = number.to_u32() {
+                            Ok(Type::UnsignedInt(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedShort => {
+                        if let Some(num) = number.to_u16() {
+                            Ok(Type::UnsignedShort(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedByte => {
+                        if let Some(num) = number.to_u8() {
+                            Ok(Type::UnsignedByte(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+
+                    Types::Long => {
+                        if let Some(num) = number.to_i64() {
+                            Ok(Type::Long(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Int => {
+                        if let Some(num) = number.to_i32() {
+                            Ok(Type::Int(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Short => {
+                        if let Some(num) = number.to_i16() {
+                            Ok(Type::Short(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Byte => {
+                        if let Some(num) = number.to_i8() {
+                            Ok(Type::Byte(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+
+                    Types::PositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num > 0 {
+                                Ok(Type::PositiveInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonNegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num >= 0 {
+                                Ok(Type::NonNegativeInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonPositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num <= 0 {
+                                Ok(Type::NonPositiveInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num < 0 {
+                                Ok(Type::NegativeInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+
+                    Types::Integer => {
+                        if let Some(num) = number.to_i128() {
+                            Ok(Type::Integer(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::Decimal => {
+                        match BigDecimal::from_i128(*number) {
+                            Some(number) => Ok((Type::Decimal(number))),
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Float => {
+                        match number.to_f32() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Float(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Double => {
+                        match number.to_f64() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Double(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Type::NonPositiveInteger(number) => {
+                match to {
+                    Types::Untyped => {
+                        let data = number.to_string();
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = number.to_string();
+                        Ok(Type::String(data))
+                    }
+                    Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
+
+                    Types::UnsignedLong => {
+                        if let Some(num) = number.to_u64() {
+                            Ok(Type::UnsignedLong(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedInt => {
+                        if let Some(num) = number.to_u32() {
+                            Ok(Type::UnsignedInt(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedShort => {
+                        if let Some(num) = number.to_u16() {
+                            Ok(Type::UnsignedShort(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedByte => {
+                        if let Some(num) = number.to_u8() {
+                            Ok(Type::UnsignedByte(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+
+                    Types::Long => {
+                        if let Some(num) = number.to_i64() {
+                            Ok(Type::Long(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Int => {
+                        if let Some(num) = number.to_i32() {
+                            Ok(Type::Int(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Short => {
+                        if let Some(num) = number.to_i16() {
+                            Ok(Type::Short(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Byte => {
+                        if let Some(num) = number.to_i8() {
+                            Ok(Type::Byte(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+
+                    Types::PositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num > 0 {
+                                Ok(Type::PositiveInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonNegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num >= 0 {
+                                Ok(Type::NonNegativeInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonPositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num <= 0 {
+                                Ok(Type::NonPositiveInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num < 0 {
+                                Ok(Type::NegativeInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+
+                    Types::Integer => {
+                        if let Some(num) = number.to_i128() {
+                            Ok(Type::Integer(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::Decimal => {
+                        match BigDecimal::from_i128(*number) {
+                            Some(number) => Ok((Type::Decimal(number))),
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Float => {
+                        match number.to_f32() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Float(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Double => {
+                        match number.to_f64() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Double(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Type::NegativeInteger(number) => {
+                match to {
+                    Types::Untyped => {
+                        let data = number.to_string();
+                        Ok(Type::Untyped(data))
+                    }
+                    Types::String => {
+                        let data = number.to_string();
+                        Ok(Type::String(data))
+                    }
+                    Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
+
+                    Types::UnsignedLong => {
+                        if let Some(num) = number.to_u64() {
+                            Ok(Type::UnsignedLong(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedInt => {
+                        if let Some(num) = number.to_u32() {
+                            Ok(Type::UnsignedInt(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedShort => {
+                        if let Some(num) = number.to_u16() {
+                            Ok(Type::UnsignedShort(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedByte => {
+                        if let Some(num) = number.to_u8() {
+                            Ok(Type::UnsignedByte(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+
+                    Types::Long => {
+                        if let Some(num) = number.to_i64() {
+                            Ok(Type::Long(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Int => {
+                        if let Some(num) = number.to_i32() {
+                            Ok(Type::Int(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Short => {
+                        if let Some(num) = number.to_i16() {
+                            Ok(Type::Short(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Byte => {
+                        if let Some(num) = number.to_i8() {
+                            Ok(Type::Byte(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+
+                    Types::PositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num > 0 {
+                                Ok(Type::PositiveInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonNegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num >= 0 {
+                                Ok(Type::NonNegativeInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonPositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num <= 0 {
+                                Ok(Type::NonPositiveInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num < 0 {
+                                Ok(Type::NegativeInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+
+                    Types::Integer => {
+                        if let Some(num) = number.to_i128() {
+                            Ok(Type::Integer(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::Decimal => {
+                        match BigDecimal::from_i128(*number) {
+                            Some(number) => Ok((Type::Decimal(number))),
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Float => {
+                        match number.to_f32() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Float(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    Types::Double => {
+                        match number.to_f64() {
+                            Some(number) => {
+                                let number = OrderedFloat::from(number);
+                                Ok(Type::Double(number))
+                            },
+                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    },
+                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+
             Type::Integer(number) => {
                 match to {
                     Types::Untyped => {
@@ -405,6 +2229,110 @@ impl Type {
                         Ok(Type::String(data))
                     }
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
+
+                    Types::UnsignedLong => {
+                        if let Some(num) = number.to_u64() {
+                            Ok(Type::UnsignedLong(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedInt => {
+                        if let Some(num) = number.to_u32() {
+                            Ok(Type::UnsignedInt(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedShort => {
+                        if let Some(num) = number.to_u16() {
+                            Ok(Type::UnsignedShort(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedByte => {
+                        if let Some(num) = number.to_u8() {
+                            Ok(Type::UnsignedByte(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+
+                    Types::Long => {
+                        if let Some(num) = number.to_i64() {
+                            Ok(Type::Long(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Int => {
+                        if let Some(num) = number.to_i32() {
+                            Ok(Type::Int(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Short => {
+                        if let Some(num) = number.to_i16() {
+                            Ok(Type::Short(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::Byte => {
+                        if let Some(num) = number.to_i8() {
+                            Ok(Type::Byte(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+
+                    Types::PositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num > 0 {
+                                Ok(Type::PositiveInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonNegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num >= 0 {
+                                Ok(Type::NonNegativeInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonPositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num <= 0 {
+                                Ok(Type::NonPositiveInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num < 0 {
+                                Ok(Type::NegativeInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+
                     Types::Integer => {
                         if let Some(num) = number.to_i128() {
                             Ok(Type::Integer(num))
@@ -450,6 +2378,36 @@ impl Type {
                         Ok(Type::String(data))
                     }
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
+
+                    Types::Long => {
+                        if let Some(num) = number.to_i64() {
+                            Ok(Type::Long(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::Int => {
+                        if let Some(num) = number.to_i32() {
+                            Ok(Type::Int(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::Short => {
+                        if let Some(num) = number.to_i16() {
+                            Ok(Type::Short(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::Byte => {
+                        if let Some(num) = number.to_i8() {
+                            Ok(Type::Byte(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+
                     Types::Integer => {
                         if let Some(num) = number.to_i128() {
                             Ok(Type::Integer(num))
@@ -497,9 +2455,59 @@ impl Type {
                         };
                         Ok(Type::Boolean(b))
                     }
+
+                    Types::Long => {
+                        if number.is_zero()|| number.is_normal() {
+                            if let Some(num) = number.0.to_i64() {
+                                Ok((Type::Long(num)))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::Int => {
+                        if number.is_zero()|| number.is_normal() {
+                            if let Some(num) = number.0.to_i32() {
+                                Ok((Type::Int(num)))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::Short => {
+                        if number.is_zero()|| number.is_normal() {
+                            if let Some(num) = number.0.to_i16() {
+                                Ok((Type::Short(num)))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::Byte => {
+                        if number.is_zero()|| number.is_normal() {
+                            if let Some(num) = number.0.to_i8() {
+                                Ok((Type::Byte(num)))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+
                     Types::Integer => {
-                        if let Some(num) = number.0.round().to_i128() {
-                            Ok((Type::Integer(num)))
+                        if number.is_zero()|| number.is_normal() {
+                            if let Some(num) = number.0.to_i128() {
+                                Ok((Type::Integer(num)))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
                         } else {
                             Err((ErrorCode::FOCA0002, String::from("TODO")))
                         }
@@ -533,9 +2541,59 @@ impl Type {
                         };
                         Ok(Type::Boolean(b))
                     }
+
+                    Types::Long => {
+                        if number.is_normal() || number.is_zero() {
+                            if let Some(num) = number.0.to_i64() {
+                                Ok((Type::Long(num)))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::Int => {
+                        if number.is_normal() || number.is_zero() {
+                            if let Some(num) = number.0.to_i32() {
+                                Ok((Type::Int(num)))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::Short => {
+                        if number.is_normal() || number.is_zero() {
+                            if let Some(num) = number.0.to_i16() {
+                                Ok((Type::Short(num)))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::Byte => {
+                        if number.is_normal() || number.is_zero() {
+                            if let Some(num) = number.0.to_i8() {
+                                Ok((Type::Byte(num)))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+
                     Types::Integer => {
-                        if let Some(num) = number.0.round().to_i128() {
-                            Ok((Type::Integer(num)))
+                        if number.is_normal() || number.is_zero() {
+                            if let Some(num) = number.0.to_i128() {
+                                Ok((Type::Integer(num)))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
                         } else {
                             Err((ErrorCode::FOCA0002, String::from("TODO")))
                         }
@@ -890,6 +2948,94 @@ impl Type {
         }
     }
 
+    pub(crate) fn to_u8(&self, force: bool) -> Option<u8> {
+        if let Some(num) = self.to_i128(force) {
+            match u8::try_from(num) {
+                Ok(n) => Some(n),
+                Err(_) => None
+            }
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn to_u16(&self, force: bool) -> Option<u16> {
+        if let Some(num) = self.to_i128(force) {
+            match u16::try_from(num) {
+                Ok(n) => Some(n),
+                Err(_) => None
+            }
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn to_u32(&self, force: bool) -> Option<u32> {
+        if let Some(num) = self.to_i128(force) {
+            match u32::try_from(num) {
+                Ok(n) => Some(n),
+                Err(_) => None
+            }
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn to_u64(&self, force: bool) -> Option<u64> {
+        if let Some(num) = self.to_i128(force) {
+            match u64::try_from(num) {
+                Ok(n) => Some(n),
+                Err(_) => None
+            }
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn to_i8(&self, force: bool) -> Option<i8> {
+        if let Some(num) = self.to_i128(force) {
+            match i8::try_from(num) {
+                Ok(n) => Some(n),
+                Err(_) => None
+            }
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn to_i16(&self, force: bool) -> Option<i16> {
+        if let Some(num) = self.to_i128(force) {
+            match i16::try_from(num) {
+                Ok(n) => Some(n),
+                Err(_) => None
+            }
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn to_i32(&self, force: bool) -> Option<i32> {
+        if let Some(num) = self.to_i128(force) {
+            match i32::try_from(num) {
+                Ok(n) => Some(n),
+                Err(_) => None
+            }
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn to_i64(&self, force: bool) -> Option<i64> {
+        if let Some(num) = self.to_i128(force) {
+            match i64::try_from(num) {
+                Ok(n) => Some(n),
+                Err(_) => None
+            }
+        } else {
+            None
+        }
+    }
+
     pub(crate) fn to_i128(&self, force: bool) -> Option<i128> {
         match self {
             Type::Untyped(str) => {
@@ -898,6 +3044,27 @@ impl Type {
                     Err(_) => None
                 }
             }
+
+            Type::UnsignedByte(num) => Some(*num as i128),
+            Type::UnsignedShort(num) => Some(*num as i128),
+            Type::UnsignedInt(num) => Some(*num as i128),
+            Type::UnsignedLong(num) => Some(*num as i128),
+
+            Type::Byte(num) => Some(*num as i128),
+            Type::Short(num) => Some(*num as i128),
+            Type::Int(num) => Some(*num as i128),
+            Type::Long(num) => Some(*num as i128),
+
+            Type::Byte(num) => Some(*num as i128),
+            Type::Short(num) => Some(*num as i128),
+            Type::Int(num) => Some(*num as i128),
+            Type::Long(num) => Some(*num as i128),
+
+            Type::PositiveInteger(num) => Some(*num),
+            Type::NonNegativeInteger(num) => Some(*num),
+            Type::NonPositiveInteger(num) => Some(*num),
+            Type::NegativeInteger(num) => Some(*num),
+
             Type::Integer(num) => Some(*num),
             Type::Decimal(num) => {
                 let rounded = num.round(0);
@@ -999,6 +3166,22 @@ impl Type {
             Type::String(_) |
             Type::NormalizedString(_) |
             Type::AnyURI(_) => Types::String,
+
+            Type::Byte(_) |
+            Type::Short(_) |
+            Type::Int(_) |
+            Type::Long(_) |
+
+            Type::UnsignedByte(_) |
+            Type::UnsignedShort(_) |
+            Type::UnsignedInt(_) |
+            Type::UnsignedLong(_) |
+
+            Type::PositiveInteger(_) |
+            Type::NonNegativeInteger(_) |
+            Type::NonPositiveInteger(_) |
+            Type::NegativeInteger(_) |
+
             Type::Integer(_) |
             Type::Decimal(_) |
             Type::Float(_) |
@@ -1087,6 +3270,22 @@ impl Type {
                     Err((ErrorCode::XPTY0004, String::from("TODO")))
                 }
             },
+
+            Type::Byte(..) |
+            Type::Short(..) |
+            Type::Int(..) |
+            Type::Long(..) |
+
+            Type::UnsignedByte(..) |
+            Type::UnsignedShort(..) |
+            Type::UnsignedInt(..) |
+            Type::UnsignedLong(..) |
+
+            Type::PositiveInteger(..) |
+            Type::NonNegativeInteger(..) |
+            Type::NonPositiveInteger(..) |
+            Type::NegativeInteger(..) |
+
             Type::Integer(..) |
             Type::Decimal(..) |
             Type::Float(..) |
@@ -1098,6 +3297,76 @@ impl Type {
                 // xs:integer, xs:decimal, xs:float, or xs:double => xs:double
                 let nt = if lnt > rnt { lnt } else { rnt };
                 match nt {
+                    Types::UnsignedByte => {
+                        if let Some(left_num) = self.to_u8(false) {
+                            if let Some(right_num) = other.to_u8(false) {
+                                return Ok(ValueOrdering::from(left_num.cmp(&right_num)));
+                            }
+                        }
+                        return Err((ErrorCode::XPTY0004, String::from("TODO")));
+                    }
+                    Types::UnsignedShort => {
+                        if let Some(left_num) = self.to_u16(false) {
+                            if let Some(right_num) = other.to_u16(false) {
+                                return Ok(ValueOrdering::from(left_num.cmp(&right_num)));
+                            }
+                        }
+                        return Err((ErrorCode::XPTY0004, String::from("TODO")));
+                    }
+                    Types::UnsignedInt => {
+                        if let Some(left_num) = self.to_u32(false) {
+                            if let Some(right_num) = other.to_u32(false) {
+                                return Ok(ValueOrdering::from(left_num.cmp(&right_num)));
+                            }
+                        }
+                        return Err((ErrorCode::XPTY0004, String::from("TODO")));
+                    }
+                    Types::UnsignedLong => {
+                        if let Some(left_num) = self.to_u64(false) {
+                            if let Some(right_num) = other.to_u64(false) {
+                                return Ok(ValueOrdering::from(left_num.cmp(&right_num)));
+                            }
+                        }
+                        return Err((ErrorCode::XPTY0004, String::from("TODO")));
+                    }
+
+                    Types::Byte => {
+                        if let Some(left_num) = self.to_i8(false) {
+                            if let Some(right_num) = other.to_i8(false) {
+                                return Ok(ValueOrdering::from(left_num.cmp(&right_num)));
+                            }
+                        }
+                        return Err((ErrorCode::XPTY0004, String::from("TODO")));
+                    }
+                    Types::Short => {
+                        if let Some(left_num) = self.to_i16(false) {
+                            if let Some(right_num) = other.to_i16(false) {
+                                return Ok(ValueOrdering::from(left_num.cmp(&right_num)));
+                            }
+                        }
+                        return Err((ErrorCode::XPTY0004, String::from("TODO")));
+                    }
+                    Types::Int => {
+                        if let Some(left_num) = self.to_i32(false) {
+                            if let Some(right_num) = other.to_i32(false) {
+                                return Ok(ValueOrdering::from(left_num.cmp(&right_num)));
+                            }
+                        }
+                        return Err((ErrorCode::XPTY0004, String::from("TODO")));
+                    }
+                    Types::Long => {
+                        if let Some(left_num) = self.to_i64(false) {
+                            if let Some(right_num) = other.to_i64(false) {
+                                return Ok(ValueOrdering::from(left_num.cmp(&right_num)));
+                            }
+                        }
+                        return Err((ErrorCode::XPTY0004, String::from("TODO")));
+                    }
+
+                    Types::PositiveInteger |
+                    Types::NonNegativeInteger |
+                    Types::NonPositiveInteger |
+                    Types::NegativeInteger |
                     Types::Integer => {
                         if let Some(left_num) = self.to_i128(false) {
                             if let Some(right_num) = other.to_i128(false) {

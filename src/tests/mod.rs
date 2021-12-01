@@ -16,7 +16,7 @@ pub(crate) fn eval_on_spec(
     input: &str
 ) -> EvalResult {
     match spec {
-        "XQ10" | "XP20 XQ10" |
+        "XQ10" | "XP20 XQ10" | "XQ10 XP20" |
         "XQ10+" | "XP20+ XQ10+" | "XP30+ XQ10+" |
         "XQ30+" | "XP30+ XQ30+" |
         "XQ31+" | "XP31+ XQ31+" => {

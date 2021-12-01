@@ -85,20 +85,20 @@ lazy_static! {
             (XS_FLOAT, Types::Float),
             (XS_DOUBLE, Types::Double),
 
-            (XS_NON_POSITIVE_INTEGER, Types::Integer),
-            (XS_NEGATIVE_INTEGER, Types::Integer), // TODO negativeInteger,
-            (XS_LONG, Types::Integer), // TODO long,
-            (XS_INT, Types::Integer), // TODO int,
-            (XS_SHORT, Types::Integer), // TODO short,
-            (XS_BYTE, Types::Integer), // TODO byte,
+            (XS_POSITIVE_INTEGER, Types::PositiveInteger),
+            (XS_NON_NEGATIVE_INTEGER, Types::NonNegativeInteger),
+            (XS_NON_POSITIVE_INTEGER, Types::NonPositiveInteger),
+            (XS_NEGATIVE_INTEGER, Types::NegativeInteger),
 
-            (XS_NON_NEGATIVE_INTEGER, Types::Integer), // TODO nonNegativeInteger,
-            (XS_UNSIGNED_LONG, Types::Integer), // TODO unsignedLong,
-            (XS_UNSIGNED_INT, Types::Integer), // TODO unsignedInt,
-            (XS_UNSIGNED_SHORT, Types::Integer), // TODO unsignedShort,
-            (XS_UNSIGNED_BYTE, Types::Integer), // TODO unsignedByte,
+            (XS_LONG, Types::Long),
+            (XS_INT, Types::Int),
+            (XS_SHORT, Types::Short),
+            (XS_BYTE, Types::Byte),
 
-            (XS_POSITIVE_INTEGER, Types::Integer), // TODO positiveInteger,
+            (XS_UNSIGNED_LONG, Types::UnsignedLong),
+            (XS_UNSIGNED_INT, Types::UnsignedInt),
+            (XS_UNSIGNED_SHORT, Types::UnsignedShort),
+            (XS_UNSIGNED_BYTE, Types::UnsignedByte),
 
             (XS_DATE_TIME, Types::DateTime),
             (XS_DATE_TIME_STAMP, Types::DateTimeStamp),
@@ -862,6 +862,142 @@ impl SequenceType {
                                         todo!("handle custom types")
                                     }
                                 }
+
+                                Type::Byte(_) =>
+                                    name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
+
+                                        || name == XS_UNSIGNED_BYTE || name == XS_UNSIGNED_SHORT
+                                        || name == XS_UNSIGNED_INT || name == XS_UNSIGNED_LONG
+
+                                        || name == XS_POSITIVE_INTEGER || name == XS_NON_NEGATIVE_INTEGER
+                                        || name == XS_NON_POSITIVE_INTEGER || name == XS_NEGATIVE_INTEGER
+
+                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
+                                Type::Short(_) =>
+                                    name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
+
+                                        || name == XS_UNSIGNED_BYTE || name == XS_UNSIGNED_SHORT
+                                        || name == XS_UNSIGNED_INT || name == XS_UNSIGNED_LONG
+
+                                        || name == XS_POSITIVE_INTEGER || name == XS_NON_NEGATIVE_INTEGER
+                                        || name == XS_NON_POSITIVE_INTEGER || name == XS_NEGATIVE_INTEGER
+
+                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
+                                Type::Int(_) =>
+                                    name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
+
+                                        || name == XS_UNSIGNED_BYTE || name == XS_UNSIGNED_SHORT
+                                        || name == XS_UNSIGNED_INT || name == XS_UNSIGNED_LONG
+
+                                        || name == XS_POSITIVE_INTEGER || name == XS_NON_NEGATIVE_INTEGER
+                                        || name == XS_NON_POSITIVE_INTEGER || name == XS_NEGATIVE_INTEGER
+
+                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
+                                Type::Long(_) =>
+                                    name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
+
+                                        || name == XS_UNSIGNED_BYTE || name == XS_UNSIGNED_SHORT
+                                        || name == XS_UNSIGNED_INT || name == XS_UNSIGNED_LONG
+
+                                        || name == XS_POSITIVE_INTEGER || name == XS_NON_NEGATIVE_INTEGER
+                                        || name == XS_NON_POSITIVE_INTEGER || name == XS_NEGATIVE_INTEGER
+
+                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
+
+                                Type::UnsignedByte(_) =>
+                                    name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
+
+                                        || name == XS_UNSIGNED_BYTE || name == XS_UNSIGNED_SHORT
+                                        || name == XS_UNSIGNED_INT || name == XS_UNSIGNED_LONG
+
+                                        || name == XS_POSITIVE_INTEGER || name == XS_NON_NEGATIVE_INTEGER
+                                        || name == XS_NON_POSITIVE_INTEGER || name == XS_NEGATIVE_INTEGER
+
+                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
+                                Type::UnsignedShort(_) =>
+                                    name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
+
+                                        || name == XS_UNSIGNED_BYTE || name == XS_UNSIGNED_SHORT
+                                        || name == XS_UNSIGNED_INT || name == XS_UNSIGNED_LONG
+
+                                        || name == XS_POSITIVE_INTEGER || name == XS_NON_NEGATIVE_INTEGER
+                                        || name == XS_NON_POSITIVE_INTEGER || name == XS_NEGATIVE_INTEGER
+
+                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
+                                Type::UnsignedInt(_) =>
+                                    name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
+
+                                        || name == XS_UNSIGNED_BYTE || name == XS_UNSIGNED_SHORT
+                                        || name == XS_UNSIGNED_INT || name == XS_UNSIGNED_LONG
+
+                                        || name == XS_POSITIVE_INTEGER || name == XS_NON_NEGATIVE_INTEGER
+                                        || name == XS_NON_POSITIVE_INTEGER || name == XS_NEGATIVE_INTEGER
+
+                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
+                                Type::UnsignedLong(_) =>
+                                    name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
+
+                                        || name == XS_UNSIGNED_BYTE || name == XS_UNSIGNED_SHORT
+                                        || name == XS_UNSIGNED_INT || name == XS_UNSIGNED_LONG
+
+                                        || name == XS_POSITIVE_INTEGER || name == XS_NON_NEGATIVE_INTEGER
+                                        || name == XS_NON_POSITIVE_INTEGER || name == XS_NEGATIVE_INTEGER
+
+                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
+
+                                Type::PositiveInteger(_) =>
+                                    name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
+
+                                        || name == XS_UNSIGNED_BYTE || name == XS_UNSIGNED_SHORT
+                                        || name == XS_UNSIGNED_INT || name == XS_UNSIGNED_LONG
+
+                                        || name == XS_POSITIVE_INTEGER || name == XS_NON_NEGATIVE_INTEGER
+                                        || name == XS_NON_POSITIVE_INTEGER || name == XS_NEGATIVE_INTEGER
+
+                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
+                                Type::NonNegativeInteger(_) =>
+                                    name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
+
+                                        || name == XS_UNSIGNED_BYTE || name == XS_UNSIGNED_SHORT
+                                        || name == XS_UNSIGNED_INT || name == XS_UNSIGNED_LONG
+
+                                        || name == XS_POSITIVE_INTEGER || name == XS_NON_NEGATIVE_INTEGER
+                                        || name == XS_NON_POSITIVE_INTEGER || name == XS_NEGATIVE_INTEGER
+
+                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
+                                Type::NonPositiveInteger(_) =>
+                                    name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
+
+                                        || name == XS_UNSIGNED_BYTE || name == XS_UNSIGNED_SHORT
+                                        || name == XS_UNSIGNED_INT || name == XS_UNSIGNED_LONG
+
+                                        || name == XS_POSITIVE_INTEGER || name == XS_NON_NEGATIVE_INTEGER
+                                        || name == XS_NON_POSITIVE_INTEGER || name == XS_NEGATIVE_INTEGER
+
+                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
+                                Type::NegativeInteger(_) =>
+                                    name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
+
+                                        || name == XS_UNSIGNED_BYTE || name == XS_UNSIGNED_SHORT
+                                        || name == XS_UNSIGNED_INT || name == XS_UNSIGNED_LONG
+
+                                        || name == XS_POSITIVE_INTEGER || name == XS_NON_NEGATIVE_INTEGER
+                                        || name == XS_NON_POSITIVE_INTEGER || name == XS_NEGATIVE_INTEGER
+
+                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
+
                                 Type::Integer(_) =>
                                     name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
