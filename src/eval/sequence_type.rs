@@ -56,6 +56,10 @@ pub const XS_LANGUAGE: QN = QN::full("xs", "language", SCHEMA.uri);
 pub const XS_NMTOKEN: QN = QN::full("xs", "NMTOKEN", SCHEMA.uri);
 pub const XS_NAME: QN = QN::full("xs", "Name", SCHEMA.uri);
 pub const XS_NCNAME: QN = QN::full("xs", "NCName", SCHEMA.uri);
+pub const XS_ID: QN = QN::full("xs", "ID", SCHEMA.uri);
+pub const XS_IDREF: QN = QN::full("xs", "IDREF", SCHEMA.uri);
+pub const XS_ENTITY: QN = QN::full("xs", "ENTITY", SCHEMA.uri);
+
 pub const XS_NOTATION: QN = QN::full("xs", "NOTATION", SCHEMA.uri);
 
 pub const XS_DURATION: QN = QN::full("xs", "duration", SCHEMA.uri);
@@ -124,14 +128,14 @@ lazy_static! {
             (XS_LANGUAGE, Types::Language),
             (XS_NMTOKEN, Types::NMTOKEN),
 
-            // TODO (XS_ID, Types::ID),
-            // TODO (XS_IDREF, Types::IDREF),
-            // TODO (XS_ENTITY, Types::ENTITY),
+            (XS_ID, Types::ID),
+            (XS_IDREF, Types::IDREF),
+            (XS_ENTITY, Types::ENTITY),
 
             (XS_BASE64_BINARY, Types::Base64Binary),
             (XS_HEX_BINARY, Types::HexBinary),
 
-            // TODO (XS_NOTATION, Types::NOTATION),
+            // (XS_NOTATION, Types::NOTATION),
         ] {
             map.insert(qn.into(), t);
         }
@@ -498,6 +502,19 @@ impl SequenceType {
                     Object::Return(_) => todo!(),
                 }
             }
+            ItemType::AnyAtomicType => {
+                match obj {
+                    Object::Atomic(_) => Ok(obj),
+                    Object::Node(rf) => {
+                        if let Ok(data) = rf.to_typed_value() {
+                            Ok(Object::Atomic(Type::Untyped(data)))
+                        } else {
+                            todo!("raise error?")
+                        }
+                    }
+                    _ => todo!("raise error?")
+                }
+            }
             ItemType::AtomicOrUnionType(original_qname) => {
                 let name = env.namespaces.resolve(original_qname);
                 if name.is_same_qn(&XS_NOTATION) || name.is_same_qn(&XS_ANY_ATOMIC_TYPE) || name.is_same_qn(&XS_ANY_SIMPLE_TYPE) {
@@ -525,6 +542,26 @@ impl SequenceType {
                         Object::Range { .. } |
                         Object::Atomic(_) => Ok(obj),
                         _ => todo!("{:?}", obj),
+                    }
+                } else if name.is_same_qn(&XS_NUMERIC) {
+                    match obj {
+                        Object::Atomic(Type::UnsignedByte(_)) |
+                        Object::Atomic(Type::UnsignedShort(_)) |
+                        Object::Atomic(Type::UnsignedInt(_)) |
+                        Object::Atomic(Type::UnsignedLong(_)) |
+                        Object::Atomic(Type::Byte(_)) |
+                        Object::Atomic(Type::Short(_)) |
+                        Object::Atomic(Type::Int(_)) |
+                        Object::Atomic(Type::Long(_)) |
+                        Object::Atomic(Type::PositiveInteger(_)) |
+                        Object::Atomic(Type::NonNegativeInteger(_)) |
+                        Object::Atomic(Type::NonPositiveInteger(_)) |
+                        Object::Atomic(Type::NegativeInteger(_)) |
+                        Object::Atomic(Type::Integer(_)) |
+                        Object::Atomic(Type::Decimal(_)) |
+                        Object::Atomic(Type::Float(_)) |
+                        Object::Atomic(Type::Double(_)) => Ok(obj),
+                        _ => panic!("raise error?")
                     }
                 } else {
                     match obj {
@@ -703,6 +740,18 @@ impl SequenceType {
                     _ => panic!("TODO: {:?}", obj)
                 }
             }
+            ItemType::Node(test) => {
+                match obj {
+                    Object::Node(rf) => {
+                        if test.test_node(&rf) {
+                            Ok(Object::Node(rf))
+                        } else {
+                            todo!("raise error?")
+                        }
+                    }
+                    _ => panic!("TODO: {:?} {:?}", self.item_type, obj)
+                }
+            }
             _ => panic!("TODO: {:?}", self.item_type)
         }
     }
@@ -809,27 +858,57 @@ impl SequenceType {
                         Object::Atomic(t) => {
                             match t {
                                 Type::Untyped(str) |
+
+                                Type::ID(str) |
+                                Type::IDREF(str) |
+                                Type::ENTITY(str) |
+
                                 Type::String(str) |
                                 Type::NormalizedString(str) => {
                                     if let Some(types) = QNameToTypes.get(&name) {
                                         match types {
                                             Types::Untyped |
+
+                                            Types::ID |
+                                            Types::IDREF |
+                                            Types::ENTITY |
+
                                             Types::NormalizedString |
                                             Types::String |
                                             Types::AnyURI |
                                             Types::QName |
+
                                             Types::Boolean |
+
+                                            Types::UnsignedByte |
+                                            Types::UnsignedShort |
+                                            Types::UnsignedInt |
+                                            Types::UnsignedLong |
+
+                                            Types::Byte |
+                                            Types::Short |
+                                            Types::Int |
+                                            Types::Long |
+
                                             Types::Integer |
                                             Types::Decimal |
                                             Types::Float |
                                             Types::Double |
+
+                                            Types::PositiveInteger |
+                                            Types::NonNegativeInteger |
+                                            Types::NonPositiveInteger |
+                                            Types::NegativeInteger |
+
                                             Types::DateTime |
                                             Types::DateTimeStamp |
                                             Types::Date |
                                             Types::Time |
+
                                             Types::Duration |
                                             Types::YearMonthDuration |
                                             Types::DayTimeDuration |
+
                                             Types::GYearMonth |
                                             Types::GYear |
                                             Types::GMonthDay |

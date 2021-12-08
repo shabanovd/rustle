@@ -186,11 +186,14 @@ impl QName {
     }
 
     pub fn string(&self) -> String {
-        let mut str = String::with_capacity(self.len());
-        if let Some(prefix) = &self.prefix {
+        let mut str = if let Some(prefix) = &self.prefix {
+            let mut str = String::with_capacity(self.local_part.len() + 1 + prefix.len());
             str.push_str(prefix.as_str());
             str.push_str(":");
-        }
+            str
+        } else {
+            String::with_capacity(self.local_part.len())
+        };
         str.push_str(self.local_part.as_str());
         str
     }

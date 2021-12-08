@@ -1,8 +1,8 @@
 use std::collections::HashMap;
-use crate::eval::{Object, DynamicContext, EvalResult, ErrorInfo};
+use crate::eval::{Object, DynamicContext, EvalResult, ErrorInfo, Type};
 use crate::eval::Environment;
 use crate::namespaces::*;
-use crate::values::{QName, QNameResolved, resolve_element_qname};
+use crate::values::{QName, QNameResolved, resolve_element_qname, Types};
 
 mod fun;
 mod sequences;
@@ -23,7 +23,7 @@ pub use crate::fns::boolean::object_to_bool;
 
 use crate::parser::errors::ErrorCode;
 use crate::eval::expression::Expression;
-use crate::eval::sequence_type::{ItemType, SequenceType};
+use crate::eval::sequence_type::{ItemType, SequenceType, XS_NOTATION, XS_QNAME};
 use crate::fns::types::*;
 
 pub type FUNCTION = ((Vec<SequenceType>, SequenceType), fn(Box<Environment>, Vec<Object>, &DynamicContext) -> EvalResult);
@@ -62,15 +62,41 @@ impl FunctionsRegister {
             declared: HashMap::new(),
         };
 
+        instance.register(&*SCHEMA.uri, "untypedAtomic", 1, types::FN_XS_UNTYPED_ATOMIC());
+
         instance.register(&*SCHEMA.uri, "string", 1, types::FN_XS_STRING());
+        instance.register(&*SCHEMA.uri, "normalizedString", 1, types::FN_XS_NORMALIZED_STRING());
+
         instance.register(&*SCHEMA.uri, "boolean", 1, types::FN_XS_BOOLEAN());
+
+        instance.register(&*SCHEMA.uri, "unsignedByte", 1, types::FN_XS_UNSIGNED_BYTE());
+        instance.register(&*SCHEMA.uri, "unsignedShort", 1, types::FN_XS_UNSIGNED_SHORT());
+        instance.register(&*SCHEMA.uri, "unsignedInt", 1, types::FN_XS_UNSIGNED_INT());
+        instance.register(&*SCHEMA.uri, "unsignedLong", 1, types::FN_XS_UNSIGNED_LONG());
+
+        instance.register(&*SCHEMA.uri, "byte", 1, types::FN_XS_BYTE());
+        instance.register(&*SCHEMA.uri, "short", 1, types::FN_XS_SHORT());
+        instance.register(&*SCHEMA.uri, "int", 1, types::FN_XS_INT());
+        instance.register(&*SCHEMA.uri, "long", 1, types::FN_XS_LONG());
+
+        instance.register(&*SCHEMA.uri, "positiveInteger", 1, types::FN_XS_POSITIVE_INTEGER());
+        instance.register(&*SCHEMA.uri, "nonNegativeInteger", 1, types::FN_XS_NON_NEGATIVE_INTEGER());
+        instance.register(&*SCHEMA.uri, "nonPositiveInteger", 1, types::FN_XS_NON_POSITIVE_INTEGER());
+        instance.register(&*SCHEMA.uri, "negativeInteger", 1, types::FN_XS_NEGATIVE_INTEGER());
+
+        instance.register(&*SCHEMA.uri, "integer", 1, types::FN_XS_INTEGER());
         instance.register(&*SCHEMA.uri, "decimal", 1, types::FN_XS_DECIMAL());
         instance.register(&*SCHEMA.uri, "float", 1, types::FN_XS_FLOAT());
         instance.register(&*SCHEMA.uri, "double", 1, types::FN_XS_DOUBLE());
 
-        instance.register(&*SCHEMA.uri, "untypedAtomic", 1, types::FN_XS_UNTYPED_ATOMIC());
+        instance.register(&*SCHEMA.uri, "ID", 1, types::FN_XS_ID());
+        instance.register(&*SCHEMA.uri, "IDREF", 1, types::FN_XS_IDREF());
+        instance.register(&*SCHEMA.uri, "ENTITY", 1, types::FN_XS_ENTITY());
+
         instance.register(&*SCHEMA.uri, "NCName", 1, types::FN_XS_NCNAME());
+
         instance.register(&*SCHEMA.uri, "anyURI", 1, types::FN_XS_ANY_URI());
+
         instance.register(&*SCHEMA.uri, "time", 1, types::FN_XS_TIME());
         instance.register(&*SCHEMA.uri, "date", 1, types::FN_XS_DATE());
         instance.register(&*SCHEMA.uri, "dateTime", 1, types::FN_XS_DATE_TIME());
@@ -87,22 +113,11 @@ impl FunctionsRegister {
         instance.register(&*SCHEMA.uri, "hexBinary", 1, types::FN_XS_HEX_BINARY());
         instance.register(&*SCHEMA.uri, "base64Binary", 1, types::FN_XS_BASE64_BINARY());
 
-        instance.register(&*SCHEMA.uri, "integer", 1, types::FN_XS_INTEGER());
-        instance.register(&*SCHEMA.uri, "nonPositiveInteger", 1, types::FN_XS_NON_POSITIVE_INTEGER());
-        instance.register(&*SCHEMA.uri, "negativeInteger", 1, types::FN_XS_NEGATIVE_INTEGER());
-        instance.register(&*SCHEMA.uri, "long", 1, types::FN_XS_LONG());
-        instance.register(&*SCHEMA.uri, "int", 1, types::FN_XS_INT());
-        instance.register(&*SCHEMA.uri, "short", 1, types::FN_XS_SHORT());
-        instance.register(&*SCHEMA.uri, "byte", 1, types::FN_XS_BYTE());
-        instance.register(&*SCHEMA.uri, "nonNegativeInteger", 1, types::FN_XS_NON_NEGATIVE_INTEGER());
-        instance.register(&*SCHEMA.uri, "unsignedLong", 1, types::FN_XS_UNSIGNED_LONG());
-        instance.register(&*SCHEMA.uri, "unsignedInt", 1, types::FN_XS_UNSIGNED_INT());
-        instance.register(&*SCHEMA.uri, "unsignedShort", 1, types::FN_XS_UNSIGNED_SHORT());
-        instance.register(&*SCHEMA.uri, "unsignedByte", 1, types::FN_XS_UNSIGNED_BYTE());
-        instance.register(&*SCHEMA.uri, "positiveInteger", 1, types::FN_XS_POSITIVE_INTEGER());
-
         instance.register(&*SCHEMA.uri, "QName", 1, types::FN_XS_QNAME());
         instance.register(&*SCHEMA.uri, "token", 1, types::FN_XS_TOKEN());
+        instance.register(&*SCHEMA.uri, "language", 1, types::FN_XS_LANGUAGE());
+        instance.register(&*SCHEMA.uri, "NMTOKEN", 1, types::FN_XS_NMTOKEN());
+        instance.register(&*SCHEMA.uri, "Name", 1, types::FN_XS_NAME());
 
         instance.register(&*XPATH_FUNCTIONS.uri, "resolve-QName", 2, qname::FN_RESOLVE_QNAME());
         instance.register(&*XPATH_FUNCTIONS.uri, "QName", 2, qname::FN_QNAME());
@@ -149,6 +164,7 @@ impl FunctionsRegister {
         instance.register(&*XPATH_ARRAY.uri, "sort", 3, array::FN_ARRAY_SORT_3());
         instance.register(&*XPATH_ARRAY.uri, "flatten", 1, array::FN_ARRAY_FLATTEN());
 
+        instance.register(&*XPATH_FUNCTIONS.uri, "current-dateTime", 0, datetime::FN_CURRENT_DATE_TIME());
         instance.register(&*XPATH_FUNCTIONS.uri, "current-date", 0, datetime::FN_CURRENT_DATE());
         instance.register(&*XPATH_FUNCTIONS.uri, "current-time", 0, datetime::FN_CURRENT_TIME());
         instance.register(&*XPATH_FUNCTIONS.uri, "year-from-date", 1, datetime::FN_YEAR_FROM_DATE());
@@ -209,8 +225,6 @@ impl FunctionsRegister {
         instance.register(&*XPATH_FUNCTIONS.uri, "string", 1, strings::FN_STRING_1());
         instance.register(&*XPATH_FUNCTIONS.uri, "codepoints-to-string", 1, strings::FN_CODEPOINTS_TO_STRING());
         instance.register(&*XPATH_FUNCTIONS.uri, "string-to-codepoints", 1, strings::FN_STRING_TO_CODEPOINTS());
-        instance.register(&*XPATH_FUNCTIONS.uri, "concat", 2, strings::FN_CONCAT_2()); // TODO number of arguments 2 or more
-        instance.register(&*XPATH_FUNCTIONS.uri, "concat", 3, strings::FN_CONCAT_3());
         instance.register(&*XPATH_FUNCTIONS.uri, "string-join", 1, strings::FN_STRING_JOIN_1());
         instance.register(&*XPATH_FUNCTIONS.uri, "string-join", 2, strings::FN_STRING_JOIN_2());
         instance.register(&*XPATH_FUNCTIONS.uri, "string-length", 0, strings::FN_STRING_LENGTH_0());
@@ -325,18 +339,37 @@ pub(crate) fn cascade(env: &Environment, arguments: Vec<Object>, params: Vec<Seq
     }
 }
 
+fn function_conversion_rules(env: &Box<Environment>, sequence_type: Option<SequenceType>, argument: Object) -> Result<Object, ErrorInfo> {
+    if let Some(st) = sequence_type {
+        match argument {
+            Object::Atomic(Type::Untyped(_)) => {
+                if st.item_type.is_same(env, &ItemType::AtomicOrUnionType(XS_QNAME.into()))
+                    || st.item_type.is_same(env, &ItemType::AtomicOrUnionType(XS_NOTATION.into())) {
+                    return Err((ErrorCode::XPTY0117, String::from("TODO")))
+                }
+            }
+            _ => {}
+        }
+        Ok(st.cascade(env, argument)?)
+    } else {
+        Ok(argument)
+    }
+}
+
 pub(crate) fn call(env: Box<Environment>, name: QNameResolved, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
-    // println!("call: {:?} {:?}", name, arguments);
+    println!("call: {:?} {:?}", name, arguments);
     let mut fn_env = env.next();
 
     let fun = fn_env.declared_functions(&name, arguments.len());
     if fun.is_some() {
         let fun = fun.unwrap().clone();
 
-        for (parameter, argument) in (&fun.parameters).into_iter()
+        for (parameter, mut argument) in (&fun.parameters).into_iter()
             .zip(arguments.into_iter())
             .into_iter()
         {
+            argument = function_conversion_rules(&fn_env, parameter.sequence_type.clone(), argument)?;
+
             fn_env.set_variable(resolve_element_qname(&parameter.name, &fn_env), argument.clone())
         }
 
@@ -346,10 +379,32 @@ pub(crate) fn call(env: Box<Environment>, name: QNameResolved, arguments: Vec<Ob
         Ok((env, result))
 
     } else {
-        let fun: Option<FUNCTION> = fn_env.get_function(&name, arguments.len());
+        // workaround for concat function
+        let fun: Option<FUNCTION> = if name.local_part == "concat" {
+            if name.url == *XPATH_FUNCTIONS.uri && arguments.len() >= 2 {
+                Some(strings::FN_CONCAT_2())
+            } else {
+                None
+            }
+        } else {
+            fn_env.get_function(&name, arguments.len())
+        };
 
         if let Some(((params, st), body)) = fun {
-            let (new_env, result) = body(fn_env, arguments, context)?;
+
+            let mut checked_arguments = Vec::with_capacity(arguments.len());
+            for (parameter, mut argument) in (&params).into_iter()
+                .zip(arguments.into_iter())
+                .into_iter()
+            {
+                argument = function_conversion_rules(&fn_env, Some(parameter.clone()), argument)?;
+
+                checked_arguments.push(argument);
+            }
+
+            let (new_env, mut result) = body(fn_env, checked_arguments, context)?;
+            result = st.cascade(&new_env, result)?;
+
             let env = new_env.prev();
 
             Ok((env, result))

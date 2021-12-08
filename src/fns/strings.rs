@@ -1,6 +1,7 @@
 use std::convert::TryFrom;
 use std::iter::FromIterator;
 use crate::eval::{Environment, Object, Type, DynamicContext, EvalResult};
+use crate::eval::helpers::relax;
 use crate::eval::sequence_type::*;
 use crate::fns::FUNCTION;
 use crate::namespaces::*;
@@ -8,6 +9,7 @@ use crate::namespaces::*;
 use crate::serialization::object_to_string;
 use crate::serialization::to_string::_object_to_string;
 use crate::parser::errors::ErrorCode;
+use crate::values::Types;
 
 // fn:string() as xs:string
 pub(crate) fn FN_STRING_0() -> FUNCTION {
@@ -64,7 +66,7 @@ pub(crate) fn fn_codepoints_to_string(env: Box<Environment>, mut arguments: Vec<
                 match item {
                     Object::Atomic(Type::Integer(num)) => {
                         if let Ok(code) = u32::try_from(num) {
-                            if let Some(ch) = char::from_u32(code) {
+                            if let Ok(ch) = char::try_from(code) {
                                 result.push(ch)
                             } else {
                                 todo!("raise error?")
@@ -76,7 +78,9 @@ pub(crate) fn fn_codepoints_to_string(env: Box<Environment>, mut arguments: Vec<
                     _ => todo!()
                 }
             }
+            println!("{:?}", result);
             let str = String::from_iter(result);
+            println!("{:?}", str.chars());
             Ok((env, Object::Atomic(Type::String(str))))
         }
         _ => todo!()
@@ -95,22 +99,32 @@ pub(crate) fn FN_STRING_TO_CODEPOINTS() -> FUNCTION {
 }
 
 pub(crate) fn fn_string_to_codepoints(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
-
-    let result = match arguments.as_slice() {
-        [Object::Empty] => Object::Empty,
-        [Object::Atomic(Type::String(str))] => {
-            let mut codes = Vec::with_capacity(str.len());
-            for char in str.chars() {
-                // let code = char as u32;
-                codes.push(Object::Atomic(Type::Integer(char as i128)));
-            }
-
-            Object::Sequence(codes)
-        },
-        _ => panic!("{:?}", arguments)
+    let processing = |env: Box<Environment>, str: String| {
+        let mut codes = Vec::with_capacity(str.len());
+        for char in str.chars() {
+            // let code = char as u32;
+            codes.push(Object::Atomic(Type::Integer(char as i128)));
+        }
+        relax(env, codes)
     };
 
-    Ok((env, result))
+    match arguments.as_slice() {
+        [Object::Empty] => Ok((env, Object::Empty)),
+        [Object::Atomic(t)] => {
+            if let Type::String(str) = t.convert(Types::String)? {
+                processing(env, str)
+            } else {
+                todo!("raise error?")
+            }
+        }
+        [Object::Node(rf)] => {
+            match rf.to_typed_value() {
+                Ok(str) => processing(env, str),
+                Err(msg) => Err((ErrorCode::FORG0001, msg))
+            }
+        }
+        _ => todo!("{:?}", arguments)
+    }
 }
 
 // fn:concat($arg1 as xs:anyAtomicType?, $arg2 as xs:anyAtomicType?, ...) as xs:string

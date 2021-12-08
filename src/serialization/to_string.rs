@@ -1,5 +1,5 @@
 use bigdecimal::Zero;
-use chrono::{Date, DateTime, FixedOffset, SecondsFormat};
+use chrono::{Date, DateTime, FixedOffset, SecondsFormat, Timelike};
 use ordered_float::OrderedFloat;
 use crate::eval::{Object, Type, RangeIterator, Environment};
 use crate::parser::op::Representation;
@@ -52,57 +52,103 @@ pub fn _object_to_string(env: &Box<Environment>, object: &Object, ref_resolving:
                 _ => panic!("unexpected {:?}", reference)
             }
         },
-        Object::Atomic(Type::Boolean(b)) => b.to_string(),
-        Object::Atomic(Type::Untyped(str)) => str.clone(),
-        Object::Atomic(Type::AnyURI(str)) => str.clone(),
-        Object::Atomic(Type::String(str)) => str.clone(),
-        Object::Atomic(Type::Integer(number)) => number.to_string(),
-        Object::Atomic(Type::Decimal(number)) => number.to_string(),
-        Object::Atomic(Type::Float(number)) => float_to_string(number, true),
-        Object::Atomic(Type::Double(number)) => double_to_string(number, true),
-        Object::Atomic(Type::DateTime { dt, offset}) => {
-            date_time_to_string(dt, offset)
-        }
-        Object::Atomic(Type::Date { date, offset }) => {
-            date_to_string(date, offset)
-        }
-        Object::Atomic(Type::Time { time, offset }) => {
-            time_to_string(time, offset)
-        }
-        Object::Atomic(Type::GYearMonth { year, month, tz_m }) => {
-            g_year_month_to_string(*year, *month, *tz_m)
-        }
-        Object::Atomic(Type::GYear { year, tz_m }) => {
-            g_year_to_string(*year, *tz_m)
-        }
-        Object::Atomic(Type::GMonthDay { month, day, tz_m }) => {
-            g_month_day_to_string(*month, *day, *tz_m)
-        }
-        Object::Atomic(Type::GDay { day, tz_m }) => {
-            g_day_to_string(*day, *tz_m)
-        }
-        Object::Atomic(Type::GMonth { month, tz_m }) => {
-            g_month_to_string(*month, *tz_m)
-        }
-        Object::Atomic(Type::Duration { positive, years, months, days, hours, minutes, seconds, microseconds }) => {
-            duration_to_string(*positive, *years, *months, *days, *hours, *minutes, *seconds, *microseconds)
-        }
-        Object::Atomic(Type::YearMonthDuration { positive, years, months }) => {
-            year_month_duration_to_string(*positive, *years, *months)
-        }
-        Object::Atomic(Type::DayTimeDuration { positive, days, hours, minutes, seconds, microseconds }) => {
-            day_time_duration_to_string(*positive, *days, *hours, *minutes, *seconds, *microseconds)
-        }
-        Object::Atomic(Type::Base64Binary(binary)) => {
-            match binary_base64_to_string(binary) {
-                Ok(data) => data,
-                Err(code) => panic!("{:?}", code)
-            }
-        }
-        Object::Atomic(Type::HexBinary(binary)) => {
-            match binary_hex_to_string(binary) {
-                Ok(data) => data,
-                Err(code) => panic!("{:?}", code)
+        Object::Atomic(t) => {
+            match t {
+                Type::Boolean(b) => b.to_string(),
+                Type::Untyped(str) |
+                Type::AnyURI(str) |
+                Type::String(str) |
+                Type::NormalizedString(str) |
+
+                Type::ID(str) |
+                Type::IDREF(str) |
+                Type::ENTITY(str) |
+
+                Type::Token(str) |
+                Type::Language(str) |
+                Type::NMTOKEN(str) |
+                Type::Name(str) |
+                Type::NCName(str) => str.clone(),
+                Type::QName { prefix, local_part, .. } => {
+                    let mut str = if let Some(prefix) = prefix {
+                        let mut str = String::with_capacity(local_part.len() + 1 + prefix.len());
+                        str.push_str(prefix.as_str());
+                        str.push_str(":");
+                        str
+                    } else {
+                        String::with_capacity(local_part.len())
+                    };
+                    str.push_str(local_part.as_str());
+                    str
+                }
+
+                Type::Long(number) => number.to_string(),
+                Type::Int(number) => number.to_string(),
+                Type::Short(number) => number.to_string(),
+                Type::Byte(number) => number.to_string(),
+
+                Type::UnsignedByte(number) => number.to_string(),
+                Type::UnsignedShort(number) => number.to_string(),
+                Type::UnsignedInt(number) => number.to_string(),
+                Type::UnsignedLong(number) => number.to_string(),
+
+                Type::PositiveInteger(number) |
+                Type::NonNegativeInteger(number) |
+                Type::NonPositiveInteger(number) |
+                Type::NegativeInteger(number) |
+                Type::Integer(number) => number.to_string(),
+                Type::Decimal(number) => number.to_string(),
+                Type::Float(number) => float_to_string(number, true),
+                Type::Double(number) => double_to_string(number, true),
+
+                Type::DateTimeStamp() => todo!(),
+                Type::DateTime { dt, offset } => {
+                    date_time_to_string(dt, offset)
+                }
+                Type::Date { date, offset } => {
+                    date_to_string(date, offset)
+                }
+                Type::Time { time, offset } => {
+                    time_to_string(time, offset)
+                }
+                Type::GYearMonth { year, month, tz_m } => {
+                    g_year_month_to_string(*year, *month, *tz_m)
+                }
+                Type::GYear { year, tz_m } => {
+                    g_year_to_string(*year, *tz_m)
+                }
+                Type::GMonthDay { month, day, tz_m } => {
+                    g_month_day_to_string(*month, *day, *tz_m)
+                }
+                Type::GDay { day, tz_m } => {
+                    g_day_to_string(*day, *tz_m)
+                }
+                Type::GMonth { month, tz_m } => {
+                    g_month_to_string(*month, *tz_m)
+                }
+                Type::Duration { positive, years, months, days, hours, minutes, seconds, microseconds } => {
+                    duration_to_string(*positive, *years, *months, *days, *hours, *minutes, *seconds, *microseconds)
+                }
+                Type::YearMonthDuration { positive, years, months } => {
+                    year_month_duration_to_string(*positive, *years, *months)
+                }
+                Type::DayTimeDuration { positive, days, hours, minutes, seconds, microseconds } => {
+                    day_time_duration_to_string(*positive, *days, *hours, *minutes, *seconds, *microseconds)
+                }
+                Type::Base64Binary(binary) => {
+                    match binary_base64_to_string(binary) {
+                        Ok(data) => data,
+                        Err(code) => panic!("{:?}", code)
+                    }
+                }
+                Type::HexBinary(binary) => {
+                    match binary_hex_to_string(binary) {
+                        Ok(data) => data,
+                        Err(code) => panic!("{:?}", code)
+                    }
+                }
+
+                Type::NOTATION() => todo!()
             }
         }
         Object::Array(items) |
@@ -214,7 +260,8 @@ pub(crate) fn double_to_string(number: &OrderedFloat<f64>, rules: bool) -> Strin
 }
 
 pub(crate) fn date_time_to_string(dt: &DateTime<FixedOffset>, offset: &bool) -> String {
-    let str = dt.to_rfc3339_opts(SecondsFormat::Secs, true);
+    // let secform = if dt.time().nanosecond() != 0 { SecondsFormat::Secs } else { SecondsFormat::Secs };
+    let str = dt.to_rfc3339_opts(SecondsFormat::AutoSi, true);
     if *offset {
         str
     } else {

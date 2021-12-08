@@ -13,7 +13,7 @@ use crate::eval::arithmetic::{eval_unary, eval_arithmetic};
 use crate::eval::comparison::{eval_comparison, eval_comparison_item};
 use crate::eval::piping::{Pipe, eval_pipe};
 use crate::parser::errors::{CustomError, ErrorCode};
-use crate::eval::sequence_type::{ItemType, OccurrenceIndicator, SequenceType, XS_NOTATION};
+use crate::eval::sequence_type::{ItemType, OccurrenceIndicator, SequenceType, XS_ANY_ATOMIC_TYPE, XS_ANY_SIMPLE_TYPE, XS_NOTATION};
 use linked_hash_map::LinkedHashMap;
 use crate::namespaces::{Namespace, NS_heap};
 use crate::eval::sequence_type::QNameToTypes;
@@ -1262,12 +1262,13 @@ impl Expression for Cast {
                 match &self.st.item_type {
                     ItemType::AtomicOrUnionType(name) => {
                         let name: QNameResolved = new_env.namespaces.resolve(&name);
-                        if name == XS_NOTATION {
+                        if name == XS_NOTATION || name == XS_ANY_SIMPLE_TYPE || name == XS_ANY_ATOMIC_TYPE {
                             Err((ErrorCode::XPST0080, String::from("TODO")))
                         } else if let Some(types) = QNameToTypes.get(&name) {
                             Ok((new_env, Object::Atomic(t.convert(types.clone())?)))
                         } else {
-                            todo!("custom types")
+                            // TODO custom types
+                            Err((ErrorCode::XQST0052, String::from("TODO")))
                         }
                     }
                     _ => panic!("raise error?")

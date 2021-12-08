@@ -12,7 +12,7 @@ use crate::parser::parse_literal::is_digits;
 use chrono::{Date, NaiveDate, FixedOffset, NaiveTime, DateTime, NaiveDateTime, TimeZone, LocalResult};
 use nom::error::{ParseError, ErrorKind};
 use nom::multi::many0;
-use crate::values::Type;
+use crate::values::{new_g_month_day, Type};
 
 pub fn string_to_date(input: &str) -> Result<Type, String> {
     match all_consuming(parse_date)(input.trim()) {
@@ -112,12 +112,12 @@ pub fn parse_g_year(input: &str) -> IResult<&str, Type> {
 
 pub fn string_to_month_day(input: &str) -> Result<Type, String> {
     match all_consuming(parse_g_month_day)(input.trim()) {
-        Ok((_, dt)) => Ok(dt),
+        Ok((_, result)) => result,
         Err(e) => Err(format!("can't convert to GMonthDay: {:?}", input))
     }
 }
 
-pub fn parse_g_month_day(input: &str) -> IResult<&str, Type> {
+pub fn parse_g_month_day(input: &str) -> IResult<&str, Result<Type, String>> {
     map(
         tuple((
             tag("--"),
@@ -127,7 +127,7 @@ pub fn parse_g_month_day(input: &str) -> IResult<&str, Type> {
             opt(alt((timezone_hour, timezone_utc))),
         )),
         |(_, month, _, day, tz_m)| {
-            Type::GMonthDay { month, day, tz_m }
+            new_g_month_day(month, day, tz_m)
         }
     )(input)
 }
@@ -269,19 +269,14 @@ pub fn parse_date_time(input: &str) -> IResult<&str, Type> {
         tuple((
             opt(tag("-")),
             parse_year,
-            tag("-"),
-            parse_month,
-            tag("-"),
-            parse_day,
-            tag("T"),
-            parse_hour,
-            tag(":"),
-            parse_minute,
-            tag(":"),
-            parse_second,
+            preceded(tag("-"), parse_month),
+            preceded(tag("-"), parse_day),
+            preceded(tag("T"), parse_hour),
+            preceded(tag(":"), parse_minute),
+            preceded(tag(":"), parse_second_and_ms),
             opt(alt((timezone_hour, timezone_utc))),
         )),
-        |(sign, yy, _, mm, _, dd, _, h, _, m, _, s, tz)| {
+        |(sign, yy, mm, dd, h, m, (s, ms), tz)| {
             let yy = if sign.is_some() {
                 -(yy as i32)
             } else {
@@ -295,14 +290,24 @@ pub fn parse_date_time(input: &str) -> IResult<&str, Type> {
                 FixedOffset::west(-tz_m * 60)
             };
 
+            let ms = if let Some(ms) = ms { ms } else { 0 };
+
             match offset.ymd_opt(yy, mm, dd) {
                 LocalResult::Single(date) => {
-                    match date.and_hms_opt(h, m, s) {
-                        Some(dt) => {
-                            Ok(Type::DateTime { dt, offset: tz.is_some() })
+                    if h == 24 && m == 0 && s == 0 && ms == 0 {
+                        match date.checked_add_signed(chrono::Duration::days(1)) {
+                            Some(date) => {
+                                match date.and_hms_opt(0, 0, 0) {
+                                    Some(dt) => Ok(Type::DateTime { dt, offset: tz.is_some() }),
+                                    None => Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
+                                }
+                            }
+                            None => Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
                         }
-                        None => {
-                            Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
+                    } else {
+                        match date.and_hms_milli_opt(h, m, s, ms) {
+                            Some(dt) => Ok(Type::DateTime { dt, offset: tz.is_some() }),
+                            None => Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
                         }
                     }
                 }
@@ -316,7 +321,7 @@ pub fn parse_date_time(input: &str) -> IResult<&str, Type> {
 }
 
 fn timezone_hour(input: &str) -> IResult<&str, i32> {
-    map(
+    map_res(
         tuple((
             opt(alt((tag("+"), tag("-")))),
             parse_hour,
@@ -331,7 +336,14 @@ fn timezone_hour(input: &str) -> IResult<&str, i32> {
                 }
             } else { 1 };
 
-            s * ((h * 60) + m.unwrap_or(0)) as i32
+            if let Some(m) = m {
+                if m >= 60 {
+                    return Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
+                }
+            }
+
+            let tz_m = s * ((h * 60) + m.unwrap_or(0)) as i32;
+            Ok(tz_m)
         }
     )(input)
 }
@@ -345,7 +357,7 @@ pub(crate) fn parse_duration_complete(input: &str) -> IResult<&str, Type> {
 }
 
 fn parse_duration(input: &str) -> IResult<&str, Type> {
-    map(
+    map_res(
         tuple((
             opt(tag("-")),
             preceded(
@@ -359,25 +371,29 @@ fn parse_duration(input: &str) -> IResult<&str, Type> {
             )
         )),
         |(sign, (y, m, d, time))| {
-            let positive = sign.is_none();
+            if y.is_none() && m.is_none() && d.is_none() && time.is_none() {
+                Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
+            } else {
+                let positive = sign.is_none();
 
-            let years = y.unwrap_or(0);
-            let month = m.unwrap_or(0);
-            let days = d.unwrap_or(0);
+                let years = y.unwrap_or(0);
+                let month = m.unwrap_or(0);
+                let days = d.unwrap_or(0);
 
-            let (hours, minutes, seconds, microseconds) = time.unwrap_or((0,0,0,0));
+                let (hours, minutes, seconds, microseconds) = time.unwrap_or((0, 0, 0, 0));
 
-            // normalization
-            // let (s, am) = norm(seconds, 60);
-            // let (m, ah) = norm(minutes + am, 60);
-            let (h, ad) = norm(hours, 24); // norm(hours + ah, 24);
+                // normalization
+                // let (s, am) = norm(seconds, 60);
+                // let (m, ah) = norm(minutes + am, 60);
+                let (h, ad) = norm(hours, 24); // norm(hours + ah, 24);
 
-            let d = days + ad;
+                let d = days + ad;
 
-            let (mm, ay) = norm(month, 12);
-            let y = years + ay;
+                let (mm, ay) = norm(month, 12);
+                let y = years + ay;
 
-            Type::Duration { positive, years: y, months: mm, days: d, hours: h, minutes, seconds, microseconds }
+                Ok(Type::Duration { positive, years: y, months: mm, days: d, hours: h, minutes, seconds, microseconds })
+            }
         }
     )(input)
 }
@@ -387,7 +403,7 @@ pub fn parse_year_month_duration_complete(input: &str) -> IResult<&str, Type> {
 }
 
 pub fn parse_year_month_duration(input: &str) -> IResult<&str, Type> {
-    map(
+    map_res(
         tuple((
             opt(tag("-")),
             preceded(
@@ -399,14 +415,18 @@ pub fn parse_year_month_duration(input: &str) -> IResult<&str, Type> {
             )
         )),
         |(sign, (y, m))| {
-            let positive = sign.is_none();
-            let years = y.unwrap_or(0);
-            let months = m.unwrap_or(0);
+            if y.is_none() && m.is_none() {
+                Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
+            } else {
+                let positive = sign.is_none();
+                let years = y.unwrap_or(0);
+                let months = m.unwrap_or(0);
 
-            let (m, ay) = norm(months, 12);
-            let y = years + ay;
+                let (m, ay) = norm(months, 12);
+                let y = years + ay;
 
-            Type::YearMonthDuration { positive, years: y, months: m }
+                Ok(Type::YearMonthDuration { positive, years: y, months: m })
+            }
         }
     )(input)
 }
@@ -415,7 +435,7 @@ pub fn parse_day_time_duration_complete(input: &str) -> IResult<&str, Type> {
 }
 
 pub fn parse_day_time_duration(input: &str) -> IResult<&str, Type> {
-    map(
+    map_res(
         tuple((
             opt(tag("-")),
             preceded(
@@ -427,19 +447,23 @@ pub fn parse_day_time_duration(input: &str) -> IResult<&str, Type> {
             )
         )),
         |(sign, (d, time))| {
-            let positive = sign.is_none();
-            let days = d.unwrap_or(0);
+            if d.is_none() && time.is_none() {
+                Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
+            } else {
+                let positive = sign.is_none();
+                let days = d.unwrap_or(0);
 
-            let (hours, minutes, seconds, microseconds) = time.unwrap_or((0,0,0,0));
+                let (hours, minutes, seconds, microseconds) = time.unwrap_or((0, 0, 0, 0));
 
-            // normalization
-            let (s, am) = norm(seconds, 60);
-            let (m, ah) = norm(minutes + am, 60);
-            let (h, ad) = norm(hours + ah, 24);
+                // normalization
+                let (s, am) = norm(seconds, 60);
+                let (m, ah) = norm(minutes + am, 60);
+                let (h, ad) = norm(hours + ah, 24);
 
-            let d = days + ad;
+                let d = days + ad;
 
-            Type::DayTimeDuration { positive, days: d, hours: h, minutes: m, seconds: s, microseconds }
+                Ok(Type::DayTimeDuration { positive, days: d, hours: h, minutes: m, seconds: s, microseconds })
+            }
         }
     )(input)
 }
@@ -452,20 +476,24 @@ fn parse_duration_time(input: &str) -> IResult<&str, Type> {
             opt(terminated(duration_second_and_ms, tag("S"))),
         )),
         |(h, m, s)| {
-            let h = h.unwrap_or(0);
-            let m = m.unwrap_or(0);
-
-            let (s, ms) = s.unwrap_or((0,0));
-
-            // normalization
-            let (s, am) = norm(s, 60);
-            let (m, ah) = norm(m + am, 60);
-            let (h, ad) = norm(h + ah, 24);
-
-            if let Some(time) = NaiveTime::from_hms_milli_opt(h, m, s, ms) {
-                Ok(Type::Time { time: crate::values::time::Time::from_utc(time), offset: false })
-            } else {
+            if h.is_none() && m.is_none() && s.is_none() {
                 Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
+            } else {
+                let h = h.unwrap_or(0);
+                let m = m.unwrap_or(0);
+
+                let (s, ms) = s.unwrap_or((0, 0));
+
+                // normalization
+                let (s, am) = norm(s, 60);
+                let (m, ah) = norm(m + am, 60);
+                let (h, ad) = norm(h + ah, 24);
+
+                if let Some(time) = NaiveTime::from_hms_milli_opt(h, m, s, ms) {
+                    Ok(Type::Time { time: crate::values::time::Time::from_utc(time), offset: false })
+                } else {
+                    Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
+                }
             }
         }
     )(input)

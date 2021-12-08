@@ -46,6 +46,18 @@ pub(crate) fn parse_eqname(input: &str) -> IResult<&str, QName, CustomError<&str
     alt((parse_uri_qualified_name, parse_qname))(input)
 }
 
+// [5]   	Name	   ::=   	NameStartChar (NameChar)*
+pub(crate) fn parse_name(input: &str) -> IResult<&str, String, CustomError<&str>> {
+    let (input, name_start) = take_while_m_n(1, 1, is_name_start_char_)(input)?;
+    let (input, name_end) = take_while(is_name_char_)(input)?;
+
+    let mut name = String::new();
+    name.push_str(name_start);
+    name.push_str(name_end);
+
+    Ok((input, name))
+}
+
 // [4]   	NCName	   ::=   	Name - (Char* ':' Char*)	/* An XML Name, minus the ":" */
 pub(crate) fn parse_ncname(input: &str) -> IResult<&str, String, CustomError<&str>> {
     let (input, name_start) = take_while_m_n(1, 1, is_name_start_char)(input)?;
@@ -58,6 +70,13 @@ pub(crate) fn parse_ncname(input: &str) -> IResult<&str, String, CustomError<&st
     Ok((input, name))
 }
 
+// [7]   	Nmtoken	   ::=   	(NameChar)+
+pub(crate) fn parse_nmtoken(input: &str) -> IResult<&str, String, CustomError<&str>> {
+    let (input, token) = take_while(is_name_char_)(input)?;
+
+    Ok((input, token.to_string()))
+}
+
 pub(crate) fn parse_ws1_ncname(input: &str) -> IResult<&str, String, CustomError<&str>> {
     let (input, _) = ws1(input)?;
     parse_ncname(input)
@@ -68,12 +87,21 @@ pub(crate) fn parse_ncname_expr(input: &str) -> IResult<&str, Box<dyn Expression
     Ok((input, Name::boxed(name) ))
 }
 
-//[4]   	NameStartChar	   ::=   	":" (An XML Name, minus the ":") | [A-Z] | "_" | [a-z] TODO: | [#xC0-#xD6] | [#xD8-#xF6] | [#xF8-#x2FF] | [#x370-#x37D] | [#x37F-#x1FFF] | [#x200C-#x200D] | [#x2070-#x218F] | [#x2C00-#x2FEF] | [#x3001-#xD7FF] | [#xF900-#xFDCF] | [#xFDF0-#xFFFD] | [#x10000-#xEFFFF]
+// [4]   	NameStartChar	   ::=   	":" (An XML Name, minus the ":") | [A-Z] | "_" | [a-z] TODO: | [#xC0-#xD6] | [#xD8-#xF6] | [#xF8-#x2FF] | [#x370-#x37D] | [#x37F-#x1FFF] | [#x200C-#x200D] | [#x2070-#x218F] | [#x2C00-#x2FEF] | [#x3001-#xD7FF] | [#xF900-#xFDCF] | [#xFDF0-#xFFFD] | [#x10000-#xEFFFF]
 fn is_name_start_char(c: char) -> bool {
     c == '_' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
 }
 
-//[4a]   	NameChar	   ::=   	NameStartChar | "-" | "." | [0-9] TODO: | #xB7 | [#x0300-#x036F] | [#x203F-#x2040]
+// [4a]   	NameChar	   ::=   	NameStartChar | "-" | "." | [0-9] TODO: | #xB7 | [#x0300-#x036F] | [#x203F-#x2040]
 fn is_name_char(c: char) -> bool {
     is_name_start_char(c) || c == '-' || c == '.' || (c >= '0' && c <= '9')
+}
+
+
+fn is_name_start_char_(c: char) -> bool {
+    c == ':' || is_name_start_char(c)
+}
+
+fn is_name_char_(c: char) -> bool {
+    is_name_start_char_(c) || c == '-' || c == '.' || (c >= '0' && c <= '9')
 }

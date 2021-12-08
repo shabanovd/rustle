@@ -1064,14 +1064,15 @@ pub(crate) fn FN_CURRENT_DATE_TIME() -> FUNCTION {
     (
         (
             [].to_vec(),
-            SequenceType::zero_or_one(ItemType::AtomicOrUnionType(XS_DATE_TIME_STAMP.into())),
+            SequenceType::zero_or_one(ItemType::AtomicOrUnionType(XS_DATE_TIME.into())),
         ),
-        fn_current_date
+        fn_current_date_time
     )
 }
 
 pub(crate) fn fn_current_date_time(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
-    todo!()
+    // TODO  deterministic
+    Ok((env, Object::Atomic(Type::date_time_now())))
 }
 
 // fn:current-date() as xs:date

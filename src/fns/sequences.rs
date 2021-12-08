@@ -1,4 +1,4 @@
-use crate::eval::{Environment, Object, Type, DynamicContext, EvalResult};
+use crate::eval::{Environment, Object, Type, DynamicContext, EvalResult, object_to_integer};
 use crate::eval::sequence_type::*;
 use crate::fns::FUNCTION;
 
@@ -250,55 +250,58 @@ pub(crate) fn FN_SUBSEQUENCE_3() -> FUNCTION {
     )
 }
 
-pub(crate) fn fn_subsequence(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+pub(crate) fn fn_subsequence(env: Box<Environment>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     println!("arguments {:?}", arguments);
-    match arguments.as_slice() {
-        [Object::Empty, ..] => Ok((env, Object::Empty)),
-        [Object::Range { min, max }, Object::Atomic(Type::Integer(start)), Object::Atomic(Type::Integer(length))] => {
-            if *start <= 0 || *length <= 0 {
+
+    let source = arguments.remove(0);
+    let start = arguments.remove(0).to_integer()?;
+    let mut length_opt = if arguments.len() == 0 {
+        None
+    } else {
+        Some(arguments.remove(0).to_integer()?)
+    };
+
+    match source {
+        Object::Empty => Ok((env, Object::Empty)),
+        Object::Range { min: mi, max: ma } => {
+            let min = mi.min(ma);
+            let max = mi.max(ma);
+
+            let length = if let Some(length) = length_opt { length } else { min - max + 1 };
+
+            if start <= 0 || length <= 0 {
                 Ok((env, Object::Empty))
             } else {
-                if min < max {
-                    let new_min = min + (start.max(&1) - 1);
-                    if new_min > *max {
-                        Ok((env, Object::Empty))
-                    } else {
-                        let new_max = (new_min + (length - 1)).min(*max);
-
-                        if new_min == new_max {
-                            Ok((env, Object::Atomic(Type::Integer(new_min))))
-                        } else {
-                            Ok((env, Object::Range { min: new_min, max: new_max }))
-                        }
-                    }
+                let new_min = min + (start.max(1) - 1);
+                if new_min > max {
+                    Ok((env, Object::Empty))
                 } else {
-                    let new_min = min - (start.max(&1) - 1);
-                    if new_min < *max {
-                        Ok((env, Object::Empty))
-                    } else {
-                        let new_max = (new_min - (length - 1)).max(*max);
+                    let new_max = (new_min + (length - 1)).min(max);
 
-                        if new_min == new_max {
-                            Ok((env, Object::Atomic(Type::Integer(new_min))))
-                        } else {
-                            Ok((env, Object::Range { min: new_min, max: new_max }))
-                        }
+                    if new_min == new_max {
+                        Ok((env, Object::Atomic(Type::Integer(new_min))))
+                    } else {
+                        Ok((env, Object::Range { min: new_min, max: new_max }))
                     }
                 }
             }
         },
-        [Object::Atomic(t), Object::Atomic(Type::Integer(start)), Object::Atomic(Type::Integer(length))] => {
-            if *start == 1 && *length >= 1 {
+        Object::Atomic(t) => {
+            let length = if let Some(length) = length_opt { length } else { 1 };
+
+            if start == 1 && length >= 1 {
                 Ok((env, Object::Atomic(t.clone())))
             } else {
                 Ok((env, Object::Empty))
             }
         },
-        [Object::Sequence(items), Object::Atomic(Type::Integer(start)), Object::Atomic(Type::Integer(length))] => {
-            let mut result = Vec::with_capacity(*length as usize);
+        Object::Sequence(items) => {
+            let length = if let Some(length) = length_opt { length } else { items.len() as i128 };
 
-            let from = *start as usize;
-            let till = (*start + *length) as usize;
+            let mut result = Vec::with_capacity(length as usize);
+
+            let from = start as usize;
+            let till = (start + length) as usize;
 
             for position in from..till as usize {
                 if let Some(item) = items.get((position - 1) as usize) {

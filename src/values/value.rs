@@ -15,10 +15,17 @@ use crate::eval::helpers::sort_and_dedup;
 use crate::eval::expression::Expression;
 use chrono::{Date, Datelike, DateTime, FixedOffset, Local, Offset, TimeZone};
 use hex::FromHexError;
+use nom::bytes::complete::tag;
+use nom::character::complete::{alpha1, alphanumeric1};
+use nom::error::Error;
+use nom::IResult;
+use nom::multi::{many0, many_m_n};
+use nom::sequence::{preceded, tuple};
 use crate::eval::{Environment, ErrorInfo};
 use crate::eval::comparison::ValueOrdering;
 use crate::eval::sequence_type::SequenceType;
 use crate::parser::parse_duration::*;
+use crate::parser::parse_names::{parse_name, parse_ncname, parse_nmtoken, parse_qname};
 use crate::serialization::object_to_string;
 use crate::serialization::to_string::*;
 use crate::tree::Reference;
@@ -145,29 +152,28 @@ pub enum Type {
 
     AnyURI(String),
 
-    Integer(i128),
-    Decimal(BigDecimal),
-    Float(OrderedFloat<f32>),
-    Double(OrderedFloat<f64>),
+    UnsignedByte(u8),
+    UnsignedShort(u16),
+    UnsignedInt(u32),
+    UnsignedLong(u64),
+
+    Byte(i8),
+    Short(i16),
+    Int(i32),
+    Long(i64),
 
     PositiveInteger(i128),
     NonNegativeInteger(i128),
     NonPositiveInteger(i128),
     NegativeInteger(i128),
 
-    Long(i64),
-    Int(i32),
-    Short(i16),
-    Byte(i8),
+    Integer(i128),
+    Decimal(BigDecimal),
+    Float(OrderedFloat<f32>),
+    Double(OrderedFloat<f64>),
 
-    UnsignedLong(u64),
-    UnsignedInt(u32),
-    UnsignedShort(u16),
-    UnsignedByte(u8),
-
-    DateTime { dt: DateTime<FixedOffset>, offset: bool },
     DateTimeStamp(),
-
+    DateTime { dt: DateTime<FixedOffset>, offset: bool },
     Date { date: Date<FixedOffset>, offset: bool },
     Time { time: Time<FixedOffset>, offset: bool },
 
@@ -202,6 +208,13 @@ pub enum Type {
 }
 
 impl Type {
+
+    pub(crate) fn date_time_now() -> Type {
+        let now = Local::now();
+        let dt = DateTime::from_utc(now.naive_utc(), TimeZone::from_offset(now.offset()));
+
+        Type::DateTime { dt, offset: true }
+    }
 
     pub(crate) fn date_now() -> Type {
         let now = Local::now();
@@ -293,10 +306,27 @@ impl Type {
                 match to {
                     Types::Untyped => Ok(Type::Untyped(str.clone())),
                     Types::String => Ok(Type::String(str.clone())),
-                    Types::NormalizedString => Ok(Type::NormalizedString(str.clone())),
+                    Types::NormalizedString => {
+                        let str = normalizing_string(str);
+                        Ok(Type::NormalizedString(str))
+                    },
+                    Types::Language => {
+                        let lang = string_to_language(str)?;
+                        Ok(Type::Language(lang))
+                    }
                     Types::AnyURI => Ok(Type::AnyURI(str.clone())),
-                    Types::Name => Ok(Type::Name(str.clone())),
-                    Types::NCName => Ok(Type::NCName(str.clone())),
+                    Types::Name => {
+                        let name = string_to_name(str)?;
+                        Ok(Type::Name(name))
+                    },
+                    Types::NCName => {
+                        let name = string_to_ncname(str)?;
+                        Ok(Type::NCName(name))
+                    },
+                    Types::NMTOKEN => {
+                        let name = string_to_nmtoken(str)?;
+                        Ok(Type::NMTOKEN(name))
+                    },
                     Types::QName => {
                         match crate::parser::parse_names::parse_qname(str) {
                             Ok((input, qname)) => {
@@ -309,6 +339,10 @@ impl Type {
                             Err(_) => Err((ErrorCode::FORG0001, format!("The string {:?} cannot be cast to a QName", str)))
                         }
                     },
+                    Types::Token => {
+                        let str = string_to_token(str);
+                        Ok(Type::Token(str))
+                    }
                     Types::Boolean => {
                         if str == "false" || str == "0" {
                             Ok(Type::Boolean(false))
@@ -423,6 +457,27 @@ impl Type {
                             Err(code) => Err((code, String::from("TODO")))
                         }
                     }
+                    Types::ID => {
+                        if str.is_empty() {
+                            Err((ErrorCode::FORG0001, String::from("TODO")))
+                        } else {
+                            Ok(Type::ID(str.clone()))
+                        }
+                    },
+                    Types::IDREF => {
+                        if str.is_empty() {
+                            Err((ErrorCode::FORG0001, String::from("TODO")))
+                        } else {
+                            Ok(Type::IDREF(str.clone()))
+                        }
+                    },
+                    Types::ENTITY => {
+                        if str.is_empty() {
+                            Err((ErrorCode::FORG0001, String::from("TODO")))
+                        } else {
+                            Ok(Type::ENTITY(str.clone()))
+                        }
+                    },
                     _ => panic!("{:?} from {:?}", to, self) // Err((ErrorCode::XPTY0004, String::from("TODO")))
                 }
             }
@@ -437,6 +492,7 @@ impl Type {
                         let data = number.to_string();
                         Ok(Type::String(data))
                     }
+                    Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
 
                     Types::UnsignedLong => {
@@ -586,6 +642,7 @@ impl Type {
                         let data = number.to_string();
                         Ok(Type::String(data))
                     }
+                    Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
 
                     Types::UnsignedLong => {
@@ -735,6 +792,7 @@ impl Type {
                         let data = number.to_string();
                         Ok(Type::String(data))
                     }
+                    Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
 
                     Types::UnsignedLong => {
@@ -884,6 +942,7 @@ impl Type {
                         let data = number.to_string();
                         Ok(Type::String(data))
                     }
+                    Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
 
                     Types::UnsignedLong => {
@@ -1034,6 +1093,7 @@ impl Type {
                         let data = number.to_string();
                         Ok(Type::String(data))
                     }
+                    Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
 
                     Types::UnsignedLong => {
@@ -1183,6 +1243,7 @@ impl Type {
                         let data = number.to_string();
                         Ok(Type::String(data))
                     }
+                    Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
 
                     Types::UnsignedLong => {
@@ -1332,6 +1393,7 @@ impl Type {
                         let data = number.to_string();
                         Ok(Type::String(data))
                     }
+                    Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
 
                     Types::UnsignedLong => {
@@ -1481,6 +1543,7 @@ impl Type {
                         let data = number.to_string();
                         Ok(Type::String(data))
                     }
+                    Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
 
                     Types::UnsignedLong => {
@@ -1631,6 +1694,7 @@ impl Type {
                         let data = number.to_string();
                         Ok(Type::String(data))
                     }
+                    Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
 
                     Types::UnsignedLong => {
@@ -1780,6 +1844,7 @@ impl Type {
                         let data = number.to_string();
                         Ok(Type::String(data))
                     }
+                    Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
 
                     Types::UnsignedLong => {
@@ -1929,6 +1994,7 @@ impl Type {
                         let data = number.to_string();
                         Ok(Type::String(data))
                     }
+                    Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
 
                     Types::UnsignedLong => {
@@ -2078,6 +2144,7 @@ impl Type {
                         let data = number.to_string();
                         Ok(Type::String(data))
                     }
+                    Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
 
                     Types::UnsignedLong => {
@@ -2228,6 +2295,7 @@ impl Type {
                         let data = number.to_string();
                         Ok(Type::String(data))
                     }
+                    Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
 
                     Types::UnsignedLong => {
@@ -2377,7 +2445,37 @@ impl Type {
                         let data = number.to_string();
                         Ok(Type::String(data))
                     }
+                    Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
+
+                    Types::UnsignedLong => {
+                        if let Some(num) = number.to_u64() {
+                            Ok(Type::UnsignedLong(num))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedInt => {
+                        if let Some(num) = number.to_u32() {
+                                Ok(Type::UnsignedInt(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                    }
+                    Types::UnsignedShort => {
+                        if let Some(num) = number.to_u16() {
+                                Ok(Type::UnsignedShort(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                    }
+                    Types::UnsignedByte => {
+                        if let Some(num) = number.to_u8() {
+                                Ok(Type::UnsignedByte(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                    }
 
                     Types::Long => {
                         if let Some(num) = number.to_i64() {
@@ -2406,6 +2504,51 @@ impl Type {
                         } else {
                             Err((ErrorCode::FOCA0002, String::from("TODO")))
                         }
+                    },
+
+                    Types::PositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                            if num > 0 {
+                                Ok(Type::PositiveInteger(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonNegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                                if num >= 0 {
+                                    Ok(Type::NonNegativeInteger(num))
+                                } else {
+                                    Err((ErrorCode::FOCA0002, String::from("TODO")))
+                                }
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                    },
+                    Types::NonPositiveInteger => {
+                        if let Some(num) = number.to_i128() {
+                                if num <= 0 {
+                                    Ok(Type::NonPositiveInteger(num))
+                                } else {
+                                    Err((ErrorCode::FOCA0002, String::from("TODO")))
+                                }
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                    },
+                    Types::NegativeInteger => {
+                        if let Some(num) = number.to_i128() {
+                                if num < 0 {
+                                    Ok(Type::NegativeInteger(num))
+                                } else {
+                                    Err((ErrorCode::FOCA0002, String::from("TODO")))
+                                }
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
                     },
 
                     Types::Integer => {
@@ -2447,6 +2590,7 @@ impl Type {
                         let data = float_to_string(number, false);
                         Ok(Type::String(data))
                     }
+                    Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => {
                         let b = if number.is_nan() || number.is_zero() {
                             false
@@ -2454,6 +2598,51 @@ impl Type {
                             true
                         };
                         Ok(Type::Boolean(b))
+                    }
+
+                    Types::UnsignedLong => {
+                        if number.is_zero()|| number.is_normal() {
+                            if let Some(num) = number.to_u64() {
+                                Ok(Type::UnsignedLong(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedInt => {
+                        if number.is_zero()|| number.is_normal() {
+                            if let Some(num) = number.to_u32() {
+                                Ok(Type::UnsignedInt(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedShort => {
+                        if number.is_zero()|| number.is_normal() {
+                            if let Some(num) = number.to_u16() {
+                                Ok(Type::UnsignedShort(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedByte => {
+                        if number.is_zero()|| number.is_normal() {
+                            if let Some(num) = number.to_u8() {
+                                Ok(Type::UnsignedByte(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
                     }
 
                     Types::Long => {
@@ -2493,6 +2682,67 @@ impl Type {
                         if number.is_zero()|| number.is_normal() {
                             if let Some(num) = number.0.to_i8() {
                                 Ok((Type::Byte(num)))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+
+                    Types::PositiveInteger => {
+                        if number.is_zero()|| number.is_normal() {
+                            if let Some(num) = number.to_i128() {
+                                if num > 0 {
+                                    Ok(Type::PositiveInteger(num))
+                                } else {
+                                    Err((ErrorCode::FOCA0002, String::from("TODO")))
+                                }
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonNegativeInteger => {
+                        if number.is_zero()|| number.is_normal() {
+                            if let Some(num) = number.to_i128() {
+                                if num >= 0 {
+                                    Ok(Type::NonNegativeInteger(num))
+                                } else {
+                                    Err((ErrorCode::FOCA0002, String::from("TODO")))
+                                }
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonPositiveInteger => {
+                        if number.is_zero()|| number.is_normal() {
+                            if let Some(num) = number.to_i128() {
+                                if num <= 0 {
+                                    Ok(Type::NonPositiveInteger(num))
+                                } else {
+                                    Err((ErrorCode::FOCA0002, String::from("TODO")))
+                                }
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NegativeInteger => {
+                        if number.is_zero()|| number.is_normal() {
+                            if let Some(num) = number.to_i128() {
+                                if num < 0 {
+                                    Ok(Type::NegativeInteger(num))
+                                } else {
+                                    Err((ErrorCode::FOCA0002, String::from("TODO")))
+                                }
                             } else {
                                 Err((ErrorCode::FOCA0002, String::from("TODO")))
                             }
@@ -2533,6 +2783,7 @@ impl Type {
                         let data = double_to_string(number, true);
                         Ok(Type::String(data))
                     }
+                    Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => {
                         let b = if number.is_nan() || number.is_zero() {
                             false
@@ -2540,6 +2791,51 @@ impl Type {
                             true
                         };
                         Ok(Type::Boolean(b))
+                    }
+
+                    Types::UnsignedLong => {
+                        if number.is_zero()|| number.is_normal() {
+                            if let Some(num) = number.to_u64() {
+                                Ok(Type::UnsignedLong(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedInt => {
+                        if number.is_zero()|| number.is_normal() {
+                            if let Some(num) = number.to_u32() {
+                                Ok(Type::UnsignedInt(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedShort => {
+                        if number.is_zero()|| number.is_normal() {
+                            if let Some(num) = number.to_u16() {
+                                Ok(Type::UnsignedShort(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    }
+                    Types::UnsignedByte => {
+                        if number.is_zero()|| number.is_normal() {
+                            if let Some(num) = number.to_u8() {
+                                Ok(Type::UnsignedByte(num))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
                     }
 
                     Types::Long => {
@@ -2579,6 +2875,67 @@ impl Type {
                         if number.is_normal() || number.is_zero() {
                             if let Some(num) = number.0.to_i8() {
                                 Ok((Type::Byte(num)))
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+
+                    Types::PositiveInteger => {
+                        if number.is_zero()|| number.is_normal() {
+                            if let Some(num) = number.to_i128() {
+                                if num > 0 {
+                                    Ok(Type::PositiveInteger(num))
+                                } else {
+                                    Err((ErrorCode::FOCA0002, String::from("TODO")))
+                                }
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonNegativeInteger => {
+                        if number.is_zero()|| number.is_normal() {
+                            if let Some(num) = number.to_i128() {
+                                if num >= 0 {
+                                    Ok(Type::NonNegativeInteger(num))
+                                } else {
+                                    Err((ErrorCode::FOCA0002, String::from("TODO")))
+                                }
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonPositiveInteger => {
+                        if number.is_zero()|| number.is_normal() {
+                            if let Some(num) = number.to_i128() {
+                                if num <= 0 {
+                                    Ok(Type::NonPositiveInteger(num))
+                                } else {
+                                    Err((ErrorCode::FOCA0002, String::from("TODO")))
+                                }
+                            } else {
+                                Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            }
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NegativeInteger => {
+                        if number.is_zero()|| number.is_normal() {
+                            if let Some(num) = number.to_i128() {
+                                if num < 0 {
+                                    Ok(Type::NegativeInteger(num))
+                                } else {
+                                    Err((ErrorCode::FOCA0002, String::from("TODO")))
+                                }
                             } else {
                                 Err((ErrorCode::FOCA0002, String::from("TODO")))
                             }
@@ -2620,6 +2977,7 @@ impl Type {
                         let data = date_time_to_string(dt, offset);
                         Ok(Type::String(data))
                     }
+                    Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::DateTime => {
                         Ok(Type::DateTime { dt: dt.clone(), offset: *offset })
                     }
@@ -2665,6 +3023,7 @@ impl Type {
                         let data = date_to_string(date, offset);
                         Ok(Type::String(data))
                     }
+                    Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::DateTime => {
                         Ok(Type::DateTime { dt: date.and_hms(0,0,0), offset: *offset })
                     }
@@ -2704,6 +3063,7 @@ impl Type {
                         let data = time_to_string(time, offset);
                         Ok(Type::String(data))
                     }
+                    Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Time => {
                         Ok(Type::Time { time: time.clone(), offset: *offset })
                     }
@@ -2720,6 +3080,7 @@ impl Type {
                         let data = duration_to_string(*positive, *years, *months, *days, *hours, *minutes, *seconds, *microseconds);
                         Ok(Type::String(data))
                     }
+                    Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Duration => {
                         Ok(Type::Duration { positive: *positive, years: *years, months: *months, days: *days, hours: *hours, minutes: *minutes, seconds: *seconds, microseconds: *microseconds } )
                     }
@@ -2742,6 +3103,7 @@ impl Type {
                         let data = year_month_duration_to_string(*positive, *years, *months);
                         Ok(Type::String(data))
                     }
+                    Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Duration => {
                         Ok(Type::Duration { positive: *positive, years: *years, months: *months, days: 0, hours: 0, minutes: 0, seconds: 0, microseconds: 0 } )
                     }
@@ -2764,6 +3126,7 @@ impl Type {
                         let data = day_time_duration_to_string(*positive, *days, *hours, *minutes, *seconds, *microseconds);
                         Ok(Type::String(data))
                     }
+                    Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Duration => {
                         Ok(Type::Duration { positive: *positive, years: 0, months: 0, days: *days, hours: *hours, minutes: *minutes, seconds: *seconds, microseconds: *microseconds } )
                     }
@@ -2787,6 +3150,7 @@ impl Type {
                         let data = g_year_month_to_string(*year, *month, *tz_m);
                         Ok(Type::String(data))
                     }
+                    Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::GYearMonth => {
                         Ok(Type::GYearMonth { year: *year, month: *month, tz_m: *tz_m })
                     }
@@ -2803,6 +3167,7 @@ impl Type {
                         let data = g_year_to_string(*year, *tz_m);
                         Ok(Type::String(data))
                     }
+                    Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::GYear => {
                         Ok(Type::GYear { year: *year, tz_m: *tz_m })
                     }
@@ -2819,6 +3184,7 @@ impl Type {
                         let data = g_month_day_to_string(*month, *day, *tz_m);
                         Ok(Type::String(data))
                     }
+                    Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::GMonthDay => {
                         Ok(Type::GMonthDay { month: *month, day: *day, tz_m: *tz_m })
                     }
@@ -2835,6 +3201,7 @@ impl Type {
                         let data = g_day_to_string(*day, *tz_m);
                         Ok(Type::String(data))
                     }
+                    Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::GDay => {
                         Ok(Type::GDay { day: *day, tz_m: *tz_m })
                     }
@@ -2851,6 +3218,7 @@ impl Type {
                         let data = g_month_to_string(*month, *tz_m);
                         Ok(Type::String(data))
                     }
+                    Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::GMonth => {
                         Ok(Type::GMonth { month: *month, tz_m: *tz_m })
                     }
@@ -2858,17 +3226,110 @@ impl Type {
                 }
             }
 
-            Type::Token(_) => panic!("{:?} from {:?}", to, self),
-            Type::Language(_) => panic!("{:?} from {:?}", to, self),
-            Type::NMTOKEN(_) => panic!("{:?} from {:?}", to, self),
+            Type::Token(str) => {
+                match to {
+                    Types::String => Ok(Type::String(str.clone())),
+                    Types::Language => {
+                        let lang = string_to_language(str)?;
+                        Ok(Type::Language(lang))
+                    }
+                    Types::Token => Ok(Type::Token(str.clone())),
+                    _ => panic!("{:?} from {:?}", to, self),
+                }
+            }
+            Type::Language(str) => {
+                match to {
+                    Types::String => Ok(Type::String(str.clone())),
+                    Types::Language => Ok(Type::Language(str.clone())),
+                    _ => panic!("{:?} from {:?}", to, self),
+                }
+            }
+            Type::NMTOKEN(str) => {
+                match to {
+                    Types::String => Ok(Type::String(str.clone())),
+                    Types::Language => {
+                        let lang = string_to_language(str)?;
+                        Ok(Type::Language(lang))
+                    }
+                    Types::NMTOKEN => Ok(Type::NMTOKEN(str.clone())),
+                    _ => panic!("{:?} from {:?}", to, self),
+                }
+            }
 
-            Type::Name(_) => panic!("{:?} from {:?}", to, self),
-            Type::NCName(_) => panic!("{:?} from {:?}", to, self),
-            Type::QName { .. } => panic!("{:?} from {:?}", to, self),
+            Type::Name(str) => {
+                match to {
+                    Types::String => Ok(Type::String(str.clone())),
+                    Types::Language => {
+                        let lang = string_to_language(str)?;
+                        Ok(Type::Language(lang))
+                    }
+                    Types::Name => Ok(Type::Name(str.clone())),
+                    _ => panic!("{:?} from {:?}", to, self),
+                }
+            }
+            Type::NCName(str) => {
+                match to {
+                    Types::String => Ok(Type::String(str.clone())),
+                    Types::Language => {
+                        let lang = string_to_language(str)?;
+                        Ok(Type::Language(lang))
+                    }
+                    Types::NCName => Ok(Type::NCName(str.clone())),
+                    _ => panic!("{:?} from {:?}", to, self),
+                }
+            }
+            Type::QName { url, prefix, local_part } => {
+                match to {
+                    Types::String => {
+                        let mut str = if let Some(prefix) = prefix {
+                            let mut str = String::with_capacity(local_part.len() + 1 + prefix.len());
+                            str.push_str(prefix.as_str());
+                            str.push_str(":");
+                            str
+                        } else {
+                            String::with_capacity(local_part.len())
+                        };
+                        str.push_str(local_part.as_str());
+                        Ok(Type::String(str))
+                    }
+                    Types::QName => Ok(Type::QName { url: url.clone(), prefix: prefix.clone(), local_part: local_part.clone() }),
+                    _ => panic!("{:?} from {:?}", to, self),
+                }
+            }
 
-            Type::ID(_) => panic!("{:?} from {:?}", to, self),
-            Type::IDREF(_) => panic!("{:?} from {:?}", to, self),
-            Type::ENTITY(_) => panic!("{:?} from {:?}", to, self),
+            Type::ID(str) => {
+                match to {
+                    Types::String => Ok(Type::String(str.clone())),
+                    Types::Language => {
+                        let lang = string_to_language(str)?;
+                        Ok(Type::Language(lang))
+                    }
+                    Types::ID => Ok(Type::ID(str.clone())),
+                    _ => panic!("{:?} from {:?}", to, self),
+                }
+            }
+            Type::IDREF(str) => {
+                match to {
+                    Types::String => Ok(Type::String(str.clone())),
+                    Types::Language => {
+                        let lang = string_to_language(str)?;
+                        Ok(Type::Language(lang))
+                    }
+                    Types::IDREF => Ok(Type::IDREF(str.clone())),
+                    _ => panic!("{:?} from {:?}", to, self),
+                }
+            }
+            Type::ENTITY(str) => {
+                match to {
+                    Types::String => Ok(Type::String(str.clone())),
+                    Types::Language => {
+                        let lang = string_to_language(str)?;
+                        Ok(Type::Language(lang))
+                    }
+                    Types::ENTITY => Ok(Type::ENTITY(str.clone())),
+                    _ => panic!("{:?} from {:?}", to, self),
+                }
+            }
 
             Type::Boolean(v) => {
                 match to {
@@ -2880,9 +3341,74 @@ impl Type {
                         let data = if *v { "true".to_string() } else { "false".to_string() };
                         Ok(Type::String(data))
                     }
+                    Types::NormalizedString => {
+                        let data = if *v { "true".to_string() } else { "false".to_string() };
+                        Ok(Type::NormalizedString(data))
+                    }
+                    Types::Language => {
+                        let data = if *v { "true".to_string() } else { "false".to_string() };
+                        Ok(Type::Language(data))
+                    }
+
+                    Types::UnsignedLong => {
+                        let num = if *v { 1 } else { 0 };
+                        Ok(Type::UnsignedLong(num))
+                    }
+                    Types::UnsignedInt => {
+                        let num = if *v { 1 } else { 0 };
+                        Ok(Type::UnsignedInt(num))
+                    }
+                    Types::UnsignedShort => {
+                        let num = if *v { 1 } else { 0 };
+                        Ok(Type::UnsignedShort(num))
+                    }
+                    Types::UnsignedByte => {
+                        let num = if *v { 1 } else { 0 };
+                        Ok(Type::UnsignedByte(num))
+                    }
+
+                    Types::Long => {
+                        let num = if *v { 1 } else { 0 };
+                        Ok(Type::Long(num))
+                    }
+                    Types::Int => {
+                        let num = if *v { 1 } else { 0 };
+                        Ok(Type::Int(num))
+                    }
+                    Types::Short => {
+                        let num = if *v { 1 } else { 0 };
+                        Ok(Type::Short(num))
+                    }
+                    Types::Byte => {
+                        let num = if *v { 1 } else { 0 };
+                        Ok(Type::Byte(num))
+                    }
+
+                    Types::PositiveInteger => {
+                        if *v {
+                            Ok(Type::PositiveInteger(1))
+                        } else {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        }
+                    },
+                    Types::NonNegativeInteger => {
+                        let num = if *v { 1 } else { 0 };
+                        Ok(Type::NonNegativeInteger(num))
+                    },
+                    Types::NonPositiveInteger => {
+                        if *v {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        } else {
+                            Ok(Type::NonPositiveInteger(0))
+                        }
+                    },
+                    Types::NegativeInteger => {
+                        Err((ErrorCode::FORG0001, String::from("TODO")))
+                    },
+
                     Types::Integer => {
-                        let data = if *v { 1 } else { 0 };
-                        Ok(Type::Integer(data))
+                        let number = if *v { 1 } else { 0 };
+                        Ok(Type::Integer(number))
                     }
                     Types::Decimal => {
                         let number = if *v { 1 } else { 0 };
@@ -2900,6 +3426,7 @@ impl Type {
                         let number = if *v { 1 } else { 0 } as f64;
                         Ok(Type::Double(OrderedFloat::from(number)))
                     }
+
                     Types::Boolean => Ok(Type::Boolean(v.clone())),
                     _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
                 }
@@ -3604,6 +4131,32 @@ pub enum Object {
     Return(Box<Object>),
 }
 
+impl Object {
+    pub(crate) fn to_integer(&self) -> Result<i128, ErrorInfo> {
+        match self {
+            Object::Atomic(t) => {
+                let n = t.convert(Types::Integer)?;
+                match n {
+                    Type::Integer(num) => Ok(num),
+                    _ => Err((ErrorCode::XPTY0004, format!("can't convert to int {:?}", t)))
+                }
+            },
+            Object::Node(rf) => {
+                match rf.to_typed_value() {
+                    Ok(num) => {
+                        match num.parse() {
+                            Ok(v) => Ok(v),
+                            Err(..) => Err((ErrorCode::XPTY0004, format!("can't convert to int {:?}", num)))
+                        }
+                    },
+                    Err(msg) => Err((ErrorCode::XPTY0004, format!("can't convert node to int")))
+                }
+            }
+            _ => Err((ErrorCode::XPTY0004, format!("can't convert to int {:?}", self)))
+        }
+    }
+}
+
 impl<'a> PartialEq<Self> for Object {
     fn eq(&self, other: &Self) -> bool {
         match self {
@@ -3886,4 +4439,142 @@ pub(crate) fn sequence_atomization(env: &Box<Environment>, obj: Object) -> Resul
         Object::Empty => Ok(obj), // or it can be XPST0005?
         _ => todo!()
     }
+}
+
+pub(crate) fn normalizing_string(str: &String) -> String {
+    str.trim_matches(|c| c == ' ' || c == '\t' || c == '\n' || c == '\r')
+        .replace("\t", " ")
+        .replace("\n", " ")
+        .replace("\r", " ")
+}
+
+pub(crate) fn string_to_token(str: &String) -> String {
+    let mut old_str= normalizing_string(str);
+
+    // TODO optimize this
+    let mut new_str = old_str.replace("  ", " ");
+    while old_str != new_str {
+        old_str = new_str;
+        new_str = old_str.replace("  ", " ");
+    }
+    new_str
+}
+
+fn string_to_name(input: &str) -> Result<String, ErrorInfo> {
+    let input = input.trim();
+    if input.is_empty() {
+        Err((ErrorCode::FORG0001, String::from("TODO")))
+    } else {
+        match parse_name(input) {
+            Ok((i, name)) => {
+                if i.len() == 0 {
+                    Ok(input.to_string())
+                } else {
+                    Err((ErrorCode::FORG0001, String::from("TODO")))
+                }
+            }
+            Err(_) => Err((ErrorCode::FORG0001, String::from("TODO")))
+        }
+    }
+}
+
+fn string_to_ncname(input: &str) -> Result<String, ErrorInfo> {
+    let input = input.trim();
+    if input.is_empty() {
+        Err((ErrorCode::FORG0001, String::from("TODO")))
+    } else {
+        match parse_ncname(input) {
+            Ok((i, name)) => {
+                if i.len() == 0 {
+                    Ok(input.to_string())
+                } else {
+                    Err((ErrorCode::FORG0001, String::from("TODO")))
+                }
+            }
+            Err(_) => Err((ErrorCode::FORG0001, String::from("TODO")))
+        }
+    }
+}
+
+fn string_to_nmtoken(input: &str) -> Result<String, ErrorInfo> {
+    let input = input.trim();
+    if input.is_empty() {
+        Err((ErrorCode::FORG0001, String::from("TODO")))
+    } else {
+        match parse_nmtoken(input) {
+            Ok((i, name)) => {
+                if i.len() == 0 {
+                    Ok(input.to_string())
+                } else {
+                    Err((ErrorCode::FORG0001, String::from("TODO")))
+                }
+            }
+            Err(_) => Err((ErrorCode::FORG0001, String::from("TODO")))
+        }
+    }
+}
+
+fn string_to_language(input: &String) -> Result<String, ErrorInfo> {
+    let input = input.trim();
+    let result: Result<(&str, (&str, Vec<&str>)), nom::Err<Error<&str>>> = tuple((
+        alpha1,
+        many0(
+            preceded(
+                tag("-"),
+                alphanumeric1,
+            )
+        )
+    ))(input);
+    match result {
+        Ok((i, (fst, others))) => {
+            if i.len() == 0 {
+                if fst.len() < 8 {
+                    for o in others {
+                        if o.len() > 8 {
+                            return Err((ErrorCode::FORG0001, String::from("TODO")))
+                        }
+                    }
+                    return Ok(input.to_string())
+                }
+            }
+            return Err((ErrorCode::FORG0001, String::from("TODO")))
+        },
+        Err(_) => Err((ErrorCode::FORG0001, String::from("TODO")))
+    }
+}
+
+pub(crate) fn new_g_month_day(month: u32, day: u32, tz_m: Option<i32>) -> Result<Type, String> {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => {
+            if day < 1 || day > 31 {
+                return Err(String::from("TODO"))
+            }
+        }
+        4 | 6 | 9 | 11 => {
+            if day < 1 || day > 30 {
+                return Err(String::from("TODO"))
+            }
+        }
+        2 => {
+            if day < 1 || day > 29 {
+                return Err(String::from("TODO"))
+            }
+        }
+        _ => return Err(String::from("TODO"))
+    }
+
+    if let Some(tz) = tz_m {
+        // The ·recoverable timezone· of a date will always be a duration between '+12:00' and '11:59'.
+
+        // Timezones are durations with (integer-valued) hour and minute properties
+        // (with the hour magnitude limited to at most 14,
+        // and the minute magnitude limited to at most 59,
+        // except that if the hour magnitude is 14, the minute value must be 0);
+        // they may be both positive or both negative.
+        if tz < -840 || tz > 840 {
+            return Err(String::from("TODO"))
+        }
+    }
+
+    Ok(Type::GMonthDay { month, day, tz_m })
 }

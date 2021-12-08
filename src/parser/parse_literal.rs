@@ -19,7 +19,7 @@ use nom::sequence::{preceded, terminated, tuple};
 use crate::eval::expression::Expression;
 use crate::eval::prolog::*;
 use crate::parser::parse_names::parse_ncname;
-use crate::values::QName;
+use crate::values::{QName, string_to_token};
 
 // [129]    	Literal 	   ::=    	NumericLiteral | StringLiteral
 parse_one_of!(parse_literal,
@@ -281,17 +281,8 @@ pub(crate) fn parse_braced_uri_literal(input: &str) -> IResult<&str, String, Cus
             terminated(parse_string, tag("}"))
         ),
         |url| {
-            // workaround
-            let mut old_url= url.trim()
-                .replace("\t", " ")
-                .replace("\n", " ")
-                .replace("\r", " ");
-            let mut new_url = old_url.replace("  ", " ");
-            while old_url != new_url {
-                old_url = new_url;
-                new_url = old_url.replace("  ", " ");
-            }
-            new_url
+            // workaround?
+            string_to_token(&url)
         }
     )(input)
 }

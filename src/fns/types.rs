@@ -300,7 +300,20 @@ pub(crate) fn xs_qname_eval(env: Box<Environment>, arguments: Vec<Object>, _cont
     convert(Types::QName, env, arguments)
 }
 
-// TODO xs:normalizedString($arg as xs:anyAtomicType?) as xs:normalizedString?
+// xs:normalizedString($arg as xs:anyAtomicType?) as xs:normalizedString?
+pub(crate) fn FN_XS_NORMALIZED_STRING() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_one(ItemType::AnyAtomicType)].to_vec(),
+            SequenceType::zero_or_one(ItemType::AtomicOrUnionType(XS_NORMALIZED_STRING.into()))
+        ),
+        xs_normalized_string_eval
+    )
+}
+
+pub(crate) fn xs_normalized_string_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    convert(Types::NormalizedString, env, arguments)
+}
 
 // xs:token($arg as xs:anyAtomicType?) as xs:token?
 pub(crate) fn FN_XS_TOKEN() -> FUNCTION {
@@ -317,9 +330,50 @@ pub(crate) fn xs_token_eval(env: Box<Environment>, arguments: Vec<Object>, _cont
     convert(Types::Token, env, arguments)
 }
 
-// TODO xs:language($arg as xs:anyAtomicType?) as xs:language?
-// TODO xs:NMTOKEN($arg as xs:anyAtomicType?) as xs:NMTOKEN?
-// TODO xs:Name($arg as xs:anyAtomicType?) as xs:Name?
+// xs:language($arg as xs:anyAtomicType?) as xs:language?
+pub(crate) fn FN_XS_LANGUAGE() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_one(ItemType::AnyAtomicType)].to_vec(),
+            SequenceType::zero_or_one(ItemType::AtomicOrUnionType(XS_LANGUAGE.into()))
+        ),
+        xs_language_eval
+    )
+}
+
+pub(crate) fn xs_language_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    convert(Types::Language, env, arguments)
+}
+
+// xs:NMTOKEN($arg as xs:anyAtomicType?) as xs:NMTOKEN?
+pub(crate) fn FN_XS_NMTOKEN() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_one(ItemType::AnyAtomicType)].to_vec(),
+            SequenceType::zero_or_one(ItemType::AtomicOrUnionType(XS_NMTOKEN.into()))
+        ),
+        xs_nmtoken_eval
+    )
+}
+
+pub(crate) fn xs_nmtoken_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    convert(Types::NMTOKEN, env, arguments)
+}
+
+// xs:Name($arg as xs:anyAtomicType?) as xs:Name?
+pub(crate) fn FN_XS_NAME() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_one(ItemType::AnyAtomicType)].to_vec(),
+            SequenceType::zero_or_one(ItemType::AtomicOrUnionType(XS_NAME.into()))
+        ),
+        xs_name_eval
+    )
+}
+
+pub(crate) fn xs_name_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    convert(Types::Name, env, arguments)
+}
 
 // xs:NCName($arg as xs:anyAtomicType?) as xs:NCName?
 pub(crate) fn FN_XS_NCNAME() -> FUNCTION {
@@ -336,9 +390,50 @@ pub(crate) fn xs_ncname_eval(env: Box<Environment>, arguments: Vec<Object>, _con
     convert(Types::NCName, env, arguments)
 }
 
-// TODO xs:ID($arg as xs:anyAtomicType?) as xs:ID?
-// TODO xs:IDREF($arg as xs:anyAtomicType?) as xs:IDREF?
-// TODO xs:ENTITY($arg as xs:anyAtomicType?) as xs:ENTITY?
+// xs:ID($arg as xs:anyAtomicType?) as xs:ID?
+pub(crate) fn FN_XS_ID() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_one(ItemType::AnyAtomicType)].to_vec(),
+            SequenceType::zero_or_one(ItemType::AtomicOrUnionType(XS_ID.into()))
+        ),
+        xs_id_eval
+    )
+}
+
+pub(crate) fn xs_id_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    convert(Types::ID, env, arguments)
+}
+
+// xs:IDREF($arg as xs:anyAtomicType?) as xs:IDREF?
+pub(crate) fn FN_XS_IDREF() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_one(ItemType::AnyAtomicType)].to_vec(),
+            SequenceType::zero_or_one(ItemType::AtomicOrUnionType(XS_IDREF.into()))
+        ),
+        xs_idref_eval
+    )
+}
+
+pub(crate) fn xs_idref_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    convert(Types::IDREF, env, arguments)
+}
+
+// xs:ENTITY($arg as xs:anyAtomicType?) as xs:ENTITY?
+pub(crate) fn FN_XS_ENTITY() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_one(ItemType::AnyAtomicType)].to_vec(),
+            SequenceType::zero_or_one(ItemType::AtomicOrUnionType(XS_ENTITY.into()))
+        ),
+        xs_entity_eval
+    )
+}
+
+pub(crate) fn xs_entity_eval(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    convert(Types::ENTITY, env, arguments)
+}
 
 // xs:integer($arg as xs:anyAtomicType?) as xs:integer?
 pub(crate) fn FN_XS_INTEGER() -> FUNCTION {
