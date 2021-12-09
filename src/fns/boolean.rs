@@ -81,8 +81,9 @@ pub fn effective_boolean_value(object: Object) ->  Result<bool, ErrorInfo> {
 
                 Type::String(str) |
                 Type::NormalizedString(str) |
-                Type::AnyURI(str) |
                 Type::Untyped(str) => Ok(str.len() != 0),
+
+                Type::AnyURI(uri) => Ok(uri.to_string().len() != 0),
 
                 Type::Integer(number) => Ok(number != 0),
                 Type::Decimal(number) => Ok(!number.is_zero()),

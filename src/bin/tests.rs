@@ -302,6 +302,7 @@ struct TestCaseState {
 
     env: Option<Environment>,
     spec: Option<String>,
+    xsd_version: Option<String>,
 
     name: Option<String>,
     dependency: Option<DependencyState>,
@@ -328,6 +329,7 @@ impl State for TestCaseState {
                 if let Some(t) = &state.t {
                     if let Some(v) = &state.v {
                         match t.as_str() {
+                            "xsd-version" => self.xsd_version = Some(v.clone()),
                             "spec" => self.spec = Some(v.clone()),
                             _ => {}
                         }
@@ -373,7 +375,9 @@ impl State for TestCaseState {
                     "environment" => self.environment = Some(EnvironmentState::empty()),
                     "dependency" => self.dependency = Some(DependencyState::empty()),
                     "test" => self.test = Some(TestState::empty(
-                        self.name.as_ref().unwrap().clone(), self.spec.clone(), self.env.clone(), self.dir.clone()
+                        self.name.as_ref().unwrap().clone(),
+                        self.spec.clone(), self.xsd_version.clone(),
+                        self.env.clone(), self.dir.clone()
                     )),
                     "result" => self.result = Some(ResultState::empty()),
                     _ => {}
@@ -404,7 +408,10 @@ impl State for TestCaseState {
 
 struct TestState {
     test_name: String,
+
     spec: Option<String>,
+    xsd_version: Option<String>,
+
     env: Option<Environment>,
     dir: String,
 
@@ -413,9 +420,9 @@ struct TestState {
 }
 
 impl TestState {
-    fn empty(test_name: String, spec: Option<String>, env: Option<Environment>, dir: String) -> TestState {
+    fn empty(test_name: String, spec: Option<String>, xsd_version: Option<String>, env: Option<Environment>, dir: String) -> TestState {
         TestState {
-            test_name, spec, env, dir,
+            test_name, spec, xsd_version, env, dir,
             file: None, script: String::new()
         }
     }

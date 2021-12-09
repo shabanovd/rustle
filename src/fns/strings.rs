@@ -128,27 +128,11 @@ pub(crate) fn fn_string_to_codepoints(env: Box<Environment>, arguments: Vec<Obje
 }
 
 // fn:concat($arg1 as xs:anyAtomicType?, $arg2 as xs:anyAtomicType?, ...) as xs:string
-pub(crate) fn FN_CONCAT_2() -> FUNCTION {
+pub(crate) fn FN_CONCAT(arity: usize) -> FUNCTION {
+    let params = vec![SequenceType::zero_or_one(ItemType::AnyAtomicType); arity];
     (
         (
-            [
-                SequenceType::zero_or_one(ItemType::AnyAtomicType),
-                SequenceType::zero_or_one(ItemType::AnyAtomicType)
-            ].to_vec(),
-            SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_STRING.into()))
-        ),
-        fn_concat
-    )
-}
-
-pub(crate) fn FN_CONCAT_3() -> FUNCTION {
-    (
-        (
-            [
-                SequenceType::zero_or_one(ItemType::AnyAtomicType),
-                SequenceType::zero_or_one(ItemType::AnyAtomicType),
-                SequenceType::zero_or_one(ItemType::AnyAtomicType)
-            ].to_vec(),
+            params,
             SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_STRING.into()))
         ),
         fn_concat

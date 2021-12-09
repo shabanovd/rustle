@@ -1,15 +1,17 @@
 use bigdecimal::{BigDecimal, Zero};
 use nom::bytes::complete::tag;
+use nom::combinator::all_consuming;
 use nom::error::Error;
 use nom::multi::{many0, many1};
 use nom::sequence::tuple;
 use crate::eval::ErrorInfo;
 use crate::parser::errors::ErrorCode;
-use crate::values::Type;
+use crate::values::{Type, Types};
 use ordered_float::OrderedFloat;
 
 fn is_minus_zero(str: &str) -> bool {
-    let check: Result<(&str, (Vec<&str>, Vec<&str>)), nom::Err<Error<&str>>> = tuple((many0(tag("-")), many1(tag("0"))))(str);
+    let check: Result<(&str, (Vec<&str>, Vec<&str>)), nom::Err<Error<&str>>> =
+        all_consuming(tuple((many0(tag("-")), many1(tag("0")))))(str);
     check.is_ok()
 }
 
@@ -170,27 +172,93 @@ pub(crate) fn decimal(str: &str) -> Result<Type, ErrorInfo> {
     }
 }
 
-pub(crate) fn float(str: &str, nan_on_error: bool) -> Result<Type, ErrorInfo> {
-    match str.trim().parse() {
+pub(crate) fn float(mut str: &str, nan_on_error: bool) -> Result<Type, ErrorInfo> {
+    str = str.trim();
+
+    // workaround for NaN, INF, +INF and -INF cases
+    if str.len() == 3 {
+        if str.eq_ignore_ascii_case("nan") {
+            return if str == "NaN" {
+                Ok(Type::Float(OrderedFloat::from(f32::NAN)))
+            } else {
+                Err(ErrorCode::forg0001(&str.to_string(), Types::Float))
+            }
+        } else if str.eq_ignore_ascii_case("inf") {
+            return if str == "INF" {
+                Ok(Type::Float(OrderedFloat::from(f32::INFINITY)))
+            } else {
+                Err(ErrorCode::forg0001(&str.to_string(), Types::Float))
+            }
+        }
+    } else if str.len() == 4 {
+        if str.eq_ignore_ascii_case("+inf") {
+            return if str == "+INF" {
+                Ok(Type::Float(OrderedFloat::from(f32::INFINITY)))
+            } else {
+                Err(ErrorCode::forg0001(&str.to_string(), Types::Float))
+            }
+        } else if str.eq_ignore_ascii_case("-inf") {
+            return if str == "-INF" {
+                Ok(Type::Float(OrderedFloat::from(f32::NEG_INFINITY)))
+            } else {
+                Err(ErrorCode::forg0001(&str.to_string(), Types::Float))
+            }
+        }
+    }
+
+    match str.parse() {
         Ok(num) => Ok(Type::Float(num)),
         Err(_) => {
             if nan_on_error {
                 Ok(Type::Float(OrderedFloat::from(f32::NAN)))
             } else {
-                Err((ErrorCode::FORG0001, format!("can't convert to decimal {:?}", str)))
+                Err(ErrorCode::forg0001(&str.to_string(), Types::Float))
             }
         }
     }
 }
 
-pub(crate) fn double(str: &str, nan_on_error: bool) -> Result<Type, ErrorInfo> {
-    match str.trim().parse() {
+pub(crate) fn double(mut str: &str, nan_on_error: bool) -> Result<Type, ErrorInfo> {
+    str = str.trim();
+
+    // workaround for NaN, INF, +INF and -INF cases
+    if str.len() == 3 {
+        if str.eq_ignore_ascii_case("nan") {
+            return if str == "NaN" {
+                Ok(Type::Double(OrderedFloat::from(f64::NAN)))
+            } else {
+                Err(ErrorCode::forg0001(&str.to_string(), Types::Double))
+            }
+        } else if str.eq_ignore_ascii_case("inf") {
+            return if str == "INF" {
+                Ok(Type::Double(OrderedFloat::from(f64::INFINITY)))
+            } else {
+                Err(ErrorCode::forg0001(&str.to_string(), Types::Double))
+            }
+        }
+    } else if str.len() == 4 {
+        if str.eq_ignore_ascii_case("+inf") {
+            return if str == "+INF" {
+                Ok(Type::Double(OrderedFloat::from(f64::INFINITY)))
+            } else {
+                Err(ErrorCode::forg0001(&str.to_string(), Types::Double))
+            }
+        } else if str.eq_ignore_ascii_case("-inf") {
+            return if str == "-INF" {
+                Ok(Type::Double(OrderedFloat::from(f64::NEG_INFINITY)))
+            } else {
+                Err(ErrorCode::forg0001(&str.to_string(), Types::Double))
+            }
+        }
+    }
+
+    match str.parse() {
         Ok(num) => Ok(Type::Double(num)),
         Err(_) => {
             if nan_on_error {
                 Ok(Type::Double(OrderedFloat::from(f64::NAN)))
             } else {
-                Err((ErrorCode::FORG0001, format!("can't convert to decimal {:?}", str)))
+                Err(ErrorCode::forg0001(&str.to_string(), Types::Double))
             }
         }
     }

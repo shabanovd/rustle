@@ -1,6 +1,7 @@
 use crate::eval::{Environment, Object, DynamicContext, EvalResult, Type};
 use crate::eval::sequence_type::*;
 use crate::fns::FUNCTION;
+use crate::values::string_to_any_uri;
 
 // fn:default-collation() as xs:string
 pub(crate) fn FN_DEFAULT_COLLATION() -> FUNCTION {
@@ -45,7 +46,8 @@ pub(crate) fn FN_STATIC_BASE_URI() -> FUNCTION {
 
 pub(crate) fn fn_static_base_uri(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
     let result = if let Some(uri) = &env.static_base_uri {
-        Object::Atomic(Type::AnyURI(uri.clone()))
+        let uri = string_to_any_uri(uri)?;
+        Object::Atomic(Type::AnyURI(uri))
     } else {
         Object::Empty
     };

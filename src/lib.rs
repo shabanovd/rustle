@@ -1,3 +1,5 @@
+#![feature(const_option)]
+#![feature(const_char_convert)]
 #![feature(const_fn_trait_bound)]
 #![feature(const_precise_live_drops)]
 #![feature(const_panic)]

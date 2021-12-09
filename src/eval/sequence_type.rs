@@ -512,6 +512,22 @@ impl SequenceType {
                             todo!("raise error?")
                         }
                     }
+                    Object::Sequence(items) => {
+                        if type_only {
+                            todo!()
+                        } else {
+                            if match self.occurrence_indicator {
+                                OccurrenceIndicator::ExactlyOne => items.len() == 1,
+                                OccurrenceIndicator::ZeroOrOne => items.len() >= 0 && items.len() <= 1,
+                                OccurrenceIndicator::ZeroOrMore => items.len() >= 0,
+                                OccurrenceIndicator::OneOrMore => items.len() >= 1
+                            } {
+                                Ok(Object::Sequence(items))
+                            } else {
+                                panic!("raise error?")
+                            }
+                        }
+                    }
                     _ => todo!("raise error?")
                 }
             }

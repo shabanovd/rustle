@@ -1,4 +1,4 @@
-use bigdecimal::Zero;
+use bigdecimal::{BigDecimal, Zero};
 use chrono::{Date, DateTime, FixedOffset, SecondsFormat, Timelike};
 use ordered_float::OrderedFloat;
 use crate::eval::{Object, Type, RangeIterator, Environment};
@@ -6,6 +6,7 @@ use crate::parser::op::Representation;
 use crate::values::{binary_base64_to_string, binary_hex_to_string};
 use crate::values::time::Time;
 use std::num;
+use crate::values::string_to::decimal;
 
 pub fn object_to_string_xml(env: &Box<Environment>, object: &Object) -> String {
     _object_to_string(env, object, false, " ")
@@ -55,8 +56,9 @@ pub fn _object_to_string(env: &Box<Environment>, object: &Object, ref_resolving:
         Object::Atomic(t) => {
             match t {
                 Type::Boolean(b) => b.to_string(),
+                Type::AnyURI(uri) => uri.to_string(),
+
                 Type::Untyped(str) |
-                Type::AnyURI(str) |
                 Type::String(str) |
                 Type::NormalizedString(str) |
 
@@ -70,16 +72,7 @@ pub fn _object_to_string(env: &Box<Environment>, object: &Object, ref_resolving:
                 Type::Name(str) |
                 Type::NCName(str) => str.clone(),
                 Type::QName { prefix, local_part, .. } => {
-                    let mut str = if let Some(prefix) = prefix {
-                        let mut str = String::with_capacity(local_part.len() + 1 + prefix.len());
-                        str.push_str(prefix.as_str());
-                        str.push_str(":");
-                        str
-                    } else {
-                        String::with_capacity(local_part.len())
-                    };
-                    str.push_str(local_part.as_str());
-                    str
+                    qname_to_string(prefix, local_part)
                 }
 
                 Type::Long(number) => number.to_string(),
@@ -97,7 +90,7 @@ pub fn _object_to_string(env: &Box<Environment>, object: &Object, ref_resolving:
                 Type::NonPositiveInteger(number) |
                 Type::NegativeInteger(number) |
                 Type::Integer(number) => number.to_string(),
-                Type::Decimal(number) => number.to_string(),
+                Type::Decimal(number) => decimal_to_string(number),
                 Type::Float(number) => float_to_string(number, true),
                 Type::Double(number) => double_to_string(number, true),
 
@@ -168,6 +161,15 @@ pub fn _object_to_string(env: &Box<Environment>, object: &Object, ref_resolving:
             }
         },
         _ => panic!("TODO object_to_string {:?}", object)
+    }
+}
+
+pub(crate) fn decimal_to_string(number: &BigDecimal) -> String {
+    let str = number.to_string();
+    if str.ends_with(".0") {
+        str[..str.len()-2].to_string()
+    } else {
+        str
     }
 }
 
@@ -417,7 +419,9 @@ pub(crate) fn duration_to_string(positive: bool, years: u32, months: u32, days: 
 pub(crate) fn year_month_duration_to_string(positive: bool, years: u32, months: u32) -> String {
     let mut buf = String::new();
     if !positive {
-        buf.push_str("-")
+        if years != 0 || months != 0 {
+            buf.push_str("-")
+        }
     }
     buf.push_str("P");
     if years == 0 && months == 0 {
@@ -439,7 +443,9 @@ pub(crate) fn year_month_duration_to_string(positive: bool, years: u32, months: 
 pub(crate) fn day_time_duration_to_string(positive: bool, days: u32, hours: u32, minutes: u32, seconds: u32, microseconds: u32) -> String {
     let mut buf = String::new();
     if !positive {
-        buf.push_str("-")
+        if days != 0 || hours != 0 || minutes != 0 || seconds != 0 || microseconds != 0 {
+            buf.push_str("-")
+        }
     }
     buf.push_str("P");
     if days != 0 {
@@ -473,6 +479,19 @@ pub(crate) fn day_time_duration_to_string(positive: bool, days: u32, hours: u32,
         }
     }
     buf
+}
+
+pub(crate) fn qname_to_string(prefix: &Option<String>, local_part: &String) -> String {
+    let mut str = if let Some(prefix) = prefix {
+        let mut str = String::with_capacity(local_part.len() + 1 + prefix.len());
+        str.push_str(prefix.as_str());
+        str.push_str(":");
+        str
+    } else {
+        String::with_capacity(local_part.len())
+    };
+    str.push_str(local_part.as_str());
+    str
 }
 
 pub(crate) fn ref_to_char(code: u32) -> char {

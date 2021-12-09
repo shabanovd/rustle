@@ -382,7 +382,7 @@ pub(crate) fn call(env: Box<Environment>, name: QNameResolved, arguments: Vec<Ob
         // workaround for concat function
         let fun: Option<FUNCTION> = if name.local_part == "concat" {
             if name.url == *XPATH_FUNCTIONS.uri && arguments.len() >= 2 {
-                Some(strings::FN_CONCAT_2())
+                Some(strings::FN_CONCAT(arguments.len()))
             } else {
                 None
             }

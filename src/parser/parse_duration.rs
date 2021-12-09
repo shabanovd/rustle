@@ -12,7 +12,7 @@ use crate::parser::parse_literal::is_digits;
 use chrono::{Date, NaiveDate, FixedOffset, NaiveTime, DateTime, NaiveDateTime, TimeZone, LocalResult};
 use nom::error::{ParseError, ErrorKind};
 use nom::multi::many0;
-use crate::values::{new_g_month_day, Type};
+use crate::values::Type;
 
 pub fn string_to_date(input: &str) -> Result<Type, String> {
     match all_consuming(parse_date)(input.trim()) {
@@ -58,28 +58,27 @@ pub fn string_to_date_time_duration(input: &str) -> Result<Type, String> {
 
 pub fn string_to_year_month(input: &str) -> Result<Type, String> {
     match all_consuming(parse_g_year_month)(input.trim()) {
-        Ok((_, dt)) => Ok(dt),
+        Ok((_, result)) => result,
         Err(e) => Err(format!("can't convert to GYearMonth: {:?}", input))
     }
 }
 
-pub fn parse_g_year_month(input: &str) -> IResult<&str, Type> {
+pub fn parse_g_year_month(input: &str) -> IResult<&str, Result<Type, String>> {
     map(
         tuple((
             opt(tag("-")),
             take_digits, // parse_year,
-            tag("-"),
-            parse_month,
+            preceded(tag("-"), parse_month),
             opt(alt((timezone_hour, timezone_utc))),
         )),
-        |(sign, year, _, month, tz_m)| {
+        |(sign, year, month, tz_m)| {
             let year = if sign.is_some() {
                 -(year as i32)
             } else {
                 year as i32
             };
 
-            Type::GYearMonth { year, month, tz_m }
+            new_g_year_month(year, month, tz_m)
         }
     )(input)
 }
@@ -143,7 +142,8 @@ pub fn parse_g_day(input: &str) -> IResult<&str, Type> {
     map(
         tuple((
             tag("---"),
-            take_digits, // parse_day,
+            // take_digits,
+            parse_day,
             opt(alt((timezone_hour, timezone_utc))),
         )),
         |(_, day, tz_m)| {
@@ -185,13 +185,11 @@ pub fn parse_date(input: &str) -> IResult<&str, Type> {
         tuple((
             opt(tag("-")),
             parse_year,
-            tag("-"),
-            parse_month,
-            tag("-"),
-            parse_day,
+            preceded(tag("-"), parse_month),
+            preceded(tag("-"), parse_day),
             opt(alt((timezone_hour, timezone_utc))),
         )),
-        |(sign, y, _, m, _, d, tz)| {
+        |(sign, y, m, d, tz)| {
             let y = if sign.is_some() {
                 -(y as i32)
             } else {
@@ -227,13 +225,11 @@ pub fn parse_time(input: &str) -> IResult<&str, Type> {
     map_res(
         tuple((
             parse_hour,
-            tag(":"),
-            parse_minute,
-            tag(":"),
-            parse_second_and_ms,
+            preceded(tag(":"), parse_minute),
+            preceded(tag(":"), parse_second_and_ms),
             opt(alt((timezone_hour, timezone_utc))),
         )),
-        |(h, _, m, _, (s, ms), tz)| {
+        |(h, m, (s, ms), tz)| {
             let time = if let Some(ms) = ms {
                 if let Some(time) = NaiveTime::from_hms_milli_opt(h, m, s, ms) {
                     time
@@ -248,13 +244,17 @@ pub fn parse_time(input: &str) -> IResult<&str, Type> {
                 }
             };
 
-            let tz_m = tz.unwrap_or(0);
-            let offset = if tz_m > 0 {
-                FixedOffset::east(tz_m * 60)
+            if check_tz(tz) {
+                Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
             } else {
-                FixedOffset::west(-tz_m * 60)
-            };
-            Ok(Type::Time { time: crate::values::time::Time::from(time, offset), offset: tz.is_some() })
+                let tz_m = tz.unwrap_or(0);
+                let offset = if tz_m > 0 {
+                    FixedOffset::east(tz_m * 60)
+                } else {
+                    FixedOffset::west(-tz_m * 60)
+                };
+                Ok(Type::Time { time: crate::values::time::Time::from(time, offset), offset: tz.is_some() })
+            }
         }
     )(input)
 }
@@ -325,7 +325,8 @@ fn timezone_hour(input: &str) -> IResult<&str, i32> {
         tuple((
             opt(alt((tag("+"), tag("-")))),
             parse_hour,
-            opt(preceded(tag(":"), parse_minute))
+            // opt(preceded(tag(":"), parse_minute))
+            preceded(tag(":"), parse_minute)
         )),
         |(sign, h, m)| {
             let s: i32 = if let Some(ch) = sign {
@@ -336,13 +337,13 @@ fn timezone_hour(input: &str) -> IResult<&str, i32> {
                 }
             } else { 1 };
 
-            if let Some(m) = m {
-                if m >= 60 {
-                    return Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
-                }
+            // if let Some(m) = m {
+            if m >= 60 {
+                return Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)))
             }
+            // }
 
-            let tz_m = s * ((h * 60) + m.unwrap_or(0)) as i32;
+            let tz_m = s * ((h * 60) + m) as i32;
             Ok(tz_m)
         }
     )(input)
@@ -364,7 +365,7 @@ fn parse_duration(input: &str) -> IResult<&str, Type> {
                 tag("P"),
                 tuple((
                     opt(terminated(take_digits, tag("Y"))),
-                    opt(terminated(parse_month, tag("M"))),
+                    opt(terminated(take_digits, tag("M"))),
                     opt(terminated(duration_day, tag("D"))),
                     opt(preceded(tag("T"), parse_duration_time_as_u32)),
                 ))
@@ -410,7 +411,7 @@ pub fn parse_year_month_duration(input: &str) -> IResult<&str, Type> {
                 tag("P"),
                 tuple((
                     opt(terminated(take_digits, tag("Y"))),
-                    opt(terminated(parse_month, tag("M"))),
+                    opt(terminated(take_digits, tag("M"))),
                 ))
             )
         )),
@@ -527,14 +528,22 @@ fn parse_duration_time_as_u32(input: &str) -> IResult<&str, (u32,u32,u32,u32)> {
 }
 
 fn parse_year(input: &str) -> IResult<&str, u32> {
-    digit_in_range(input, (1, 4), 0..=9999)
+    digit_in_range(input, (4, 4), 0..=9999)
 }
 
 fn parse_month(input: &str) -> IResult<&str, u32> {
+    digit_in_range(input, (2, 2), 0..=12)
+}
+
+fn parse_month_12(input: &str) -> IResult<&str, u32> {
     digit_in_range(input, (1, 2), 0..=12)
 }
 
 fn parse_day(input: &str) -> IResult<&str, u32> {
+    digit_in_range(input, (2, 2), 0..=31)
+}
+
+fn parse_day_12(input: &str) -> IResult<&str, u32> {
     digit_in_range(input, (1, 2), 0..=31)
 }
 
@@ -552,7 +561,8 @@ fn parse_second(input: &str) -> IResult<&str, u32> {
 
 fn parse_second_and_ms(input: &str) -> IResult<&str, (u32, Option<u32>)> {
     tuple((
-        take_digits,
+        // take_digits,
+        parse_second,
         opt(preceded(tag("."), take_digits))
     ))(input)
 }
@@ -625,4 +635,65 @@ fn norm(value: u32, max: u32) -> (u32, u32) {
         count += 1;
     }
     (v, count)
+}
+
+fn check_tz(tz_m: Option<i32>) -> bool {
+    if let Some(tz) = tz_m {
+        // Timezones are durations with (integer-valued) hour and minute properties
+        // (with the hour magnitude limited to at most 14,
+        // and the minute magnitude limited to at most 59,
+        // except that if the hour magnitude is 14, the minute value must be 0);
+        // they may be both positive or both negative.
+        if tz < -840 || tz > 840 {
+            return true;
+        }
+    }
+    false
+}
+
+// // The ·recoverable timezone· of a date will always be a duration between '+12:00' and '11:59'.
+// fn check_tz_12(tz_m: Option<i32>) -> bool {
+//     if let Some(tz) = tz_m {
+//         if tz < -720 || tz > 720 {
+//             return true;
+//         }
+//     }
+//     false
+// }
+
+pub(crate) fn new_g_year_month(year: i32, month: u32, tz_m: Option<i32>) -> Result<Type, String> {
+    if month < 1 || month > 12 {
+        Err(String::from("TODO"))
+    } else if check_tz(tz_m) {
+        Err(String::from("TODO"))
+    } else {
+        Ok(Type::GYearMonth { year, month, tz_m })
+    }
+}
+
+pub(crate) fn new_g_month_day(month: u32, day: u32, tz_m: Option<i32>) -> Result<Type, String> {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => {
+            if day < 1 || day > 31 {
+                return Err(String::from("TODO"))
+            }
+        }
+        4 | 6 | 9 | 11 => {
+            if day < 1 || day > 30 {
+                return Err(String::from("TODO"))
+            }
+        }
+        2 => {
+            if day < 1 || day > 29 {
+                return Err(String::from("TODO"))
+            }
+        }
+        _ => return Err(String::from("TODO"))
+    }
+
+    if check_tz(tz_m) {
+        return Err(String::from("TODO"))
+    }
+
+    Ok(Type::GMonthDay { month, day, tz_m })
 }

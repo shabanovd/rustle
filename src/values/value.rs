@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::convert::TryFrom;
+use std::convert::{Infallible, TryFrom};
 use std::fmt;
 use std::fmt::{Write, Debug, Formatter};
 use base64::DecodeError;
@@ -21,6 +21,7 @@ use nom::error::Error;
 use nom::IResult;
 use nom::multi::{many0, many_m_n};
 use nom::sequence::{preceded, tuple};
+use uriparse::URIReference;
 use crate::eval::{Environment, ErrorInfo};
 use crate::eval::comparison::ValueOrdering;
 use crate::eval::sequence_type::SequenceType;
@@ -292,11 +293,11 @@ impl Type {
 
     pub(crate) fn convert(&self, to: Types) -> Result<Type, ErrorInfo> {
         match self {
-            Type::AnyURI(str) => {
+            Type::AnyURI(uri) => {
                 match to {
-                    Types::Untyped => Ok(Type::Untyped(str.clone())),
-                    Types::String => Ok(Type::String(str.clone())),
-                    Types::AnyURI => Ok(Type::AnyURI(str.clone())),
+                    Types::Untyped => Ok(Type::Untyped(uri.to_string())),
+                    Types::String => Ok(Type::String(uri.to_string())),
+                    Types::AnyURI => Ok(Type::AnyURI(uri.clone())),
                     _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
                 }
             },
@@ -314,7 +315,10 @@ impl Type {
                         let lang = string_to_language(str)?;
                         Ok(Type::Language(lang))
                     }
-                    Types::AnyURI => Ok(Type::AnyURI(str.clone())),
+                    Types::AnyURI => {
+                        let uri = string_to_any_uri(str)?;
+                        Ok(Type::AnyURI(uri))
+                    },
                     Types::Name => {
                         let name = string_to_name(str)?;
                         Ok(Type::Name(name))
@@ -328,7 +332,7 @@ impl Type {
                         Ok(Type::NMTOKEN(name))
                     },
                     Types::QName => {
-                        match crate::parser::parse_names::parse_qname(str) {
+                        match crate::parser::parse_names::parse_qname(str.trim()) {
                             Ok((input, qname)) => {
                                 if input.is_empty() {
                                     Ok(Type::QName { url: qname.url, prefix: qname.prefix, local_part: qname.local_part })
@@ -336,7 +340,7 @@ impl Type {
                                     Err((ErrorCode::FORG0001, format!("The string {:?} cannot be cast to a QName", str)))
                                 }
                             },
-                            Err(_) => Err((ErrorCode::FORG0001, format!("The string {:?} cannot be cast to a QName", str)))
+                            Err(_) => Err(ErrorCode::forg0001(str, Types::QName))
                         }
                     },
                     Types::Token => {
@@ -344,7 +348,8 @@ impl Type {
                         Ok(Type::Token(str))
                     }
                     Types::Boolean => {
-                        if str == "false" || str == "0" {
+                        let str = str.trim();
+                        if str.trim() == "false" || str == "0" {
                             Ok(Type::Boolean(false))
                         } else if str == "true" || str == "1" {
                             Ok(Type::Boolean(true))
@@ -372,6 +377,7 @@ impl Type {
                     Types::Decimal => crate::values::string_to::decimal(str),
                     Types::Float => crate::values::string_to::float(str, false),
                     Types::Double => crate::values::string_to::double(str, false),
+
                     Types::DateTime => {
                         match parse_date_time_complete(str) {
                             Ok((_, t)) => Ok(t),
@@ -2438,11 +2444,11 @@ impl Type {
             Type::Decimal(number) => {
                 match to {
                     Types::Untyped => {
-                        let data = number.to_string();
+                        let data = decimal_to_string(number);
                         Ok(Type::Untyped(data))
                     }
                     Types::String => {
-                        let data = number.to_string();
+                        let data = decimal_to_string(number);
                         Ok(Type::String(data))
                     }
                     Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
@@ -2763,9 +2769,13 @@ impl Type {
                         }
                     },
                     Types::Decimal => {
-                        match BigDecimal::from_f32(number.into_inner()) {
-                            Some(number) => Ok((Type::Decimal(number))),
-                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        if number.is_nan() || number.is_infinite() {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        } else {
+                            match BigDecimal::from_f32(number.into_inner()) {
+                                Some(number) => Ok((Type::Decimal(number))),
+                                None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                            }
                         }
                     },
                     Types::Float => Ok(Type::Float(*number)),
@@ -2956,9 +2966,13 @@ impl Type {
                         }
                     },
                     Types::Decimal => {
-                        match BigDecimal::from_f64(number.into_inner()) {
-                            Some(number) => Ok((Type::Decimal(number))),
-                            None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                        if number.is_nan() || number.is_infinite() {
+                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                        } else {
+                            match BigDecimal::from_f64(number.into_inner()) {
+                                Some(number) => Ok((Type::Decimal(number))),
+                                None => Err((ErrorCode::FORG0001, String::from("TODO")))
+                            }
                         }
                     },
                     Types::Float => Ok(Type::Float(OrderedFloat(number.0 as f32))),
@@ -3228,6 +3242,7 @@ impl Type {
 
             Type::Token(str) => {
                 match to {
+                    Types::Untyped => Ok(Type::Untyped(str.clone())),
                     Types::String => Ok(Type::String(str.clone())),
                     Types::Language => {
                         let lang = string_to_language(str)?;
@@ -3239,6 +3254,7 @@ impl Type {
             }
             Type::Language(str) => {
                 match to {
+                    Types::Untyped => Ok(Type::Untyped(str.clone())),
                     Types::String => Ok(Type::String(str.clone())),
                     Types::Language => Ok(Type::Language(str.clone())),
                     _ => panic!("{:?} from {:?}", to, self),
@@ -3246,6 +3262,7 @@ impl Type {
             }
             Type::NMTOKEN(str) => {
                 match to {
+                    Types::Untyped => Ok(Type::Untyped(str.clone())),
                     Types::String => Ok(Type::String(str.clone())),
                     Types::Language => {
                         let lang = string_to_language(str)?;
@@ -3258,6 +3275,7 @@ impl Type {
 
             Type::Name(str) => {
                 match to {
+                    Types::Untyped => Ok(Type::Untyped(str.clone())),
                     Types::String => Ok(Type::String(str.clone())),
                     Types::Language => {
                         let lang = string_to_language(str)?;
@@ -3269,6 +3287,7 @@ impl Type {
             }
             Type::NCName(str) => {
                 match to {
+                    Types::Untyped => Ok(Type::Untyped(str.clone())),
                     Types::String => Ok(Type::String(str.clone())),
                     Types::Language => {
                         let lang = string_to_language(str)?;
@@ -3281,24 +3300,18 @@ impl Type {
             Type::QName { url, prefix, local_part } => {
                 match to {
                     Types::String => {
-                        let mut str = if let Some(prefix) = prefix {
-                            let mut str = String::with_capacity(local_part.len() + 1 + prefix.len());
-                            str.push_str(prefix.as_str());
-                            str.push_str(":");
-                            str
-                        } else {
-                            String::with_capacity(local_part.len())
-                        };
-                        str.push_str(local_part.as_str());
+                        let str = qname_to_string(prefix, local_part);
                         Ok(Type::String(str))
                     }
                     Types::QName => Ok(Type::QName { url: url.clone(), prefix: prefix.clone(), local_part: local_part.clone() }),
-                    _ => panic!("{:?} from {:?}", to, self),
+                    Types::Language => Err(ErrorCode::forg0001(&qname_to_string(prefix, local_part), to)),
+                    _ => Err(ErrorCode::xpty0004(self, to))
                 }
             }
 
             Type::ID(str) => {
                 match to {
+                    Types::Untyped => Ok(Type::Untyped(str.clone())),
                     Types::String => Ok(Type::String(str.clone())),
                     Types::Language => {
                         let lang = string_to_language(str)?;
@@ -3310,6 +3323,7 @@ impl Type {
             }
             Type::IDREF(str) => {
                 match to {
+                    Types::Untyped => Ok(Type::Untyped(str.clone())),
                     Types::String => Ok(Type::String(str.clone())),
                     Types::Language => {
                         let lang = string_to_language(str)?;
@@ -3321,6 +3335,7 @@ impl Type {
             }
             Type::ENTITY(str) => {
                 match to {
+                    Types::Untyped => Ok(Type::Untyped(str.clone())),
                     Types::String => Ok(Type::String(str.clone())),
                     Types::Language => {
                         let lang = string_to_language(str)?;
@@ -3388,7 +3403,7 @@ impl Type {
                         if *v {
                             Ok(Type::PositiveInteger(1))
                         } else {
-                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            Err((ErrorCode::FORG0001, String::from("TODO")))
                         }
                     },
                     Types::NonNegativeInteger => {
@@ -3397,7 +3412,7 @@ impl Type {
                     },
                     Types::NonPositiveInteger => {
                         if *v {
-                            Err((ErrorCode::FOCA0002, String::from("TODO")))
+                            Err((ErrorCode::FORG0001, String::from("TODO")))
                         } else {
                             Ok(Type::NonPositiveInteger(0))
                         }
@@ -3761,16 +3776,24 @@ impl Type {
 
         match self {
             Type::Untyped(l_str) |
-            Type::AnyURI(l_str) |
             Type::String(l_str) |
             Type::NormalizedString(l_str) => {
-                // xs:string or xs:anyURI => xs:string
                 if let Type::String(r_str) = other.convert(Types::String)? {
                     Ok(ValueOrdering::from(l_str.cmp(&r_str)))
                 } else {
                     Err((ErrorCode::XPTY0004, String::from("TODO")))
                 }
             }
+            Type::AnyURI(l_url) => {
+                // xs:string or xs:anyURI => xs:string
+                if let Type::String(r_str) = other.convert(Types::String)? {
+                    Ok(ValueOrdering::from(l_url.to_string().cmp(&r_str)))
+                } else {
+                    Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+
+            }
+
             Type::NCName(l_str) => {
                 match other {
                     Type::NCName(r_str) => {
@@ -4036,6 +4059,24 @@ impl Type {
                     Err((ErrorCode::XPTY0004, String::from("TODO")))
                 }
             }
+            Type::HexBinary(l_bits) => {
+                match other {
+                    Type::HexBinary(r_bits) |
+                    Type::Base64Binary(r_bits) => {
+                        Ok(ValueOrdering::from(l_bits.cmp(r_bits)))
+                    },
+                    _ => panic!("{:?} vs {:?}", self, other) // Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
+            Type::Base64Binary(l_bits) => {
+                match other {
+                    Type::HexBinary(r_bits) |
+                    Type::Base64Binary(r_bits) => {
+                        Ok(ValueOrdering::from(l_bits.cmp(r_bits)))
+                    },
+                    _ => panic!("{:?} vs {:?}", self, other) // Err((ErrorCode::XPTY0004, String::from("TODO")))
+                }
+            }
             _ => panic!("{:?} vs {:?}", self, other) // Err((ErrorCode::XPTY0004, String::from("TODO")))
         }
     }
@@ -4085,7 +4126,7 @@ pub fn string_to_decimal(string: &String) -> Result<BigDecimal, ErrorCode> {
 }
 
 pub fn string_to_binary_hex(string: &String) -> Result<Vec<u8>, ErrorCode> {
-    match hex::decode(string) {
+    match hex::decode(string.trim()) {
         Ok(binary) => Ok(binary),
         Err(_) => Err(ErrorCode::FORG0001)
     }
@@ -4096,7 +4137,7 @@ pub fn binary_hex_to_string(binary: &Vec<u8>) -> Result<String, ErrorCode> {
 }
 
 pub fn string_to_binary_base64(string: &String) -> Result<Vec<u8>, ErrorCode> {
-    match base64::decode(string) {
+    match base64::decode(string.trim()) {
         Ok(binary) => Ok(binary),
         Err(_) => Err(ErrorCode::FORG0001)
     }
@@ -4448,6 +4489,20 @@ pub(crate) fn normalizing_string(str: &String) -> String {
         .replace("\r", " ")
 }
 
+pub(crate) fn string_to_any_uri(str: &String) -> Result<String, ErrorInfo> {
+    let str = str.trim();
+    // workaround for ':' case
+    if !str.starts_with(":") {
+        match URIReference::try_from(str) {
+            Ok(uri) => {
+                return Ok(uri.to_string())
+            },
+            Err(_) => {}
+        }
+    }
+    Err(ErrorCode::forg0001(&str.to_string(), Types::AnyURI))
+}
+
 pub(crate) fn string_to_token(str: &String) -> String {
     let mut old_str= normalizing_string(str);
 
@@ -4528,7 +4583,7 @@ fn string_to_language(input: &String) -> Result<String, ErrorInfo> {
     match result {
         Ok((i, (fst, others))) => {
             if i.len() == 0 {
-                if fst.len() < 8 {
+                if fst.len() <= 8 {
                     for o in others {
                         if o.len() > 8 {
                             return Err((ErrorCode::FORG0001, String::from("TODO")))
@@ -4541,40 +4596,4 @@ fn string_to_language(input: &String) -> Result<String, ErrorInfo> {
         },
         Err(_) => Err((ErrorCode::FORG0001, String::from("TODO")))
     }
-}
-
-pub(crate) fn new_g_month_day(month: u32, day: u32, tz_m: Option<i32>) -> Result<Type, String> {
-    match month {
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => {
-            if day < 1 || day > 31 {
-                return Err(String::from("TODO"))
-            }
-        }
-        4 | 6 | 9 | 11 => {
-            if day < 1 || day > 30 {
-                return Err(String::from("TODO"))
-            }
-        }
-        2 => {
-            if day < 1 || day > 29 {
-                return Err(String::from("TODO"))
-            }
-        }
-        _ => return Err(String::from("TODO"))
-    }
-
-    if let Some(tz) = tz_m {
-        // The ·recoverable timezone· of a date will always be a duration between '+12:00' and '11:59'.
-
-        // Timezones are durations with (integer-valued) hour and minute properties
-        // (with the hour magnitude limited to at most 14,
-        // and the minute magnitude limited to at most 59,
-        // except that if the hour magnitude is 14, the minute value must be 0);
-        // they may be both positive or both negative.
-        if tz < -840 || tz > 840 {
-            return Err(String::from("TODO"))
-        }
-    }
-
-    Ok(Type::GMonthDay { month, day, tz_m })
 }

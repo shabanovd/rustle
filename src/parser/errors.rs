@@ -1,6 +1,9 @@
+use std::fmt::Debug;
 use strum_macros::AsRefStr;
 use nom::error::{ErrorKind, ParseError, FromExternalError};
 use nom::{IResult, Err};
+use crate::eval::ErrorInfo;
+use crate::values::{Type, Types};
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, AsRefStr)]
@@ -170,6 +173,18 @@ pub enum ErrorCode {
     FOXT0003,
     FOXT0004,
     FOXT0006
+}
+
+impl ErrorCode {
+    pub(crate) fn forg0001(obj: &dyn std::any::Any, to: Types) -> ErrorInfo {
+        (ErrorCode::FORG0001, format!("{:?} cannot be cast to {:?}", obj, to))
+        // (ErrorCode::FORG0001, format!("The string {:?} cannot be cast to a {}", str, type_name))
+        // (ErrorCode::FORG0001, format!("can't convert to {} {:?}", type_name, str))
+    }
+
+    pub(crate) fn xpty0004(t: &Type, to: Types) -> ErrorInfo {
+        (ErrorCode::XPTY0004, format!("{:?} cannot be cast to {:?}", t, to))
+    }
 }
 
 #[derive(Debug, PartialEq, AsRefStr)]

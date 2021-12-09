@@ -5,6 +5,7 @@ use crate::fns::FUNCTION;
 
 use crate::serialization::object_to_string;
 use crate::parser::errors::ErrorCode;
+use crate::values::string_to_any_uri;
 
 // fn:resolve-QName($qname as xs:string?, $element as element()) as xs:QName?
 pub(crate) fn FN_RESOLVE_QNAME() -> FUNCTION {
@@ -124,11 +125,12 @@ pub(crate) fn fn_namespace_uri_from_qname(env: Box<Environment>, arguments: Vec<
     match arguments.as_slice() {
         [Object::Empty] => Ok((env, Object::Empty)),
         [Object::Atomic(Type::QName { url, .. })] => {
-            if let Some(uri) = url {
-                Ok((env, Object::Atomic(Type::AnyURI(uri.clone()))))
+            let uri = if let Some(uri) = url {
+                string_to_any_uri(uri)?
             } else {
-                Ok((env, Object::Atomic(Type::AnyURI(String::new()))))
-            }
+                string_to_any_uri(&"".to_string())?
+            };
+            Ok((env, Object::Atomic(Type::AnyURI(uri))))
         },
         _ => panic!("{:?}", arguments)
     }
