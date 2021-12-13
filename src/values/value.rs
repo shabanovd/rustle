@@ -4173,6 +4173,71 @@ pub enum Object {
 }
 
 impl Object {
+
+    pub(crate) fn effective_boolean_value(&self) -> Result<bool, ErrorInfo> {
+        match self {
+            Object::Empty => Ok(false),
+            Object::Atomic(t) => {
+                match t {
+                    Type::Boolean(v) => Ok(*v),
+                    Type::String(str) |
+                    Type::AnyURI(str) |
+                    Type::Untyped(str) |
+                    Type::NormalizedString(str) => Ok(str.len() != 0),
+
+
+                    Type::UnsignedByte(number) => Ok(*number != 0_u8),
+                    Type::UnsignedShort(number) => Ok(*number != 0_u16),
+                    Type::UnsignedInt(number) => Ok(*number != 0_u32),
+                    Type::UnsignedLong(number) => Ok(*number != 0_u64),
+
+                    Type::Byte(number) => Ok(*number != 0_i8),
+                    Type::Short(number) => Ok(*number != 0_i16),
+                    Type::Int(number) => Ok(*number != 0_i32),
+                    Type::Long(number) => Ok(*number != 0_i64),
+
+                    Type::PositiveInteger(number) => Ok(*number != 0),
+                    Type::NonNegativeInteger(number) => Ok(*number != 0),
+                    Type::NonPositiveInteger(number) => Ok(*number != 0),
+                    Type::NegativeInteger(number) => Ok(*number != 0),
+
+                    Type::Integer(number) => Ok(!number.is_zero()),
+                    Type::Decimal(number) => Ok(!number.is_zero()),
+                    Type::Float(number) => Ok(!(number.is_nan() || number.is_zero())),
+                    Type::Double(number) => Ok(!(number.is_nan() || number.is_zero())),
+
+                    _ => Err((ErrorCode::FORG0006, format!("The {:?} do not have effective boolean value", self)))
+                }
+            }
+            Object::Sequence(items) => {
+                let v = items.get(0)
+                    .and_then(|item| Some(item.is_node()))
+                    .unwrap_or(false);
+                if v {
+                    Ok(v)
+                } else {
+                    Err((ErrorCode::FORG0006, format!("Sequence first element is not a node")))
+                }
+            }
+            Object::Node{..} => Ok(true),
+            _ => Err((ErrorCode::FORG0006, format!("The {:?} do not have effective boolean value", self)))
+        }
+    }
+
+    pub(crate) fn is_node(&self) -> bool {
+        match self {
+            Object::Node(_) => true,
+            _ => false
+        }
+    }
+
+    pub(crate) fn to_bool(&self) -> Result<bool, ErrorInfo> {
+        match self {
+            Object::Atomic(Type::Boolean(v)) => Ok(*v),
+            _ => Err((ErrorCode::TODO, String::from("TODO")))
+        }
+    }
+
     pub(crate) fn to_integer(&self) -> Result<i128, ErrorInfo> {
         match self {
             Object::Atomic(t) => {

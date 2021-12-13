@@ -3,7 +3,6 @@ use crate::eval::helpers::relax;
 use crate::parser::parse;
 use crate::values::{resolve_element_qname, QName, QNameResolved};
 use crate::serialization::object_to_string;
-use crate::fns::object_to_bool;
 use crate::namespaces::NS;
 use crate::parser::errors::ErrorCode;
 use crate::serialization::to_xml::object_to_xml;
@@ -86,7 +85,7 @@ pub(crate) fn eval(
 
 pub(crate) fn check_assert(result: &EvalResult, check: &str) {
     let (_, check_result) = eval_assert(result, check).unwrap();
-    match object_to_bool(&check_result) {
+    match check_result.to_bool() {
         Ok(check_result) => {
             if !check_result {
                 let (_, obj) = result.as_ref().unwrap();
@@ -99,7 +98,7 @@ pub(crate) fn check_assert(result: &EvalResult, check: &str) {
 
 pub(crate) fn bool_check_assert(result: &EvalResult, check: &str) -> bool {
     let (_, check_result) = eval_assert(result, check).unwrap();
-    match object_to_bool(&check_result) {
+    match check_result.to_bool() {
         Ok(check_result) => !check_result,
         Err((code, msg)) => {
             assert_eq!(format!("error {:?} {}", code, msg), "");
@@ -310,6 +309,11 @@ pub(crate) fn _check_assert_type(result: &EvalResult, check: &str) -> Option<Str
                 }
             },
             _ => Some(String::from("not array(xs:string)"))
+        }
+    } else if check == "xs:boolean" {
+        match result {
+            Object::Atomic(Type::Boolean(..)) => None,
+            _ => Some(String::from("not xs:boolean"))
         }
     } else if check == "xs:integer" {
         match result {

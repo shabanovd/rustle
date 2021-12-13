@@ -4,7 +4,6 @@ use crate::values::{QNameResolved, resolve_element_qname};
 use crate::eval::helpers::{relax, insert_into_sequences};
 use crate::eval::prolog::*;
 use crate::eval::expression::Expression;
-use crate::fns::object_to_bool;
 use crate::parser::errors::ErrorCode;
 
 struct SequenceIterator<'a> {
@@ -143,7 +142,7 @@ pub(crate) fn eval_pipe<'a>(pipe: Box<Pipe>, env: Box<Environment>, context: &Dy
         let (new_env, v) = expr.eval(current_env, context)?;
         current_env = new_env;
 
-        if object_to_bool(&v)? {
+        if v.effective_boolean_value()? {
             if let Some(next) = next {
                 eval_pipe(next, current_env, context)
             } else {

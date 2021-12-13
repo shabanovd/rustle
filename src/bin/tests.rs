@@ -315,7 +315,7 @@ impl TestCaseState {
     fn empty(dir: String, envs: HashMap<String, Environment>) -> TestCaseState {
         TestCaseState {
             dir, envs,
-            env: None, spec: None,
+            env: None, spec: None, xsd_version: None,
             name: None,
             dependency: None, environment: None, test: None, result: None
         }

@@ -105,6 +105,7 @@ macro_rules! parse_one_of {
                     Err(nom::Err::Failure(..)) => {
                         return result
                     }
+                    // Err(ref e) => println!("{:?}", e),
                     _ => {}
                 }
             )*

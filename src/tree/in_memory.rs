@@ -858,8 +858,6 @@ impl XMLNode for Element {
             }
         }
 
-        println!("add_attribute {:?}", name);
-
         if let Some(attributes) = &mut self.attributes {
             attributes.insert(name.clone(), Attribute { name, value } );
         }

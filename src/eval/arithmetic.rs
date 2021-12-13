@@ -820,6 +820,18 @@ pub fn object_to_items(object: &Object) -> Vec<Object> {
         // Object::ForBinding { values, ..} => {
         //     object_to_iterator(values)
         // },
+        Object::Range { min, max } => {
+            let min = *min.min(max);
+            let max = *max.min(max);
+
+            let mut result = Vec::with_capacity((max - min + 1) as usize);
+
+            for i in min..max {
+                result.push(Object::Atomic(Type::Integer(i)))
+            }
+
+            result
+        }
         _ => vec![object.clone()]
     }
 }

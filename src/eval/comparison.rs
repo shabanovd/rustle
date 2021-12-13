@@ -5,7 +5,6 @@ use crate::parser::op::{Comparison, OperatorComparison};
 use crate::eval::arithmetic::object_to_items;
 use crate::parser::errors::ErrorCode;
 use crate::values::{QName, Types};
-use crate::fns::object_to_bool;
 use crate::tree::Reference;
 
 type ObjectInEnv<'a> = (&'a Box<Environment>, Object);
@@ -86,19 +85,19 @@ pub fn eval_comparison_item(
     match object_atomization(&env, &check_type, left) {
         Err(e) => Err(e),
         Ok((None, None, Some(result))) => {
-            let v = object_to_bool(&result)?;
+            let v = result.effective_boolean_value()?;
             Ok((env, v))
         },
         Ok((Some(l_obj), None, None)) => {
             match object_atomization(&env, &check_type, right) {
                 Err(e) => Err(e),
                 Ok((None, None, Some(result))) => {
-                    let v = object_to_bool(&result)?;
+                    let v = result.effective_boolean_value()?;
                     Ok((env, v))
                 }
                 Ok((Some(r_obj), None, None)) => {
                     match comparison_of_items(&operator, (&env, &l_obj), (&env, &r_obj)) {
-                        Ok(v) => Ok((env, object_to_bool(&v)?)),
+                        Ok(v) => Ok((env, v.effective_boolean_value()?)),
                         Err(e) => Err(e)
                     }
                 },
@@ -109,7 +108,7 @@ pub fn eval_comparison_item(
             match object_atomization(&env, &check_type, right) {
                 Err(e) => Err(e),
                 Ok((None, None, Some(result))) => {
-                    let v = object_to_bool(&result)?;
+                    let v = result.effective_boolean_value()?;
                     Ok((env, v))
                 }
                 Ok((None, Some(r_node), None)) => {
@@ -237,32 +236,32 @@ impl From<Ordering> for ValueOrdering {
 
 pub(crate) fn eq(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<bool, ErrorInfo> {
     let result = value_comparison(&OperatorComparison::ValueEquals, left, right)?;
-    object_to_bool(&result)
+    result.to_bool()
 }
 
 pub(crate) fn ne(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<bool, ErrorInfo> {
     let result = value_comparison(&OperatorComparison::ValueNotEquals, left, right)?;
-    object_to_bool(&result)
+    result.to_bool()
 }
 
 pub(crate) fn ls_or_eq(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<bool, ErrorInfo> {
     let result = value_comparison(&OperatorComparison::ValueLessOrEquals, left, right)?;
-    object_to_bool(&result)
+    result.to_bool()
 }
 
 pub(crate) fn ls(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<bool, ErrorInfo> {
     let result = value_comparison(&OperatorComparison::ValueLessThan, left, right)?;
-    object_to_bool(&result)
+    result.to_bool()
 }
 
 pub(crate) fn gr_or_eq(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<bool, ErrorInfo> {
     let result = value_comparison(&OperatorComparison::ValueGreaterOrEquals, left, right)?;
-    object_to_bool(&result)
+    result.to_bool()
 }
 
 pub(crate) fn gr(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<bool, ErrorInfo> {
     let result = value_comparison(&OperatorComparison::ValueGreaterThan, left, right)?;
-    object_to_bool(&result)
+    result.to_bool()
 }
 
 fn is_untyped(value: &Type) -> bool {
@@ -324,7 +323,7 @@ fn type_in_range(t: &Type, min: &i128, max: &i128) -> Result<bool, ErrorInfo> {
 }
 
 fn value_comparison(op: &OperatorComparison, left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<Object, ErrorInfo> {
-    println!("value_comparison: {:?} vs {:?}", left.1, right.1);
+    // println!("value_comparison: {:?} vs {:?}", left.1, right.1);
 
     if left.1 == &Object::Empty {
         return Ok(Object::Empty);
@@ -356,7 +355,8 @@ fn value_comparison(op: &OperatorComparison, left: ObjectRefInEnv, right: Object
 }
 
 pub(crate) fn general_comparison(op: &OperatorComparison, left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<bool, ErrorInfo> {
-    println!("general_comparison: {:?} vs {:?}", left.1, right.1);
+    // println!("general_comparison: {:?} vs {:?}", left.1, right.1);
+
     match left.1 {
         Object::Empty => Ok(false),
         Object::Atomic(lt) => {

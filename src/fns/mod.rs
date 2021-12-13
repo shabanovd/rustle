@@ -19,8 +19,6 @@ mod map;
 mod array;
 mod aggregates;
 
-pub use crate::fns::boolean::object_to_bool;
-
 use crate::parser::errors::ErrorCode;
 use crate::eval::expression::Expression;
 use crate::eval::sequence_type::{ItemType, SequenceType, XS_NOTATION, XS_QNAME};
@@ -233,6 +231,10 @@ impl FunctionsRegister {
         instance.register(&*XPATH_FUNCTIONS.uri, "normalize-space", 1, strings::FN_NORMALIZE_SPACE_1());
         instance.register(&*XPATH_FUNCTIONS.uri, "upper-case", 1, strings::FN_UPPER_CASE());
         instance.register(&*XPATH_FUNCTIONS.uri, "lower-case", 1, strings::FN_LOWER_CASE());
+
+        instance.register(&*XPATH_FUNCTIONS.uri, "contains", 2, strings::FN_CONTAINS_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "contains", 3, strings::FN_CONTAINS_3());
+
         instance.register(&*XPATH_FUNCTIONS.uri, "starts-with", 2, strings::FN_STARTS_WITH_2());
         instance.register(&*XPATH_FUNCTIONS.uri, "starts-with", 3, strings::FN_STARTS_WITH_3());
         instance.register(&*XPATH_FUNCTIONS.uri, "ends-with", 2, strings::FN_ENDS_WITH_2());
@@ -357,7 +359,8 @@ fn function_conversion_rules(env: &Box<Environment>, sequence_type: Option<Seque
 }
 
 pub(crate) fn call(env: Box<Environment>, name: QNameResolved, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
-    println!("call: {:?} {:?}", name, arguments);
+    // println!("call: {:?} {:?}", name, arguments);
+
     let mut fn_env = env.next();
 
     let fun = fn_env.declared_functions(&name, arguments.len());

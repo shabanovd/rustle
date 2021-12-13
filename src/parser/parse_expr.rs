@@ -593,7 +593,7 @@ pub(crate) fn parse_expr(input: &str) -> IResult<&str, Box<dyn Expression>, Cust
 }
 
 // [40]    	ExprSingle 	   ::=    	FLWORExpr
-//  TODO: | QuantifiedExpr
+//  | QuantifiedExpr
 //  TODO: | SwitchExpr
 //  TODO: | TypeswitchExpr
 // | IfExpr
@@ -601,6 +601,7 @@ pub(crate) fn parse_expr(input: &str) -> IResult<&str, Box<dyn Expression>, Cust
 // | OrExpr
 parse_one_of!(parse_expr_single,
     parse_flwor_expr,
+    parse_quantified_expr,
     parse_if_expr,
     parse_or_expr,
 );
@@ -763,6 +764,40 @@ fn parse_where_clause(input: &str) -> IResult<&str, Clause, CustomError<&str>> {
             parse_expr_single
         ),
         |expr| Clause::Where(expr)
+    )(input)
+}
+
+// [70]    	QuantifiedExpr 	   ::=    	("some" | "every")
+// "$" VarName TypeDeclaration?
+// "in" ExprSingle ("," "$" VarName TypeDeclaration? "in" ExprSingle)*
+// "satisfies" ExprSingle
+fn parse_quantified_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
+    map(
+        tuple((
+            delimited(ws, alt((tag("some"), tag("every"))), ws1),
+            preceded(tag("$"), parse_var_name),
+            opt(parse_type_declaration),
+            preceded(tuple((ws1, tag("in"), ws1)), parse_expr_single),
+            many0(
+                preceded(
+                    tuple((ws, tag(","), ws, tag("$"))),
+                    tuple((
+                        parse_var_name,
+                        opt(parse_type_declaration),
+                        preceded(tuple((ws1, tag("in"), ws1)), parse_expr_single)
+                    ))
+                )
+            ),
+            preceded(tuple((ws1, tag("satisfies"), ws1)), parse_expr_single)
+        )),
+    |(op, name, st, seq, vars, satisfies)| {
+        let op = match op {
+            "some" => QuantifiedOp::Some,
+            "every" => QuantifiedOp::Every,
+            _ => panic!("internal error")
+        };
+        QuantifiedExpr::boxed(op, name, st, seq, vars, satisfies)
+    }
     )(input)
 }
 

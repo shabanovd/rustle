@@ -3,7 +3,7 @@ use crate::parser::op::{Representation, OperatorArithmetic, OperatorComparison};
 use bigdecimal::BigDecimal;
 use ordered_float::OrderedFloat;
 use crate::values::{QName, resolve_function_qname, resolve_element_qname, Types, QNameResolved};
-use crate::fns::{Param, call, object_to_bool};
+use crate::fns::{Param, call};
 use crate::eval::{Environment, DynamicContext, EvalResult, Object, Type, eval_predicates, Axis, step_and_test, object_to_qname, object_owned_to_sequence, object_to_integer, ErrorInfo, INS};
 use crate::serialization::{object_to_string};
 use crate::serialization::to_string::object_to_string_xml;
@@ -1885,11 +1885,7 @@ impl Expression for If {
         let (new_env, evaluated) = self.condition.eval(current_env, context)?;
         current_env = new_env;
 
-        let v = match object_to_bool(&evaluated) {
-            Ok(v) => v,
-            Err(e) => return Err(e)
-        };
-        let (new_env, evaluated) = if v {
+        let (new_env, evaluated) = if evaluated.effective_boolean_value()? {
             self.consequence.eval(current_env, context)?
         } else {
             self.alternative.eval(current_env, context)?
@@ -1909,18 +1905,13 @@ impl Expression for If {
 
             let (new_env, evaluated) = self.condition.eval(env, &current_context)?;
 
-            let v = match object_to_bool(&evaluated) {
-                Ok(v) => v,
-                Err(e) => return Err(e)
-            };
-
-            let (new_env, evaluated) = if v {
+            let (new_env, evaluated) = if evaluated.effective_boolean_value()? {
                 self.consequence.eval(new_env, &current_context)?
             } else {
                 self.alternative.eval(new_env, &current_context)?
             };
 
-            if object_to_bool(&evaluated)? {
+            if evaluated.effective_boolean_value()? {
                 Ok((new_env, item))
             } else {
                 Ok((new_env, Object::Nothing))
@@ -2017,8 +2008,7 @@ impl Expression for Call {
             let (new_env, result) = self.eval(current_env, &context)?;
             current_env = new_env;
 
-            let v = object_to_bool(&result)?;
-            if v {
+            if result.effective_boolean_value()? {
                 evaluated.push(context.item)
             }
         }
@@ -2081,13 +2071,13 @@ impl Expression for Annotation {
 pub(crate) struct VarRef { pub(crate) name: QName }
 
 impl Expression for VarRef {
-    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
+    fn eval<'a>(&self, env: Box<Environment>, _context: &DynamicContext) -> EvalResult {
         let name = resolve_element_qname(&self.name, &env);
 
         if let Some(value) = env.get_variable(&name) {
             Ok((env, value))
         } else {
-            panic!("unknown variable {:?}", name)
+            Err((ErrorCode::XPST0008, format!("unknown variable {:?}", name)))
         }
     }
 
@@ -2120,15 +2110,27 @@ impl Expression for Or {
                 let object = sequence.remove(0);
                 Ok((current_env, object))
             } else {
-                let mut acc = true;
+                let mut value = None;
+                let mut v;
                 for item in sequence {
-                    match object_to_bool(&item) {
-                        Ok(v) => acc = acc || v,
-                        Err(e) => return Err(e)
+                    v = item.effective_boolean_value()?;
+
+                    if let Some(acc) = value {
+                        value = Some(acc || v);
+                    } else {
+                        value = Some(v);
+                    }
+
+                    if value == Some(true) {
+                        break
                     }
                 }
 
-                Ok((current_env, Object::Atomic(Type::Boolean(acc))))
+                if let Some(acc) = value {
+                    Ok((current_env, Object::Atomic(Type::Boolean(acc))))
+                } else {
+                    panic!("internal error")
+                }
             }
         }
     }
@@ -2161,20 +2163,31 @@ impl Expression for And {
             } else if sequence.len() == 1 {
                 sequence.remove(0)
             } else {
-                let mut acc = true;
+                let mut value = None;
+                let mut v;
                 for item in sequence {
-                    match object_to_bool(&item) {
-                        Ok(v) => {
-                            if !v {
-                                acc = false;
-                                break;
-                            }
-                        },
-                        Err(e) => return Err(e)
+                    v = item.effective_boolean_value()?;
+
+                    println!("AND {:?} -> {:?}", item, v);
+
+                    if let Some(acc) = value {
+                        if !v {
+                            value = Some(false);
+                            break;
+                        }
+                    } else {
+                        value = Some(v);
+                        if !v {
+                            break;
+                        }
                     }
                 }
 
-                Object::Atomic(Type::Boolean(acc))
+                if let Some(acc) = value {
+                    Object::Atomic(Type::Boolean(acc))
+                } else {
+                    panic!("internal error")
+                }
             };
             result
         };
@@ -2322,3 +2335,91 @@ impl Expression for FLWOR {
         todo!()
     }
 }
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum QuantifiedOp {
+    Some,
+    Every,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct QuantifiedExpr {
+    pub(crate) op: QuantifiedOp,
+    pub(crate) name: QName,
+    pub(crate) st: Option<SequenceType>,
+    pub(crate) seq: Box<dyn Expression>,
+    pub(crate) vars: Vec<(QName, Option<SequenceType>, Box<dyn Expression>)>,
+    pub(crate) satisfies: Box<dyn Expression>,
+}
+
+impl QuantifiedExpr {
+    pub(crate) fn boxed(
+        op: QuantifiedOp,
+        name: QName,
+        st: Option<SequenceType>,
+        seq: Box<dyn Expression>,
+        vars: Vec<(QName, Option<SequenceType>, Box<dyn Expression>)>,
+        satisfies: Box<dyn Expression>) -> Box<dyn Expression> {
+        Box::new(QuantifiedExpr { op, name, st, seq, vars, satisfies })
+    }
+}
+
+impl Expression for QuantifiedExpr {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
+        let mut current_env = env;
+
+        let name = current_env.namespaces.resolve(&self.name);
+
+        let (new_env, evaluated) = self.seq.eval(current_env, context)?;
+        current_env = new_env.next();
+
+        let items = object_owned_to_sequence(evaluated);
+
+        let mut result = if self.op == QuantifiedOp::Some {
+            items.len() != 0
+        } else {
+            true
+        };
+
+        for mut item in items {
+            println!("item {:?}", item);
+            item = if let Some(st) = &self.st {
+                st.cascade(&current_env, item)?
+            } else {
+                item
+            };
+
+            current_env.set_variable(name.clone(), item);
+
+            if self.vars.len() != 0 {
+                todo!("handle others vars")
+            }
+
+            let (new_env, value) = self.satisfies.eval(current_env, context)?;
+            current_env = new_env;
+
+            println!("satisfies {:?}", value);
+
+            if value.effective_boolean_value()? {
+                if self.op == QuantifiedOp::Some {
+                    result = true;
+                    break;
+                }
+            } else {
+                result = false;
+                if self.op == QuantifiedOp::Every {
+                    break;
+                }
+            }
+        }
+
+        current_env = current_env.prev();
+
+        Ok((current_env, Object::Atomic(Type::Boolean(result))))
+    }
+
+    fn predicate(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
+        todo!()
+    }
+}
+

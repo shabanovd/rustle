@@ -360,7 +360,6 @@ impl SequenceType {
             ItemType::AtomicOrUnionType(l_name) => {
                 match &other.item_type {
                     ItemType::AtomicOrUnionType(r_name) => {
-                        println!("{:?} vs {:?}", l_name, r_name);
                         env.namespaces.resolve(l_name) == env.namespaces.resolve(r_name) && self.occurrence_indicator == other.occurrence_indicator
                     }
                     _ => false
@@ -435,10 +434,16 @@ impl SequenceType {
     }
 
     pub fn cascade(&self, env: &Environment, obj: Object) -> Result<Object, ErrorInfo> {
-        println!("cascade:\n st: {:#?}\n ob: {:#?}", self, obj);
+        // println!("cascade:\n st: {:#?}\n ob: {:#?}", self, obj);
         let is_array = false;
         let type_only = false;
         match &self.item_type {
+            ItemType::SequenceEmpty => {
+                match obj {
+                    Object::Empty => Ok(Object::Empty),
+                    _ => Err((ErrorCode::XPTY0004, format!("TODO {:?} {:?}", self, obj)))
+                }
+            }
             ItemType::Item => {
                 match obj {
                     Object::Nothing => panic!("raise error?"),
@@ -494,16 +499,34 @@ impl SequenceType {
                             }
                         }
                     }
-                    Object::Error { .. } => todo!(),
-                    Object::CharRef { .. } => todo!(),
-                    Object::EntityRef(_) => todo!(),
-                    Object::Function { .. } => todo!(),
-                    Object::FunctionRef { .. } => todo!(),
+                    Object::Error { .. } |
+                    Object::CharRef { .. } |
+                    Object::EntityRef(_) |
+                    Object::Function { .. } |
+                    Object::FunctionRef { .. } => Ok(obj),
                     Object::Return(_) => todo!(),
                 }
             }
             ItemType::AnyAtomicType => {
                 match obj {
+                    Object::Empty => {
+                        if is_array {
+                            Ok(obj)
+                        } else if type_only {
+                            todo!()
+                        } else {
+                            if match self.occurrence_indicator {
+                                OccurrenceIndicator::OneOrMore |
+                                OccurrenceIndicator::ExactlyOne => false,
+                                OccurrenceIndicator::ZeroOrOne |
+                                OccurrenceIndicator::ZeroOrMore => true,
+                            } {
+                                Ok(obj)
+                            } else {
+                                panic!("raise error?")
+                            }
+                        }
+                    }
                     Object::Atomic(_) => Ok(obj),
                     Object::Node(rf) => {
                         if let Ok(data) = rf.to_typed_value() {
@@ -620,7 +643,7 @@ impl SequenceType {
                                 //     || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER
                                 todo!()
                             } else {
-                                panic!("raise error?")
+                                Err((ErrorCode::XPTY0004, format!("TODO {:?} {:?}", self, obj)))
                             }
                         }
                         Object::Sequence(items) => {
@@ -959,7 +982,8 @@ impl SequenceType {
                                 }
 
                                 Type::Byte(_) =>
-                                    name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
+                                    name == XS_NUMERIC
+                                        || name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
 
                                         || name == XS_UNSIGNED_BYTE || name == XS_UNSIGNED_SHORT
                                         || name == XS_UNSIGNED_INT || name == XS_UNSIGNED_LONG
@@ -970,7 +994,8 @@ impl SequenceType {
                                         || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
                                 Type::Short(_) =>
-                                    name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
+                                    name == XS_NUMERIC
+                                        || name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
 
                                         || name == XS_UNSIGNED_BYTE || name == XS_UNSIGNED_SHORT
                                         || name == XS_UNSIGNED_INT || name == XS_UNSIGNED_LONG
@@ -981,7 +1006,8 @@ impl SequenceType {
                                         || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
                                 Type::Int(_) =>
-                                    name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
+                                    name == XS_NUMERIC
+                                        || name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
 
                                         || name == XS_UNSIGNED_BYTE || name == XS_UNSIGNED_SHORT
                                         || name == XS_UNSIGNED_INT || name == XS_UNSIGNED_LONG
@@ -992,7 +1018,8 @@ impl SequenceType {
                                         || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
                                 Type::Long(_) =>
-                                    name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
+                                    name == XS_NUMERIC
+                                        || name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
 
                                         || name == XS_UNSIGNED_BYTE || name == XS_UNSIGNED_SHORT
                                         || name == XS_UNSIGNED_INT || name == XS_UNSIGNED_LONG
@@ -1004,7 +1031,8 @@ impl SequenceType {
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
 
                                 Type::UnsignedByte(_) =>
-                                    name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
+                                    name == XS_NUMERIC
+                                        || name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
 
                                         || name == XS_UNSIGNED_BYTE || name == XS_UNSIGNED_SHORT
                                         || name == XS_UNSIGNED_INT || name == XS_UNSIGNED_LONG
@@ -1015,7 +1043,8 @@ impl SequenceType {
                                         || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
                                 Type::UnsignedShort(_) =>
-                                    name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
+                                    name == XS_NUMERIC
+                                        || name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
 
                                         || name == XS_UNSIGNED_BYTE || name == XS_UNSIGNED_SHORT
                                         || name == XS_UNSIGNED_INT || name == XS_UNSIGNED_LONG
@@ -1026,7 +1055,8 @@ impl SequenceType {
                                         || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
                                 Type::UnsignedInt(_) =>
-                                    name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
+                                    name == XS_NUMERIC
+                                        || name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
 
                                         || name == XS_UNSIGNED_BYTE || name == XS_UNSIGNED_SHORT
                                         || name == XS_UNSIGNED_INT || name == XS_UNSIGNED_LONG
@@ -1037,7 +1067,8 @@ impl SequenceType {
                                         || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
                                 Type::UnsignedLong(_) =>
-                                    name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
+                                    name == XS_NUMERIC
+                                        || name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
 
                                         || name == XS_UNSIGNED_BYTE || name == XS_UNSIGNED_SHORT
                                         || name == XS_UNSIGNED_INT || name == XS_UNSIGNED_LONG
@@ -1049,7 +1080,8 @@ impl SequenceType {
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
 
                                 Type::PositiveInteger(_) =>
-                                    name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
+                                    name == XS_NUMERIC
+                                        || name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
 
                                         || name == XS_UNSIGNED_BYTE || name == XS_UNSIGNED_SHORT
                                         || name == XS_UNSIGNED_INT || name == XS_UNSIGNED_LONG
@@ -1060,7 +1092,8 @@ impl SequenceType {
                                         || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
                                 Type::NonNegativeInteger(_) =>
-                                    name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
+                                    name == XS_NUMERIC
+                                        || name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
 
                                         || name == XS_UNSIGNED_BYTE || name == XS_UNSIGNED_SHORT
                                         || name == XS_UNSIGNED_INT || name == XS_UNSIGNED_LONG
@@ -1071,7 +1104,8 @@ impl SequenceType {
                                         || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
                                 Type::NonPositiveInteger(_) =>
-                                    name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
+                                    name == XS_NUMERIC
+                                        || name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
 
                                         || name == XS_UNSIGNED_BYTE || name == XS_UNSIGNED_SHORT
                                         || name == XS_UNSIGNED_INT || name == XS_UNSIGNED_LONG
@@ -1082,7 +1116,8 @@ impl SequenceType {
                                         || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
                                 Type::NegativeInteger(_) =>
-                                    name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
+                                    name == XS_NUMERIC
+                                        || name == XS_BYTE || name == XS_SHORT || name == XS_INT || name == XS_LONG
 
                                         || name == XS_UNSIGNED_BYTE || name == XS_UNSIGNED_SHORT
                                         || name == XS_UNSIGNED_INT || name == XS_UNSIGNED_LONG
@@ -1094,19 +1129,24 @@ impl SequenceType {
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
 
                                 Type::Integer(_) =>
-                                    name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                    name == XS_NUMERIC
+                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
                                 Type::Decimal { .. } =>
-                                    name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                    name == XS_NUMERIC
+                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
                                 Type::Float(num) =>
-                                    name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                    name == XS_NUMERIC
+                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT
                                         || ((num.is_zero() || num.is_normal()) && (name == XS_DECIMAL || name == XS_INTEGER)),
                                 Type::Double(num) =>
-                                    name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                    name == XS_NUMERIC
+                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT
                                         || ((num.is_zero() || num.is_normal()) && (name == XS_DECIMAL || name == XS_INTEGER)),
+
                                 Type::Duration { .. } => {
                                     name == XS_UNTYPED_ATOMIC || name == XS_STRING
                                         || name == XS_DURATION || name == XS_YEAR_MONTH_DURATION || name == XS_DAY_TIME_DURATION
@@ -1566,8 +1606,6 @@ impl NameTest {
 impl NodeTest for NameTest {
     fn test_node(&self, rf: &Reference) -> bool {
         if let Some(name) = rf.name() {
-            println!("{:?} vs {:?}", self.name.local_part, name.local_part);
-            println!("{:?} vs {:?}", self.name.url, name.url);
             (self.name.local_part == "*" || self.name.local_part == name.local_part)
                 && (self.name.url == Some(String::from("*")) || self.name.url == name.url)
         } else {

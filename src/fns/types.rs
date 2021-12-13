@@ -5,7 +5,6 @@ use ordered_float::OrderedFloat;
 use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use crate::eval::sequence_type::*;
 use crate::serialization::object_to_string;
-use crate::fns::boolean::object_casting_bool;
 use crate::fns::FUNCTION;
 use crate::values::{string_to_binary_base64, string_to_binary_hex, string_to_qname, Types};
 

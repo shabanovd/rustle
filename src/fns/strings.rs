@@ -412,7 +412,17 @@ pub(crate) fn FN_CONTAINS_3() -> FUNCTION {
 }
 
 pub(crate) fn fn_contains(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
-    todo!()
+    let string = arguments.get(0).unwrap();
+    let pattern = arguments.get(1).unwrap();
+
+    // TODO handle $collation
+
+    let string = object_to_string(&env, string);
+    let pattern = object_to_string(&env, pattern);
+
+    let result = string.contains(&pattern);
+
+    Ok((env, Object::Atomic(Type::Boolean(result))))
 }
 
 // fn:starts-with($arg1 as xs:string?, $arg2 as xs:string?) as xs:boolean
