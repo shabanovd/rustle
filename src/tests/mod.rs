@@ -1,4 +1,4 @@
-use crate::eval::{Object, Environment, Type, eval_statements, object_to_iterator, comparison, EvalResult, DynamicContext, Axis};
+use crate::eval::{Object, Environment, Type, eval_statements, comparison, EvalResult, DynamicContext, Axis};
 use crate::eval::helpers::relax;
 use crate::parser::parse;
 use crate::values::{resolve_element_qname, QName, QNameResolved};
@@ -150,14 +150,14 @@ pub(crate) fn bool_check_assert_eq(result: &EvalResult, check: &str) -> bool {
 
 pub(crate) fn check_assert_count(result: &EvalResult, check: &str) {
     let (_, obj) = result.as_ref().unwrap();
-    let actual = object_to_iterator(obj).len();
+    let actual = obj.as_ref_into_iter().count();
     let expected: usize = check.parse().unwrap();
     assert_eq!(expected, actual)
 }
 
 pub(crate) fn bool_check_assert_count(result: &EvalResult, check: &str) -> bool {
     let (_, obj) = result.as_ref().unwrap();
-    let actual = object_to_iterator(obj).len();
+    let actual = obj.as_ref_into_iter().count();
     let expected: usize = check.parse().unwrap();
     expected == actual
 }

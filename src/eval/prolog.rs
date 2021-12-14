@@ -2364,57 +2364,111 @@ impl QuantifiedExpr {
     }
 }
 
-impl Expression for QuantifiedExpr {
-    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
+enum ProcessingState {
+    ContinueTrue,
+    ContinueFalse,
+    BreakTrue,
+    BreakFalse,
+}
+
+fn process_next(env: Box<Environment>, context: &DynamicContext, op: &QuantifiedOp, index: usize, vars: &Vec<(QName, Option<SequenceType>, Box<dyn Expression>)>, satisfies: &Box<dyn Expression>) -> Result<(Box<Environment>, ProcessingState), ErrorInfo> {
+    if let Some((name, st, seq)) = vars.get(index) {
+
         let mut current_env = env;
 
-        let name = current_env.namespaces.resolve(&self.name);
-
-        let (new_env, evaluated) = self.seq.eval(current_env, context)?;
+        let (new_env, evaluated) = seq.eval(current_env, context)?;
         current_env = new_env.next();
 
-        let items = object_owned_to_sequence(evaluated);
+        let mut result = if op == &QuantifiedOp::Some { false } else { true };
 
-        let mut result = if self.op == QuantifiedOp::Some {
-            items.len() != 0
-        } else {
-            true
-        };
-
-        for mut item in items {
-            println!("item {:?}", item);
-            item = if let Some(st) = &self.st {
+        let name = current_env.namespaces.resolve(&name);
+        for mut item in evaluated.into_iter() {
+            item = if let Some(st) = &st {
                 st.cascade(&current_env, item)?
             } else {
                 item
             };
-
             current_env.set_variable(name.clone(), item);
 
-            if self.vars.len() != 0 {
-                todo!("handle others vars")
-            }
-
-            let (new_env, value) = self.satisfies.eval(current_env, context)?;
+            let (new_env, state) = process_next(current_env, context, op, index + 1, vars, satisfies)?;
             current_env = new_env;
 
-            println!("satisfies {:?}", value);
-
-            if value.effective_boolean_value()? {
-                if self.op == QuantifiedOp::Some {
-                    result = true;
-                    break;
+            match state {
+                ProcessingState::BreakTrue |
+                ProcessingState::BreakFalse => {
+                    current_env = current_env.prev();
+                    return Ok((current_env, state))
                 }
-            } else {
-                result = false;
-                if self.op == QuantifiedOp::Every {
-                    break;
-                }
+                ProcessingState::ContinueTrue => result = true,
+                ProcessingState::ContinueFalse => result = false,
             }
         }
 
         current_env = current_env.prev();
 
+        let state = if result {
+            ProcessingState::ContinueTrue
+        } else {
+            ProcessingState::ContinueFalse
+        };
+        Ok((current_env, state))
+
+    } else {
+        let (env, value) = satisfies.eval(env, context)?;
+
+        let state = if value.effective_boolean_value()? {
+            if op == &QuantifiedOp::Some {
+                ProcessingState::BreakTrue
+            } else {
+                ProcessingState::ContinueTrue
+            }
+        } else {
+            if op == &QuantifiedOp::Every {
+                ProcessingState::BreakFalse
+            } else {
+                ProcessingState::ContinueFalse
+            }
+        };
+        Ok((env, state))
+    }
+}
+
+impl Expression for QuantifiedExpr {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
+        let mut current_env = env;
+
+        let (new_env, evaluated) = self.seq.eval(current_env, context)?;
+        current_env = new_env.next();
+
+        let mut result = if self.op == QuantifiedOp::Some { false } else { true };
+
+        let name = current_env.namespaces.resolve(&self.name);
+        for mut item in evaluated.into_iter() {
+            item = if let Some(st) = &self.st {
+                st.cascade(&current_env, item)?
+            } else {
+                item
+            };
+            current_env.set_variable(name.clone(), item);
+
+            let (new_env, state) = process_next(current_env, context, &self.op, 0, &self.vars, &self.satisfies)?;
+            current_env = new_env;
+
+            match state {
+                ProcessingState::BreakTrue => {
+                    result = true;
+                    break;
+                }
+                ProcessingState::BreakFalse => {
+                    result = false;
+                    break;
+                }
+                ProcessingState::ContinueTrue => result = true,
+                ProcessingState::ContinueFalse => result = false,
+            }
+        }
+
+        current_env = current_env.prev();
         Ok((current_env, Object::Atomic(Type::Boolean(result))))
     }
 

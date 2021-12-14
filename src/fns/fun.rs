@@ -1,4 +1,4 @@
-use crate::eval::{Object, object_to_iterator, DynamicContext, EvalResult};
+use crate::eval::{Object, DynamicContext, EvalResult};
 use crate::eval::Environment;
 use crate::eval::sequence_type::*;
 use crate::fns::FUNCTION;
@@ -142,9 +142,8 @@ pub(crate) fn fn_fold_left(env: Box<Environment>, arguments: Vec<Object>, contex
 
             let mut current_env = env;
 
-            let it = object_to_iterator(seq);
-            for item in it {
-                let arguments = vec![Object::Array(result), item.clone()];
+            for item in seq.clone().into_iter() {
+                let arguments = vec![Object::Array(result), item];
                 let (new_env, obj) = call(current_env, name.clone(), arguments, context)?;
                 current_env = new_env;
 

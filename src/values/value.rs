@@ -22,7 +22,7 @@ use nom::IResult;
 use nom::multi::{many0, many_m_n};
 use nom::sequence::{preceded, tuple};
 use uriparse::URIReference;
-use crate::eval::{Environment, ErrorInfo};
+use crate::eval::{Environment, ErrorInfo, RangeIterator};
 use crate::eval::comparison::ValueOrdering;
 use crate::eval::sequence_type::SequenceType;
 use crate::parser::parse_duration::*;
@@ -4222,6 +4222,56 @@ impl Object {
             Object::Node{..} => Ok(true),
             _ => Err((ErrorCode::FORG0006, format!("The {:?} do not have effective boolean value", self)))
         }
+    }
+
+    pub(crate) fn into_iter(self) -> Box<dyn std::iter::Iterator<Item = Object>> {
+        match self {
+            Object::Empty => {
+                return Box::new(std::iter::empty());
+            },
+            Object::Node(..) |
+            Object::Atomic(..) => {
+                return Box::new(std::iter::once(self));
+            },
+            Object::Range { min , max } => {
+                let (it, _) = RangeIterator::create(min, max);
+                return Box::new(it);
+            },
+            Object::Array(items) => {
+                let it = items.into_iter();
+                return Box::new(it)
+            },
+            Object::Sequence(items) => {
+                let it = items.into_iter();
+                return Box::new(it)
+            },
+            _ => panic!("TODO iter {:?}", self)
+        };
+    }
+
+    pub(crate) fn as_ref_into_iter(&self) -> Box<dyn std::iter::Iterator<Item = Object>> {
+        match self {
+            Object::Empty => {
+                return Box::new(std::iter::empty());
+            },
+            Object::Node(..) |
+            Object::Atomic(..) => {
+                return Box::new(std::iter::once(self.clone()));
+            },
+            Object::Range { min , max } => {
+                let (it, _) = RangeIterator::create(*min, *max);
+                return Box::new(it);
+            },
+            Object::Array(items) => {
+                let it = items.clone().into_iter();
+                return Box::new(it)
+            },
+            Object::Sequence(items) => {
+                let it = items.clone().into_iter();
+                return Box::new(it)
+            },
+            _ => panic!("TODO iter {:?}", self)
+        };
     }
 
     pub(crate) fn is_node(&self) -> bool {

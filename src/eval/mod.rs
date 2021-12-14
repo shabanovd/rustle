@@ -227,7 +227,7 @@ fn eval_predicates(exprs: &Vec<PrimaryExprSuffix>, env: Box<Environment>, value:
                         todo!()
                     }
                 }
-                _ => panic!() // return Err((ErrorCode::XPTY0004, String::from("TODO")))
+                _ => return Err((ErrorCode::XPTY0004, format!("{:?}", result)))
             };
         } else if let Some(key) = lookup {
             todo!()
@@ -302,35 +302,6 @@ pub(crate) fn object_to_integer(env: &Box<Environment>, object: Object) -> Resul
             }
         }
         _ => Err((ErrorCode::XPTY0004, format!("can't convert to int {:?}", object)))
-    }
-}
-
-// TODO: optimize!!!
-pub(crate) fn object_to_iterator(object: &Object) -> Vec<Object> {
-    match object {
-        Object::Empty => Vec::new(),
-        Object::Node(..) |
-        Object::Atomic(..) => {
-            let mut result = Vec::with_capacity(1);
-            result.push(object.clone());
-            result
-        },
-        Object::Range { min , max } => {
-            let (it, count) = RangeIterator::create(*min, *max);
-
-            let mut result = Vec::with_capacity(count.min(0) as usize);
-            for item in it {
-                result.push(item);
-            }
-            result
-        },
-        Object::Array(items) => {
-            items.clone() // optimize?
-        },
-        Object::Sequence(items) => {
-            items.clone() // optimize?
-        },
-        _ => panic!("TODO object_to_iterator {:?}", object)
     }
 }
 

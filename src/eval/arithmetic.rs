@@ -519,9 +519,12 @@ impl Operand for VDecimal {
             } else {
                 let other = rhs.to_decimal()?;
 
-                let number = (&self.number / other).round(0).to_i128().unwrap();
-
-                Ok(Box::new(VInteger { number }))
+                let number = &self.number / other;
+                if let Some(number) = number.to_i128() {
+                    Ok(Box::new(VInteger { number }))
+                } else {
+                    Err(ErrorCode::FOAR0001)
+                }
             }
         } else {
             rhs.rev_idiv(self)
@@ -535,9 +538,12 @@ impl Operand for VDecimal {
             } else {
                 let other = rhs.to_decimal()?;
 
-                let number = (other / &self.number).round(0).to_i128().unwrap();
-
-                Ok(Box::new(VInteger { number }))
+                let number = other / &self.number;
+                if let Some(number) = number.to_i128() {
+                    Ok(Box::new(VInteger { number }))
+                } else {
+                    Err(ErrorCode::FOAR0001)
+                }
             }
         } else {
             Err(ErrorCode::FOAR0002)
@@ -722,9 +728,12 @@ impl Operand for VInteger {
                 let self_number = self.to_decimal()?;
                 let other = rhs.to_decimal()?;
 
-                let number = (self_number / other).round(0).to_i128().unwrap();
-
-                Ok(Box::new(VInteger { number }))
+                let number = self_number / other;
+                if let Some(number) = number.to_i128() {
+                    Ok(Box::new(VInteger { number }))
+                } else {
+                    Err(ErrorCode::FOAR0001)
+                }
             }
         } else {
             rhs.rev_idiv(self)
@@ -739,9 +748,12 @@ impl Operand for VInteger {
                 let self_number = self.to_decimal()?;
                 let other = rhs.to_decimal()?;
 
-                let number = (other / self_number).round(0).to_i128().unwrap();
-
-                Ok(Box::new(VInteger { number }))
+                let number = (other / self_number);
+                if let Some(number) = number.to_i128() {
+                    Ok(Box::new(VInteger { number }))
+                } else {
+                    Err(ErrorCode::FOAR0001)
+                }
             }
         } else {
             Err(ErrorCode::FOAR0002)
