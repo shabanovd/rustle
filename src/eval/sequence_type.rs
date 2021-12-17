@@ -446,6 +446,7 @@ impl SequenceType {
             }
             ItemType::Item => {
                 match obj {
+                    Object::Placeholder |
                     Object::Nothing => panic!("raise error?"),
                     Object::Empty => {
                         if type_only {
@@ -600,7 +601,7 @@ impl SequenceType {
                         Object::Atomic(Type::Decimal(_)) |
                         Object::Atomic(Type::Float(_)) |
                         Object::Atomic(Type::Double(_)) => Ok(obj),
-                        _ => panic!("raise error?")
+                        _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
                     }
                 } else {
                     match obj {
@@ -692,7 +693,20 @@ impl SequenceType {
                 }
             },
             ItemType::Map(st) => {
-                todo!()
+                match obj {
+                    Object::Map(items) => {
+                        if self.occurrence_indicator == OccurrenceIndicator::ExactlyOne {
+                            if let Some(item_st) = st {
+                                todo!()
+                            } else {
+                                Ok(Object::Map(items))
+                            }
+                        } else {
+                            panic!("raise error?")
+                        }
+                    }
+                    _ => todo!()
+                }
             }
             ItemType::Array(st) => {
                 match obj {
@@ -805,6 +819,7 @@ impl SequenceType {
         let result = match &self.item_type {
             ItemType::Item => {
                 match obj {
+                    Object::Placeholder |
                     Object::Nothing => panic!("raise error?"),
                     Object::Empty => {
                         if type_only {

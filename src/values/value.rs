@@ -3928,6 +3928,7 @@ impl Type {
                     Types::Decimal => {
                         if let Some(left_num) = self.to_decimal() {
                             if let Some(right_num) = other.to_decimal() {
+                                println!("{:?} vs {:?} = {:?}", left_num, right_num, ValueOrdering::from(left_num.cmp(&right_num)));
                                 return Ok(ValueOrdering::from(left_num.cmp(&right_num)));
                             }
                         }
@@ -4149,6 +4150,9 @@ pub fn binary_base64_to_string(binary: &Vec<u8>) -> Result<String, ErrorCode> {
 
 #[derive(Clone)]
 pub enum Object {
+    // internal
+    Placeholder,
+
     Range { min: i128, max: i128 },
 
     Error { code: String },
@@ -4173,6 +4177,10 @@ pub enum Object {
 }
 
 impl Object {
+
+    pub(crate) fn to_short_string(&self) -> String {
+        format!("{:?}", self)
+    }
 
     pub(crate) fn effective_boolean_value(&self) -> Result<bool, ErrorInfo> {
         match self {
@@ -4226,27 +4234,21 @@ impl Object {
 
     pub(crate) fn into_iter(self) -> Box<dyn std::iter::Iterator<Item = Object>> {
         match self {
-            Object::Empty => {
-                return Box::new(std::iter::empty());
-            },
+            Object::Empty => Box::new(std::iter::empty()),
             Object::Node(..) |
-            Object::Atomic(..) => {
-                return Box::new(std::iter::once(self));
-            },
+            Object::Array(_) |
+            Object::Map(_) |
+            Object::Atomic(..) => Box::new(std::iter::once(self)),
             Object::Range { min , max } => {
                 let (it, _) = RangeIterator::create(min, max);
-                return Box::new(it);
-            },
-            Object::Array(items) => {
-                let it = items.into_iter();
-                return Box::new(it)
+                Box::new(it)
             },
             Object::Sequence(items) => {
                 let it = items.into_iter();
-                return Box::new(it)
+                Box::new(it)
             },
             _ => panic!("TODO iter {:?}", self)
-        };
+        }
     }
 
     pub(crate) fn as_ref_into_iter(&self) -> Box<dyn std::iter::Iterator<Item = Object>> {
@@ -4316,6 +4318,7 @@ impl Object {
 impl<'a> PartialEq<Self> for Object {
     fn eq(&self, other: &Self) -> bool {
         match self {
+            Object::Placeholder => false, // TODO or error?
             Object::Range { min: l_min, max: l_max } => {
                 match other {
                     Object::Range { min: r_min, max: r_max } => l_min == r_min && l_max == r_max,
@@ -4405,6 +4408,10 @@ impl<'a> PartialEq<Self> for Object {
 impl Debug for Object {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Object::Placeholder => {
+                f.debug_tuple("Placeholder")
+                    .finish()
+            }
             Object::Range { min, max } => {
                 f.debug_tuple("Range")
                     .field(min)

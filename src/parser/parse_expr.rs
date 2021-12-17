@@ -6,7 +6,7 @@ use crate::eval::prolog::*;
 use nom::{branch::alt, bytes::complete::tag, error::Error, IResult};
 use nom::bytes::complete::{is_a, is_not};
 use nom::sequence::{preceded, delimited, tuple, terminated, separated_pair};
-use nom::multi::{many0, many1, separated_list1};
+use nom::multi::{many0, many1, separated_list0, separated_list1};
 use nom::combinator::{map, opt, peek};
 use nom::character::complete::{one_of, digit1};
 use crate::eval::{Axis, INS};
@@ -860,15 +860,24 @@ fn parse_comparison_expr(input: &str) -> IResult<&str, Box<dyn Expression>, Cust
 
     let current_input = input;
 
-    let check = delimited(
-        ws1,
-        alt((
-            tag("is"), tag("<<"), tag(">>"),
-            tag("="), tag("!="), tag("<="), tag("<"), tag(">="), tag(">"),
-            tag("eq"), tag("ne"), tag("lt"), tag("le"), tag("gt"), tag("ge"),
-        )),
-        ws1
-    )(current_input);
+    let check = alt((
+        delimited(
+            ws,
+            alt((
+                tag("<<"), tag(">>"),
+                tag("="), tag("!="), tag("<="), tag("<"), tag(">="), tag(">")
+            )),
+            ws
+        ),
+        delimited(
+            ws1,
+            alt((
+                tag("is"),
+                tag("eq"), tag("ne"), tag("lt"), tag("le"), tag("gt"), tag("ge"),
+            )),
+            ws1
+        )
+    ))(current_input);
     if check.is_ok() {
         let (input, op) = check?;
 
@@ -1131,15 +1140,36 @@ fn parse_cast_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomErro
 fn parse_arrow_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
     let (input, expr) = parse_unary_expr(input)?;
 
-    let check = ws1_tag_ws1("=>", input);
-    if check.is_err() {
-        Ok((input, expr))
-    } else {
-        let (input, _) = check?;
+    let mut current_input = input;
+    let mut last_expr = expr;
 
-        // let (input, st) = parse_arrow_function_specifier(input);
+    loop {
+        let check = ws_tag_ws("=>", current_input);
+        if check.is_err() {
+            return Ok((current_input, last_expr))
+        } else {
+            let (input, _) = check?;
 
-        todo!()
+            let check = parse_eqname(input);
+            let (input, (name, expr)) = if check.is_ok() {
+                let (input, name) = check?;
+                (input, (Some(name), None))
+            } else {
+                let check = parse_var_ref(input);
+                if check.is_ok() {
+                    let (input, var) = check?;
+                    (input, (None, Some(var)))
+                } else {
+                    let (input, expr) = parse_parenthesized_expr(input)?;
+                    (input, (None, Some(expr)))
+                }
+            };
+
+            let (input, arguments) = parse_argument_list(input)?;
+            current_input = input;
+
+            last_expr = ArrowExpr::boxed(last_expr, name, expr, arguments)
+        }
     }
 }
 
@@ -1562,13 +1592,14 @@ fn parse_postfix_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomE
 
 // [122]    	ArgumentList 	   ::=    	"(" (Argument ("," Argument)*)? ")"
 fn parse_argument_list(input: &str) -> IResult<&str, Vec<Box<dyn Expression>>, CustomError<&str>> {
-    let (input, _) = ws_tag("(", input)?;
-
-    let (input, arguments) = parse_arguments(input)?;
-
-    let (input, _) = ws_tag(")", input)?;
-
-    Ok((input, arguments))
+    delimited(
+        tuple((ws, tag("("))),
+        separated_list0(
+            tuple((ws, tag(","))),
+            parse_argument
+        ),
+        tuple((ws, tag(")")))
+    )(input)
 }
 
 // [123]    	PredicateList 	   ::=    	Predicate*
@@ -1616,12 +1647,6 @@ fn parse_lookup(input: &str) -> IResult<&str, PrimaryExprSuffix, CustomError<&st
 
     Ok((input, PrimaryExprSuffix { predicate: None, argument_list: None, lookup: Some(lookup) }))
 }
-
-// [127]    	ArrowFunctionSpecifier 	   ::=    	TODO: EQName | VarRef | ParenthesizedExpr
-// parse_one_of!(
-//     parse_arrow_function_specifier,
-//     parse_eqname, parse_var_ref, parse_parenthesized_expr,
-// );
 
 // [128]    	PrimaryExpr 	   ::=    	Literal
 //  | VarRef
@@ -1742,37 +1767,15 @@ fn parse_function_name(input: &str) -> IResult<&str, QName, CustomError<&str>> {
     Ok((input, name))
 }
 
-// [138]    	Argument 	   ::=    	ExprSingle TODO: | ArgumentPlaceholder
-// TODO: (Argument ("," Argument)*)?
-fn parse_arguments(input: &str) -> IResult<&str, Vec<Box<dyn Expression>>, CustomError<&str>> {
-    let mut arguments = vec![];
-
-    let mut current_input = input;
-
-    let check = parse_expr_single(current_input);
-    match check {
-        Ok((input, argument)) => {
-            current_input = input;
-
-            arguments.push(argument);
-
-            loop {
-                let tmp = ws_tag(",", current_input);
-                if tmp.is_err() {
-                    return Ok((current_input, arguments));
-                }
-                current_input = tmp?.0;
-
-                let (input, argument) = parse_expr_single(current_input)?;
-                current_input = input;
-
-                arguments.push(argument);
-            }
-        },
-        Err(nom::Err::Failure(code)) => Err(nom::Err::Failure(code)),
-        _ => {
-            Ok((current_input, arguments))
-        }
+// [138]    	Argument 	   ::=    	ExprSingle | ArgumentPlaceholder
+// [139]    	ArgumentPlaceholder 	   ::=    	"?"
+fn parse_argument(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
+    let check = tag("?")(input);
+    if check.is_ok() {
+        let (input, _) = check?;
+        Ok((input, ArgumentPlaceholder::boxed()))
+    } else {
+        parse_expr_single(input)
     }
 }
 

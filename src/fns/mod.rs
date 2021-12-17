@@ -122,7 +122,7 @@ impl FunctionsRegister {
         instance.register(&*XPATH_FUNCTIONS.uri, "prefix-from-QName", 1, qname::FN_PREFIX_FROM_QNAME());
         instance.register(&*XPATH_FUNCTIONS.uri, "local-name-from-QName", 1, qname::FN_LOCAL_NAME_FROM_QNAME());
         instance.register(&*XPATH_FUNCTIONS.uri, "namespace-uri-from-QName", 1, qname::FN_NAMESPACE_URI_FROM_QNAME());
-        instance.register(&*XPATH_FUNCTIONS.uri, "namespace-uri-for-prefix", 1, qname::FN_NAMESPACE_URI_FOR_PREFIX());
+        instance.register(&*XPATH_FUNCTIONS.uri, "namespace-uri-for-prefix", 2, qname::FN_NAMESPACE_URI_FOR_PREFIX());
         instance.register(&*XPATH_FUNCTIONS.uri, "in-scope-prefixes", 1, qname::FN_IN_SCOPE_PREFIXES());
 
         instance.register(&*XPATH_FUNCTIONS.uri, "node-name", 0, qname::FN_NODE_NAME_0());
@@ -139,19 +139,19 @@ impl FunctionsRegister {
         instance.register(&*XPATH_MAP.uri, "find", 2, map::FN_MAP_FIND());
         instance.register(&*XPATH_MAP.uri, "entry", 2, map::FN_MAP_ENTRY());
         instance.register(&*XPATH_MAP.uri, "remove", 2, map::FN_MAP_REMOVE());
-        instance.register(&*XPATH_MAP.uri, "for-each", 2, map::FN_MAP_FOR_EACH());
+        instance.register(&*XPATH_MAP.uri, "for-each", 3, map::FN_MAP_FOR_EACH());
 
         instance.register(&*XPATH_ARRAY.uri, "size", 1, array::FN_ARRAY_SIZE());
         instance.register(&*XPATH_ARRAY.uri, "get", 2, array::FN_ARRAY_GET());
         instance.register(&*XPATH_ARRAY.uri, "put", 3, array::FN_ARRAY_PUT());
         instance.register(&*XPATH_ARRAY.uri, "append", 2, array::FN_ARRAY_APPEND());
         instance.register(&*XPATH_ARRAY.uri, "subarray", 2, array::FN_ARRAY_SUBARRAY_2());
-        instance.register(&*XPATH_ARRAY.uri, "subarray", 3, array::FN_ARRAY_SUBARRAY_2());
+        instance.register(&*XPATH_ARRAY.uri, "subarray", 3, array::FN_ARRAY_SUBARRAY_3());
         instance.register(&*XPATH_ARRAY.uri, "insert-before", 3, array::FN_ARRAY_INSERT_BEFORE());
         instance.register(&*XPATH_ARRAY.uri, "head", 1, array::FN_ARRAY_HEAD());
         instance.register(&*XPATH_ARRAY.uri, "tail", 1, array::FN_ARRAY_TAIL());
         instance.register(&*XPATH_ARRAY.uri, "reverse", 1, array::FN_ARRAY_REVERSE());
-        instance.register(&*XPATH_ARRAY.uri, "join", usize::MAX, array::FN_ARRAY_JOIN());
+        // instance.register(&*XPATH_ARRAY.uri, "join", usize::MAX, array::FN_ARRAY_JOIN());
         instance.register(&*XPATH_ARRAY.uri, "for-each", 2, array::FN_ARRAY_FOR_EACH());
         instance.register(&*XPATH_ARRAY.uri, "filter", 2, array::FN_ARRAY_FILTER());
         instance.register(&*XPATH_ARRAY.uri, "fold-left", 3, array::FN_ARRAY_FOLD_LEFT());
@@ -225,20 +225,36 @@ impl FunctionsRegister {
         instance.register(&*XPATH_FUNCTIONS.uri, "string-to-codepoints", 1, strings::FN_STRING_TO_CODEPOINTS());
         instance.register(&*XPATH_FUNCTIONS.uri, "string-join", 1, strings::FN_STRING_JOIN_1());
         instance.register(&*XPATH_FUNCTIONS.uri, "string-join", 2, strings::FN_STRING_JOIN_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "substring", 2, strings::FN_SUBSTRING_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "substring", 3, strings::FN_SUBSTRING_3());
         instance.register(&*XPATH_FUNCTIONS.uri, "string-length", 0, strings::FN_STRING_LENGTH_0());
         instance.register(&*XPATH_FUNCTIONS.uri, "string-length", 1, strings::FN_STRING_LENGTH_1());
         instance.register(&*XPATH_FUNCTIONS.uri, "normalize-space", 0, strings::FN_NORMALIZE_SPACE_0());
         instance.register(&*XPATH_FUNCTIONS.uri, "normalize-space", 1, strings::FN_NORMALIZE_SPACE_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "normalize-unicode", 1, strings::FN_NORMALIZE_UNICODE_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "normalize-unicode", 2, strings::FN_NORMALIZE_UNICODE_2());
         instance.register(&*XPATH_FUNCTIONS.uri, "upper-case", 1, strings::FN_UPPER_CASE());
         instance.register(&*XPATH_FUNCTIONS.uri, "lower-case", 1, strings::FN_LOWER_CASE());
-
+        instance.register(&*XPATH_FUNCTIONS.uri, "translate", 3, strings::FN_TRANSLATE());
         instance.register(&*XPATH_FUNCTIONS.uri, "contains", 2, strings::FN_CONTAINS_2());
         instance.register(&*XPATH_FUNCTIONS.uri, "contains", 3, strings::FN_CONTAINS_3());
-
         instance.register(&*XPATH_FUNCTIONS.uri, "starts-with", 2, strings::FN_STARTS_WITH_2());
         instance.register(&*XPATH_FUNCTIONS.uri, "starts-with", 3, strings::FN_STARTS_WITH_3());
         instance.register(&*XPATH_FUNCTIONS.uri, "ends-with", 2, strings::FN_ENDS_WITH_2());
         instance.register(&*XPATH_FUNCTIONS.uri, "ends-with", 3, strings::FN_ENDS_WITH_3());
+        instance.register(&*XPATH_FUNCTIONS.uri, "substring-before", 2, strings::FN_SUBSTRING_BEFORE_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "substring-before", 3, strings::FN_SUBSTRING_BEFORE_3());
+        instance.register(&*XPATH_FUNCTIONS.uri, "substring-after", 2, strings::FN_SUBSTRING_AFTER_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "substring-after", 3, strings::FN_SUBSTRING_AFTER_3());
+        instance.register(&*XPATH_FUNCTIONS.uri, "matches", 2, strings::FN_MATCHES_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "matches", 3, strings::FN_MATCHES_3());
+        instance.register(&*XPATH_FUNCTIONS.uri, "replace", 3, strings::FN_REPLACE_3());
+        instance.register(&*XPATH_FUNCTIONS.uri, "replace", 4, strings::FN_REPLACE_4());
+        instance.register(&*XPATH_FUNCTIONS.uri, "tokenize", 1, strings::FN_TOKENIZE_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "tokenize", 2, strings::FN_TOKENIZE_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "tokenize", 3, strings::FN_TOKENIZE_3());
+        instance.register(&*XPATH_FUNCTIONS.uri, "analyze-string", 2, strings::FN_ANALYZE_STRING_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "analyze-string", 3, strings::FN_ANALYZE_STRING_3());
 
         instance.register(&*XPATH_FUNCTIONS.uri, "position", 0, sequences::FN_POSITION());
         instance.register(&*XPATH_FUNCTIONS.uri, "last", 0, sequences::FN_LAST());
@@ -246,18 +262,25 @@ impl FunctionsRegister {
         instance.register(&*XPATH_FUNCTIONS.uri, "default-language", 0, context::FN_DEFAULT_LANGUAGE());
         instance.register(&*XPATH_FUNCTIONS.uri, "static-base-uri", 0, context::FN_STATIC_BASE_URI());
 
-        instance.register(&*XPATH_FUNCTIONS.uri, "function-lookup", 0, fun::FN_FUNCTION_LOOKUP());
-        instance.register(&*XPATH_FUNCTIONS.uri, "function-name", 0, fun::FN_FUNCTION_NAME());
-        instance.register(&*XPATH_FUNCTIONS.uri, "function-arity", 0, fun::FN_FUNCTION_ARITY());
+        instance.register(&*XPATH_FUNCTIONS.uri, "function-lookup", 2, fun::FN_FUNCTION_LOOKUP());
+        instance.register(&*XPATH_FUNCTIONS.uri, "function-name", 1, fun::FN_FUNCTION_NAME());
+        instance.register(&*XPATH_FUNCTIONS.uri, "function-arity", 1, fun::FN_FUNCTION_ARITY());
+
+        instance.register(&*XPATH_FUNCTIONS.uri, "distinct-values", 1, sequences::FN_DISTINCT_VALUES_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "distinct-values", 2, sequences::FN_DISTINCT_VALUES_2());
 
         instance.register(&*XPATH_FUNCTIONS.uri, "data", 0, sequences::FN_DATA_0());
         instance.register(&*XPATH_FUNCTIONS.uri, "data", 1, sequences::FN_DATA_1());
         instance.register(&*XPATH_FUNCTIONS.uri, "empty", 1, sequences::FN_EMPTY());
         instance.register(&*XPATH_FUNCTIONS.uri, "exists", 1, sequences::FN_EXISTS());
+        instance.register(&*XPATH_FUNCTIONS.uri, "head", 1, sequences::FN_HEAD());
+        instance.register(&*XPATH_FUNCTIONS.uri, "tail", 1, sequences::FN_TAIL());
+        instance.register(&*XPATH_FUNCTIONS.uri, "insert-before", 3, sequences::FN_INSERT_BEFORE());
         instance.register(&*XPATH_FUNCTIONS.uri, "remove", 2, sequences::FN_REMOVE());
         instance.register(&*XPATH_FUNCTIONS.uri, "reverse", 1, sequences::FN_REVERSE());
         instance.register(&*XPATH_FUNCTIONS.uri, "subsequence", 2, sequences::FN_SUBSEQUENCE_2());
         instance.register(&*XPATH_FUNCTIONS.uri, "subsequence", 3, sequences::FN_SUBSEQUENCE_3());
+        instance.register(&*XPATH_FUNCTIONS.uri, "unordered", 1, sequences::FN_UNORDERED());
 
         instance.register(&*XPATH_FUNCTIONS.uri, "zero-or-one", 1, sequences::FN_ZERO_OR_ONE());
         instance.register(&*XPATH_FUNCTIONS.uri, "one-or-more", 1, sequences::FN_ONE_OR_MORE());
@@ -287,6 +310,10 @@ impl FunctionsRegister {
     }
 
     pub(crate) fn register<S: Into<String>>(&mut self, uri: S, local_part: &str, arity: usize, fun: FUNCTION) {
+        assert_eq!(
+            arity, fun.0.0.len(),
+            "unmatched arity for {}#{} vs {} .. ns {}", local_part, arity, fun.0.0.len(), uri.into()
+        );
         self.functions.entry(QNameResolved { url: uri.into(), local_part: local_part.into() })
             .or_insert_with(HashMap::new)
             .insert(arity,fun);
@@ -382,16 +409,24 @@ pub(crate) fn call(env: Box<Environment>, name: QNameResolved, arguments: Vec<Ob
         Ok((env, result))
 
     } else {
-        // workaround for concat function
-        let fun: Option<FUNCTION> = if name.local_part == "concat" {
-            if name.url == *XPATH_FUNCTIONS.uri && arguments.len() >= 2 {
-                Some(strings::FN_CONCAT(arguments.len()))
+        let fun: Option<FUNCTION> =
+            // workaround for "concat" function
+            if name.local_part == "concat" {
+                if name.url == *XPATH_FUNCTIONS.uri && arguments.len() >= 2 {
+                    Some(strings::FN_CONCAT(arguments.len()))
+                } else {
+                    None
+                }
+            // workaround for "join" function
+            } else if name.local_part == "join" {
+                if name.url == *XPATH_FUNCTIONS.uri && arguments.len() >= 2 {
+                    Some(array::FN_ARRAY_JOIN(arguments.len()))
+                } else {
+                    None
+                }
             } else {
-                None
-            }
-        } else {
-            fn_env.get_function(&name, arguments.len())
-        };
+                fn_env.get_function(&name, arguments.len())
+            };
 
         if let Some(((params, st), body)) = fun {
 

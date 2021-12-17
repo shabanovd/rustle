@@ -6,7 +6,7 @@ use crate::parser::errors::ErrorCode;
 use crate::values::Types;
 use math::round::half_to_even;
 use bigdecimal::num_traits::float::FloatCore;
-use bigdecimal::{BigDecimal, Signed};
+use bigdecimal::{BigDecimal, FromPrimitive, Signed, ToPrimitive};
 use bigdecimal::num_bigint::BigInt;
 use ordered_float::OrderedFloat;
 
@@ -51,8 +51,48 @@ pub(crate) fn FN_MATH_CEILING() -> FUNCTION {
     )
 }
 
-pub(crate) fn fn_ceiling(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
-    todo!()
+pub(crate) fn fn_ceiling(env: Box<Environment>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    let number = arguments.remove(0);
+    let t = match number {
+        Object::Atomic(t) => {
+            match t {
+                Type::UnsignedByte(_) |
+                Type::UnsignedShort(_) |
+                Type::UnsignedInt(_) |
+                Type::UnsignedLong(_) |
+
+                Type::Byte(_) |
+                Type::Short(_) |
+                Type::Int(_) |
+                Type::Long(_) |
+
+                Type::PositiveInteger(_) |
+                Type::NonNegativeInteger(_) |
+                Type::NonPositiveInteger(_) |
+                Type::NegativeInteger(_) |
+
+                Type::Integer(_) => t,
+
+                Type::Decimal(number) => {
+                    if let Some(number) = number.to_f64() {
+                        if let Some(number) = BigDecimal::from_f64(number.ceil()) {
+                            Type::Decimal(number.normalized())
+                        } else {
+                            todo!("raise error")
+                        }
+                    } else {
+                        todo!("raise error")
+                    }
+                },
+                Type::Float(number) => Type::Float(number.ceil()),
+                Type::Double(number) => Type::Double(number.ceil()),
+
+                _ => panic!("raise error")
+            }
+        }
+        _ => panic!("raise error")
+    };
+    Ok((env, Object::Atomic(t)))
 }
 
 // fn:floor($arg as xs:numeric?) as xs:numeric?
@@ -66,22 +106,38 @@ pub(crate) fn FN_MATH_FLOOR() -> FUNCTION {
     )
 }
 
-pub(crate) fn fn_floor(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
-    match arguments.as_slice() {
-        [Object::Atomic(Type::Integer(number))] => {
-            Ok((env, Object::Atomic(Type::Integer(*number))))
-        },
-        [Object::Atomic(Type::Decimal(number))] => {
-            Ok((env, Object::Atomic(Type::Decimal(number.round(0))))) // TODO: fix it
-        },
-        [Object::Atomic(Type::Float(number))] => {
-            Ok((env, Object::Atomic(Type::Float(number.floor().into()))))
-        },
-        [Object::Atomic(Type::Double(number))] => {
-            Ok((env, Object::Atomic(Type::Double(number.floor().into()))))
-        },
-        _ => panic!("error")
-    }
+pub(crate) fn fn_floor(env: Box<Environment>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    let number = arguments.remove(0);
+    let t = match number {
+        Object::Atomic(t) => {
+            match t {
+                Type::UnsignedByte(_) |
+                Type::UnsignedShort(_) |
+                Type::UnsignedInt(_) |
+                Type::UnsignedLong(_) |
+
+                Type::Byte(_) |
+                Type::Short(_) |
+                Type::Int(_) |
+                Type::Long(_) |
+
+                Type::PositiveInteger(_) |
+                Type::NonNegativeInteger(_) |
+                Type::NonPositiveInteger(_) |
+                Type::NegativeInteger(_) |
+
+                Type::Integer(_) => t,
+
+                Type::Decimal(number) => Type::Decimal(number.round(0)), // TODO: fix it
+                Type::Float(number) => Type::Float(number.floor()),
+                Type::Double(number) => Type::Double(number.floor()),
+
+                _ => panic!("raise error")
+            }
+        }
+        _ => panic!("raise error")
+    };
+    Ok((env, Object::Atomic(t)))
 }
 
 // fn:round($arg as xs:numeric?) as xs:numeric?

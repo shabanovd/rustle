@@ -1,8 +1,10 @@
-use crate::eval::{Environment, Object, Type, EvalResult, DynamicContext, comparison};
+use crate::eval::{Environment, Object, Type, EvalResult, DynamicContext, comparison, ErrorInfo};
 use crate::eval::sequence_type::*;
 use crate::fns::FUNCTION;
 
 use bigdecimal::{BigDecimal, FromPrimitive};
+use crate::parser::errors::ErrorCode;
+use crate::values::Types;
 
 // fn:count($arg as item()*) as xs:integer
 pub(crate) fn FN_COUNT() -> FUNCTION {
@@ -230,6 +232,100 @@ pub(crate) fn FN_SUM_2() -> FUNCTION {
     )
 }
 
+fn extract_number_or_duration(obj: Object) -> Result<Type, ErrorInfo> {
+    match obj {
+        Object::Atomic(t) => {
+            match t {
+                Type::UnsignedByte(_) |
+                Type::UnsignedShort(_) |
+                Type::UnsignedInt(_) |
+                Type::UnsignedLong(_) |
+
+                Type::Byte(_) |
+                Type::Short(_) |
+                Type::Int(_) |
+                Type::Long(_) |
+
+                Type::PositiveInteger(_) |
+                Type::NonNegativeInteger(_) |
+                Type::NonPositiveInteger(_) |
+                Type::NegativeInteger(_) |
+
+                Type::Integer(_) |
+                Type::Decimal(_) |
+                Type::Float(_) |
+                Type::Double(_) |
+
+                Type::YearMonthDuration  { .. } |
+                Type::DayTimeDuration { .. }  => Ok(t),
+
+                _ => Err(ErrorCode::forg0006(format!("{:?}", t)))
+            }
+        }
+        _ => Err(ErrorCode::forg0006(obj.to_short_string()))
+    }
+}
+
 pub(crate) fn fn_sum(env: Box<Environment>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
-    todo!()
+    let arg = arguments.remove(0);
+    // let on_empty = if arguments.len() == 1 {
+    //     extract_number_or_duration(arguments.remove(0))?
+    // } else {
+    //     Type::Integer(0)
+    // };
+
+    let mut it = arg.into_iter();
+    let result = if let Some(obj) = it.next() {
+
+        let mut sum = extract_number_or_duration(obj)?;
+        loop {
+            if let Some(operand) = it.next() {
+                sum = match sum.to_type() {
+                    Types::YearMonthDuration => todo!(),
+                    Types::DayTimeDuration  => todo!(),
+
+                    Types::UnsignedByte |
+                    Types::UnsignedShort |
+                    Types::UnsignedInt |
+                    Types::UnsignedLong |
+
+                    Types::Byte |
+                    Types::Short |
+                    Types::Int |
+                    Types::Long |
+
+                    Types::PositiveInteger |
+                    Types::NonNegativeInteger |
+                    Types::NonPositiveInteger |
+                    Types::NegativeInteger |
+
+                    Types::Integer |
+                    Types::Decimal |
+                    Types::Float |
+                    Types::Double => {
+                        let n1 = crate::eval::arithmetic::type_to_number(sum)?;
+                        let n2 = crate::eval::arithmetic::object_to_number(operand)?;
+
+                        match n1.add(&*n2) {
+                            Ok(number) => number.to_atomic(),
+                            Err(code) => return Err((code, String::from("TODO")))
+                        }
+                    }
+                    _ => return Err(ErrorCode::forg0006(operand.to_short_string()))
+                };
+            } else {
+                break;
+            }
+        }
+        sum
+    } else {
+        // when empty use "zero" argument
+        if arguments.len() == 1 {
+            extract_number_or_duration(arguments.remove(0))?
+        } else {
+            Type::Integer(0)
+        }
+    };
+
+    Ok((env, Object::Atomic(result)))
 }

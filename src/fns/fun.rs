@@ -144,6 +144,9 @@ pub(crate) fn fn_fold_left(env: Box<Environment>, arguments: Vec<Object>, contex
 
             for item in seq.clone().into_iter() {
                 let arguments = vec![Object::Array(result), item];
+                if *arity != arguments.len() {
+                    todo!("raise error")
+                }
                 let (new_env, obj) = call(current_env, name.clone(), arguments, context)?;
                 current_env = new_env;
 

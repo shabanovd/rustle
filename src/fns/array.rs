@@ -252,10 +252,11 @@ pub(crate) fn array_reverse(env: Box<Environment>, arguments: Vec<Object>, _cont
 }
 
 // array:join($arrays as array(*)*) as array(*)
-pub(crate) fn FN_ARRAY_JOIN() -> FUNCTION {
+pub(crate) fn FN_ARRAY_JOIN(arity: usize) -> FUNCTION {
+    let params = vec![SequenceType::zero_or_more(ItemType::Array(None)); arity];
     (
         (
-            [SequenceType::zero_or_more(ItemType::Array(None))].to_vec(),
+            params,
             SequenceType::exactly_one(ItemType::Array(None))
         ),
         array_join

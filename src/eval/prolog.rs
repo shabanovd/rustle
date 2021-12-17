@@ -9,6 +9,7 @@ use crate::serialization::{object_to_string};
 use crate::serialization::to_string::object_to_string_xml;
 use crate::eval::helpers::{relax, relax_sequences, sort_and_dedup, process_items, join_sequences};
 use std::collections::HashMap;
+use std::ops::ControlFlow;
 use crate::eval::arithmetic::{eval_unary, eval_arithmetic};
 use crate::eval::comparison::{eval_comparison, eval_comparison_item};
 use crate::eval::piping::{Pipe, eval_pipe};
@@ -923,6 +924,7 @@ impl Expression for Integer {
                         Ok((env, Object::Atomic(Type::Integer(num))))
                     }
                 },
+                Object::Array(items) |
                 Object::Sequence(items) => {
                     if let Some(item) = items.get((pos - 1) as usize) {
                         Ok((env, item.clone()))
@@ -1952,7 +1954,7 @@ impl Expression for Call {
         let (parameters, body) = match current_env.get_variable(&name) {
             Some(Object::Function {parameters, st, body}) => (parameters, body),
             None => {
-                let mut evaluated_arguments = vec![];
+                let mut evaluated_arguments = Vec::with_capacity(self.arguments.len());
                 for argument in &self.arguments {
                     let (new_env, value) = argument.eval(current_env, context)?;
                     current_env = new_env;
@@ -2014,6 +2016,26 @@ impl Expression for Call {
         }
 
         relax(current_env, evaluated)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ArgumentPlaceholder {
+}
+
+impl ArgumentPlaceholder {
+    pub(crate) fn boxed() -> Box<dyn Expression> {
+        Box::new(ArgumentPlaceholder {})
+    }
+}
+
+impl Expression for ArgumentPlaceholder {
+    fn eval<'a>(&self, env: Box<Environment>, _context: &DynamicContext) -> EvalResult {
+        Ok((env, Object::Placeholder))
+    }
+
+    fn predicate(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
+        todo!()
     }
 }
 
@@ -2267,6 +2289,8 @@ impl Expression for SimpleMap {
                     let (new_env, evaluated) = expr.eval(current_env, &current_context)?;
                     current_env = new_env;
 
+                    println!("evaluated: {:?}", evaluated);
+
                     let items = object_owned_to_sequence(evaluated);
                     relax_sequences(&mut sequence, items);
                 }
@@ -2359,19 +2383,13 @@ impl QuantifiedExpr {
         st: Option<SequenceType>,
         seq: Box<dyn Expression>,
         vars: Vec<(QName, Option<SequenceType>, Box<dyn Expression>)>,
-        satisfies: Box<dyn Expression>) -> Box<dyn Expression> {
+        satisfies: Box<dyn Expression>) -> Box<dyn Expression>
+    {
         Box::new(QuantifiedExpr { op, name, st, seq, vars, satisfies })
     }
 }
 
-enum ProcessingState {
-    ContinueTrue,
-    ContinueFalse,
-    BreakTrue,
-    BreakFalse,
-}
-
-fn process_next(env: Box<Environment>, context: &DynamicContext, op: &QuantifiedOp, index: usize, vars: &Vec<(QName, Option<SequenceType>, Box<dyn Expression>)>, satisfies: &Box<dyn Expression>) -> Result<(Box<Environment>, ProcessingState), ErrorInfo> {
+fn process_next(env: Box<Environment>, context: &DynamicContext, op: &QuantifiedOp, index: usize, vars: &Vec<(QName, Option<SequenceType>, Box<dyn Expression>)>, satisfies: &Box<dyn Expression>) -> Result<(Box<Environment>, ControlFlow<bool, bool>), ErrorInfo> {
     if let Some((name, st, seq)) = vars.get(index) {
 
         let mut current_env = env;
@@ -2394,39 +2412,32 @@ fn process_next(env: Box<Environment>, context: &DynamicContext, op: &Quantified
             current_env = new_env;
 
             match state {
-                ProcessingState::BreakTrue |
-                ProcessingState::BreakFalse => {
+                ControlFlow::Break(_) => {
                     current_env = current_env.prev();
                     return Ok((current_env, state))
                 }
-                ProcessingState::ContinueTrue => result = true,
-                ProcessingState::ContinueFalse => result = false,
+                ControlFlow::Continue(v) => result = v,
             }
         }
 
         current_env = current_env.prev();
 
-        let state = if result {
-            ProcessingState::ContinueTrue
-        } else {
-            ProcessingState::ContinueFalse
-        };
-        Ok((current_env, state))
+        Ok((current_env, ControlFlow::Continue(result)))
 
     } else {
         let (env, value) = satisfies.eval(env, context)?;
 
         let state = if value.effective_boolean_value()? {
             if op == &QuantifiedOp::Some {
-                ProcessingState::BreakTrue
+                ControlFlow::Break(true)
             } else {
-                ProcessingState::ContinueTrue
+                ControlFlow::Continue(true)
             }
         } else {
             if op == &QuantifiedOp::Every {
-                ProcessingState::BreakFalse
+                ControlFlow::Break(false)
             } else {
-                ProcessingState::ContinueFalse
+                ControlFlow::Continue(false)
             }
         };
         Ok((env, state))
@@ -2455,16 +2466,11 @@ impl Expression for QuantifiedExpr {
             current_env = new_env;
 
             match state {
-                ProcessingState::BreakTrue => {
-                    result = true;
+                ControlFlow::Break(v) => {
+                    result = v;
                     break;
                 }
-                ProcessingState::BreakFalse => {
-                    result = false;
-                    break;
-                }
-                ProcessingState::ContinueTrue => result = true,
-                ProcessingState::ContinueFalse => result = false,
+                ControlFlow::Continue(v) => result = v,
             }
         }
 
@@ -2477,3 +2483,98 @@ impl Expression for QuantifiedExpr {
     }
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct ArrowExpr {
+    source: Box<dyn Expression>,
+    name: Option<QName>,
+    expr: Option<Box<dyn Expression>>,
+    arguments: Vec<Box<dyn Expression>>
+}
+
+impl ArrowExpr {
+    pub(crate) fn boxed(
+        source: Box<dyn Expression>,
+        name: Option<QName>,
+        expr: Option<Box<dyn Expression>>,
+        arguments: Vec<Box<dyn Expression>>
+    ) -> Box<dyn Expression> {
+        Box::new(ArrowExpr { source, name, expr, arguments })
+    }
+}
+
+impl Expression for ArrowExpr {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
+        let mut current_env = env;
+
+        let (new_env, items) = self.source.eval(current_env, context)?;
+        current_env = new_env;
+
+        let mut evaluated_arguments = Vec::with_capacity(self.arguments.len() + 1);
+        evaluated_arguments.push(items);
+
+        for argument in &self.arguments {
+            let (new_env, value) = argument.eval(current_env, context)?;
+            current_env = new_env;
+
+            evaluated_arguments.push(value);
+        }
+
+        if let Some(name) = self.name.as_ref() {
+            let name = resolve_function_qname(name, &current_env);
+            return call(current_env, name, evaluated_arguments, context);
+        } else if let Some(expr) = self.expr.as_ref() {
+            let (new_env, value) = expr.eval(current_env, context)?;
+            current_env = new_env;
+
+            match value {
+                Object::FunctionRef { name, arity } => {
+                    if arity != evaluated_arguments.len() {
+                        todo!("raise error")
+                    } else {
+                        return call(current_env, name, evaluated_arguments, context);
+                    }
+                }
+                Object::Map(map) => {
+                    if evaluated_arguments.len() != 1 {
+                        todo!("raise error")
+                    } else {
+                        match evaluated_arguments.remove(0) {
+                            Object::Atomic(t) => {
+                                return match map.get(&t) {
+                                    Some(v) => Ok((current_env, v.clone())),
+                                    None => Ok((current_env, Object::Empty))
+                                };
+                            }
+                            _ => todo!("raise error")
+                        }
+                    }
+                    todo!()
+                }
+                Object::Array(items) => {
+                    if evaluated_arguments.len() != 1 {
+                        todo!("raise error")
+                    } else {
+                        let index = evaluated_arguments.remove(0).to_integer()?;
+                        if index >= 1 {
+                            return if let Some(item) = items.get((index - 1) as usize) {
+                                Ok((current_env, item.clone()))
+                            } else {
+                                Ok((current_env, Object::Empty))
+                            };
+                        } else {
+                            todo!("raise error?")
+                        }
+                    }
+                    todo!()
+                }
+                _ => return Err((ErrorCode::XPTY0004, format!("{:?}", value)))
+            }
+        } else {
+            panic!("internal error")
+        }
+    }
+
+    fn predicate(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
+        todo!()
+    }
+}

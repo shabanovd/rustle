@@ -13,13 +13,14 @@ pub(crate) mod comparison;
 pub(crate) use crate::values::{Object, Type, string_to_double, object_to_qname, atomization, sequence_atomization};
 
 pub(crate) mod navigation;
-mod arithmetic;
+pub(crate) mod arithmetic;
 mod piping;
 pub(crate) mod sequence_type;
 
 pub(crate) mod helpers;
 use helpers::*;
 use crate::eval::expression::{Expression, NodeTest};
+use crate::fns::call;
 use crate::tree::Reference;
 use crate::values::resolve_element_qname;
 
@@ -206,8 +207,24 @@ fn eval_predicates(exprs: &Vec<PrimaryExprSuffix>, env: Box<Environment>, value:
                     let (new_env, new_value) = body.eval(fn_env, context)?;
                     current_env = new_env.prev();
 
+                    // TODO handle st
+
                     new_value
                 },
+                Object::FunctionRef { name, arity } => {
+                    // TODO check arity
+                    let mut evaluated_arguments = vec![];
+                    for argument in arguments {
+                        let (new_env, value) = argument.eval(current_env, context)?;
+                        current_env = new_env;
+
+                        evaluated_arguments.push(value);
+                    }
+
+                    let (new_env, value) = call(current_env, name, evaluated_arguments, context)?;
+                    current_env = new_env;
+                    value
+                }
                 Object::Array(items) => {
                     if arguments.len() == 1 {
                         let mut evaluated_arguments = vec![];
@@ -311,8 +328,12 @@ pub(crate) fn object_owned_to_sequence<'a>(object: Object) -> Vec<Object> {
     match object {
         Object::Empty => vec![],
         Object::Range { .. } |
-        Object::Node(..) |
-        Object::Atomic(..) => {
+        Object::Node(_) |
+        Object::Function { .. } |
+        Object::FunctionRef { .. } |
+        Object::Array(_) |
+        Object::Map(_) |
+        Object::Atomic(_) => {
             let mut result = Vec::with_capacity(1);
             result.push(object);
             result
@@ -325,9 +346,9 @@ pub(crate) fn object_owned_to_sequence<'a>(object: Object) -> Vec<Object> {
         //     }
         //     result
         // },
-        Object::Array(items) => {
-            items
-        },
+        // Object::Array(items) => {
+        //     items
+        // },
         Object::Sequence(items) => {
             items
         },

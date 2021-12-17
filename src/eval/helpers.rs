@@ -1,14 +1,11 @@
 use crate::eval::{Environment, Object, EvalResult, object_owned_to_sequence};
 
-pub(crate) fn relax(env: Box<Environment>, items: Vec<Object>) -> EvalResult {
+pub(crate) fn relax(env: Box<Environment>, mut items: Vec<Object>) -> EvalResult {
     if items.len() == 0 {
         Ok((env, Object::Empty))
     } else if items.len() == 1 {
-        if let Some(item) = items.into_iter().next() {
-            Ok((env, item))
-        } else {
-            panic!("internal error")
-        }
+        let item = items.remove(0);
+        Ok((env, item))
     } else {
         Ok((env, Object::Sequence(items)))
     }

@@ -1,5 +1,6 @@
 use std::convert::TryFrom;
 use std::iter::FromIterator;
+use unicode_normalization::UnicodeNormalization;
 use crate::eval::{Environment, Object, Type, DynamicContext, EvalResult};
 use crate::eval::helpers::relax;
 use crate::eval::sequence_type::*;
@@ -260,7 +261,7 @@ pub(crate) fn FN_NORMALIZE_SPACE_0() -> FUNCTION {
     (
         (
             [].to_vec(),
-            SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_INTEGER.into()))
+            SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_STRING.into()))
         ),
         fn_normalize_space
     )
@@ -271,7 +272,7 @@ pub(crate) fn FN_NORMALIZE_SPACE_1() -> FUNCTION {
     (
         (
             [SequenceType::zero_or_one(ItemType::AtomicOrUnionType(XS_STRING.into()))].to_vec(),
-            SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_INTEGER.into()))
+            SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_STRING.into()))
         ),
         fn_normalize_space
     )
@@ -297,7 +298,7 @@ pub(crate) fn FN_NORMALIZE_UNICODE_1() -> FUNCTION {
     (
         (
             [SequenceType::zero_or_one(ItemType::AtomicOrUnionType(XS_STRING.into()))].to_vec(),
-            SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_INTEGER.into()))
+            SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_STRING.into()))
         ),
         fn_normalize_unicode
     )
@@ -311,14 +312,22 @@ pub(crate) fn FN_NORMALIZE_UNICODE_2() -> FUNCTION {
                 SequenceType::zero_or_one(ItemType::AtomicOrUnionType(XS_STRING.into())),
                 SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_STRING.into()))
             ].to_vec(),
-            SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_INTEGER.into()))
+            SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_STRING.into()))
         ),
         fn_normalize_unicode
     )
 }
 
-pub(crate) fn fn_normalize_unicode(env: Box<Environment>, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
-    todo!()
+pub(crate) fn fn_normalize_unicode(env: Box<Environment>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    let result = arguments.get(0)
+        .and_then(|obj| Some(object_to_string(&env, obj)))
+        .and_then(|str| Some(str.nfc().collect::<String>()));
+
+    if let Some(str) = result {
+        Ok((env, Object::Atomic(Type::String(str))))
+    } else {
+        todo!("raise error")
+    }
 }
 
 // fn:upper-case($arg as xs:string?) as xs:string
@@ -685,8 +694,21 @@ pub(crate) fn FN_TOKENIZE_3() -> FUNCTION {
     )
 }
 
-pub(crate) fn fn_tokenize(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
-    todo!()
+pub(crate) fn fn_tokenize(env: Box<Environment>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    let item = arguments.remove(0);
+    let str = object_to_string(&env, &item);
+
+    // TODO call normalize-space for str
+
+    // TODO $pattern
+    // TODO $flags
+
+    let mut items = vec![];
+    for part in str.split(" ") {
+        items.push(Object::Atomic(Type::String(part.to_string())))
+    }
+
+    relax(env, items)
 }
 
 // fn:analyze-string($input as xs:string?, $pattern as xs:string) as element(fn:analyze-string-result)

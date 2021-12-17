@@ -182,6 +182,10 @@ impl ErrorCode {
         // (ErrorCode::FORG0001, format!("can't convert to {} {:?}", type_name, str))
     }
 
+    pub(crate) fn forg0006(obj: String) -> ErrorInfo {
+        (ErrorCode::FORG0006, format!("inappropriate value {:?}", obj))
+    }
+
     pub(crate) fn xpty0004(t: &Type, to: Types) -> ErrorInfo {
         (ErrorCode::XPTY0004, format!("{:?} cannot be cast to {:?}", t, to))
     }

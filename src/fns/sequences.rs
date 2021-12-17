@@ -1,9 +1,63 @@
+use std::collections::HashSet;
 use crate::eval::{Environment, Object, Type, DynamicContext, EvalResult, object_to_integer};
 use crate::eval::sequence_type::*;
 use crate::fns::FUNCTION;
 
-use crate::eval::helpers::relax;
+use crate::eval::helpers::{relax, sort_and_dedup};
 use crate::parser::errors::ErrorCode;
+
+// fn:distinct-values($arg as xs:anyAtomicType*) as xs:anyAtomicType*
+pub(crate) fn FN_DISTINCT_VALUES_1() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_more(ItemType::AnyAtomicType)].to_vec(),
+            SequenceType::zero_or_more(ItemType::AnyAtomicType)
+        ),
+        fn_distinct_values
+    )
+}
+
+// fn:distinct-values($arg as xs:anyAtomicType*, $collation as xs:string) as xs:anyAtomicType*
+pub(crate) fn FN_DISTINCT_VALUES_2() -> FUNCTION {
+    (
+        (
+            [
+                SequenceType::zero_or_more(ItemType::AnyAtomicType),
+                SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_STRING.into()))
+            ].to_vec(),
+            SequenceType::zero_or_more(ItemType::AnyAtomicType)
+        ),
+        fn_distinct_values
+    )
+}
+
+pub(crate) fn fn_distinct_values(env: Box<Environment>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    let item = arguments.remove(0);
+
+    // TODO handle $collation
+
+    match item {
+        Object::Empty |
+        Object::Array(_) |
+        Object::Map(_) |
+        Object::Atomic(_) => Ok((env, item)),
+        Object::Sequence(mut items) => {
+            // TODO implement it
+
+            // let mut set = HashSet::with_capacity(items.len());
+            // for item in items {
+            //     set.insert(item);
+            // }
+            //
+            // let items = set.into_iter().collect::<Vec<Object>>();
+
+            sort_and_dedup(&mut items);
+
+            relax(env, items)
+        }
+        _ => panic!("raise error? {:?}", item)
+    }
+}
 
 // fn:data() as xs:anyAtomicType*
 pub(crate) fn FN_DATA_0() -> FUNCTION {
@@ -131,8 +185,21 @@ pub(crate) fn FN_HEAD() -> FUNCTION {
     )
 }
 
-pub(crate) fn fn_head(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
-    todo!()
+pub(crate) fn fn_head(env: Box<Environment>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    let mut item = arguments.remove(0);
+
+    item = match item {
+        Object::Sequence(items) => {
+            if let Some(el) = items.get(0) {
+                el.clone()
+            } else {
+                Object::Empty
+            }
+        }
+        _ => item
+    };
+
+    Ok((env, item))
 }
 
 // fn:tail($arg as item()*) as item()*
@@ -146,8 +213,25 @@ pub(crate) fn FN_TAIL() -> FUNCTION {
     )
 }
 
-pub(crate) fn fn_tail(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
-    todo!()
+pub(crate) fn fn_tail(env: Box<Environment>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    let mut item = arguments.remove(0);
+
+    item = match item {
+        Object::Sequence(items) => {
+            if items.len() == 0 {
+                Object::Empty
+            } else {
+                if let Some(el) = items.get(items.len() - 1) {
+                    el.clone()
+                } else {
+                    Object::Empty
+                }
+            }
+        }
+        _ => item
+    };
+
+    Ok((env, item))
 }
 
 // fn:insert-before($target as item()*, $position as xs:integer, $inserts as item()*) as item()*

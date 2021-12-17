@@ -1,7 +1,8 @@
 use crate::eval::{Object, Environment, Type, eval_statements, comparison, EvalResult, DynamicContext, Axis};
+use crate::eval::comparison::deep_eq;
 use crate::eval::helpers::relax;
 use crate::parser::parse;
-use crate::values::{resolve_element_qname, QName, QNameResolved};
+use crate::values::{resolve_element_qname, QName, QNameResolved, Types};
 use crate::serialization::object_to_string;
 use crate::namespaces::NS;
 use crate::parser::errors::ErrorCode;
@@ -165,7 +166,7 @@ pub(crate) fn bool_check_assert_count(result: &EvalResult, check: &str) -> bool 
 pub(crate) fn check_assert_deep_eq(result: &EvalResult, check: &str) {
     let (env, obj) = result.as_ref().unwrap();
     let (expected_env, expected_obj) = eval(None, check).unwrap();
-    if comparison::deep_eq((&expected_env, &expected_obj), (env, obj)).unwrap() {
+    if !comparison::deep_eq((&expected_env, &expected_obj), (env, obj)).unwrap() {
         assert_eq!(&expected_obj, obj);
     }
 }
@@ -177,13 +178,27 @@ pub(crate) fn bool_check_assert_deep_eq(result: &EvalResult, check: &str) -> boo
 }
 
 pub(crate) fn check_assert_permutation(result: &EvalResult, check: &str) {
-    println!("result: {:?}\ncheck: {:?}", result.as_ref().unwrap().1, check);
-    todo!()
+    let flag = bool_check_assert_permutation(result, check);
+
+    assert!(flag, "{:?}", result.as_ref().unwrap().1);
 }
 
 pub(crate) fn bool_check_assert_permutation(result: &EvalResult, check: &str) -> bool {
-    println!("result: {:?}\ncheck: {:?}", result.as_ref().unwrap().1, check);
-    todo!()
+    let (env, obj) = result.as_ref().unwrap();
+    let (expected_env, expected_obj) = eval(None, check).unwrap();
+
+    let mut items = obj.clone().into_iter().collect::<Vec<Object>>();
+    let mut expected = expected_obj.into_iter().collect::<Vec<Object>>();
+
+    items.sort();
+    expected.sort();
+
+    for (obj, expected) in items.into_iter().zip(expected.into_iter()) {
+        if !comparison::deep_eq((&expected_env, &expected), (env, &obj)).unwrap() {
+            return false;
+        }
+    }
+    true
 }
 
 pub(crate) fn check_assert_xml(result: &EvalResult, check: &str) {
@@ -225,6 +240,20 @@ pub(crate) fn bool_check_assert_xml(result: &EvalResult, check: &str) -> bool {
                     println!("result: {:?}", result);
                     // l_rf.deep_eq(r_rf)
                     expect == result
+                }
+                Object::Atomic(t) => {
+                    match t.convert(Types::String) {
+                        Ok(str) => {
+                            match str {
+                                Type::String(result) => {
+                                    println!("result: {:?}", result);
+                                    expect == result
+                                },
+                                _ => panic!("result is wrong: {:?}", str)
+                            }
+                        }
+                        Err(e) => panic!("result is error: {:?}", e)
+                    }
                 }
                 _ => panic!()
             }

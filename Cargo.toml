@@ -19,6 +19,8 @@ base64 = "0.13.0"
 hex = "0.4.3"
 #oxilangtag = "0.1.2"
 
+unicode-normalization = "0.1.19"
+
 #lexical-write-float = "0.8.2"
 bigdecimal = "0.3.0"
 ordered-float = "2.0"

@@ -33,7 +33,7 @@ use crate::parser::op::OperatorArithmetic;
 // XS_INTEGER*  XS_DURATION     > NUMERIC_DURATION
 
 type OperandReturn = Result<Box<dyn Operand>, ErrorCode>;
-trait Operand {
+pub(crate) trait Operand {
     fn add(&self, rhs: &dyn Operand) -> OperandReturn;
     fn rev_add(&self, rhs: &dyn Operand) -> OperandReturn;
     fn sub(&self, rhs: &dyn Operand) -> OperandReturn;
@@ -60,7 +60,7 @@ trait Operand {
     fn to_float(&self) -> f32;
     fn to_double(&self) -> f64;
 
-    fn to_atomic(&self) -> Object;
+    fn to_atomic(&self) -> Type;
 }
 
 struct VDouble {
@@ -228,8 +228,8 @@ impl Operand for VDouble {
     fn to_float(&self) -> f32 { panic!("internal error") }
     fn to_double(&self) -> f64 { self.number }
 
-    fn to_atomic(&self) -> Object {
-        Object::Atomic(Type::Double(OrderedFloat::from(self.number)))
+    fn to_atomic(&self) -> Type {
+        Type::Double(OrderedFloat::from(self.number))
     }
 }
 
@@ -398,8 +398,8 @@ impl Operand for VFloat {
     fn to_float(&self) -> f32 { self.number }
     fn to_double(&self) -> f64 { self.number as f64 }
 
-    fn to_atomic(&self) -> Object {
-        Object::Atomic(Type::Float(OrderedFloat::from(self.number)))
+    fn to_atomic(&self) -> Type {
+        Type::Float(OrderedFloat::from(self.number))
     }
 }
 
@@ -598,8 +598,8 @@ impl Operand for VDecimal {
     fn to_float(&self) -> f32 { self.number.to_f32().unwrap() } // TODO: code it
     fn to_double(&self) -> f64 { self.number.to_f64().unwrap() } // TODO: code it
 
-    fn to_atomic(&self) -> Object {
-        Object::Atomic(Type::Decimal(self.number.normalized()))
+    fn to_atomic(&self) -> Type {
+        Type::Decimal(self.number.normalized())
     }
 }
 
@@ -815,8 +815,8 @@ impl Operand for VInteger {
     fn to_float(&self) -> f32 { self.number as f32 }
     fn to_double(&self) -> f64 { self.number as f64 }
 
-    fn to_atomic(&self) -> Object {
-        Object::Atomic(Type::Integer(self.number))
+    fn to_atomic(&self) -> Type {
+        Type::Integer(self.number)
     }
 }
 
@@ -853,7 +853,7 @@ pub fn eval_arithmetic<'a>(env: Box<Environment>, operator: OperatorArithmetic, 
     let mut current_env = env;
     let mut result = vec![];
 
-    let it_left = object_to_items(&left);
+    let it_left = left.into_iter();
     for l in it_left {
 
         let it_right = object_to_items(&right);
@@ -870,23 +870,11 @@ pub fn eval_arithmetic<'a>(env: Box<Environment>, operator: OperatorArithmetic, 
 }
 
 pub fn eval_arithmetic_item<'a>(env: Box<Environment>, operator: OperatorArithmetic, left: Object, right: Object) -> EvalResult {
-    let left = match atomization(&env, left) {
-        Ok(v) => v,
-        Err(e) => return Err(e)
-    };
-    let right = match atomization(&env, right) {
-        Ok(v) => v,
-        Err(e) => return Err(e)
-    };
+    let left = atomization(&env, left)?;
+    let right = atomization(&env, right)?;
 
-    let left_value = match into_type(left) {
-        Ok(v) => v,
-        Err(e) => return Err(e)
-    };
-    let right_value = match into_type(right) {
-        Ok(v) => v,
-        Err(e) => return Err(e)
-    };
+    let left_value = object_to_number(left)?;
+    let right_value = object_to_number(right)?;
 
     let result = match operator {
         OperatorArithmetic::Plus => left_value.add(&*right_value),
@@ -899,7 +887,7 @@ pub fn eval_arithmetic_item<'a>(env: Box<Environment>, operator: OperatorArithme
 
     match result {
         Ok(number) => {
-            Ok((env, number.to_atomic()))
+            Ok((env, Object::Atomic(number.to_atomic())))
         },
         Err(code) => Err((code, String::from("TODO")))
     }
@@ -911,83 +899,83 @@ pub fn eval_unary(env: Box<Environment>, object: Object, sign_is_positive: bool)
         Err(e) => return Err(e)
     };
 
-    let value = match into_type(object) {
-        Ok(v) => v,
-        Err(e) => return Err(e)
-    };
+    let value = object_to_number(object)?;
 
     if sign_is_positive {
-        let obj = value.to_atomic();
-        Ok((env, obj))
+        Ok((env, Object::Atomic(value.to_atomic())))
     } else {
         match value.negative() {
             Ok(number) => {
-                Ok((env, number.to_atomic()))
+                Ok((env, Object::Atomic(number.to_atomic())))
             },
             Err(code) => Err((code, String::from("TODO")))
         }
     }
 }
 
-fn into_type(obj: Object) -> Result<Box<dyn Operand>, ErrorInfo> {
+pub(crate) fn object_to_number(obj: Object) -> Result<Box<dyn Operand>, ErrorInfo> {
     match obj {
         Object::Atomic(t) => {
-            match t {
-                Type::Untyped(str) => {
-                    match string_to_double(&str) {
-                        Ok(Object::Atomic(Type::Double(number))) => {
-                            Ok(Box::new(VDouble { number: number.into_inner() }))
-                        },
-                        _ => Err((ErrorCode::FORG0001, String::from("TODO")))
-                    }
-                }
-                // Type::dateTime() => {}
-                // Type::dateTimeStamp() => {}
-                // Type::Date { .. } => {}
-                // Type::Time { .. } => {}
-                // Type::Duration { .. } => {}
-                // Type::YearMonthDuration { .. } => {}
-                // Type::DayTimeDuration { .. } => {}
-                Type::Integer(number) => Ok(Box::new( VInteger { number } )),
-                Type::Decimal(number) => Ok(Box::new( VDecimal { number } )),
-                Type::Float(number) => Ok(Box::new( VFloat { number: number.into_inner() } )),
-                Type::Double(number) => Ok(Box::new( VDouble { number: number.into_inner() } )),
-                // Type::nonPositiveInteger() => {}
-                // Type::negativeInteger() => {}
-                // Type::long() => {}
-                // Type::int() => {}
-                // Type::short() => {}
-                // Type::byte() => {}
-                // Type::nonNegativeInteger() => {}
-                // Type::unsignedLong() => {}
-                // Type::unsignedInt() => {}
-                // Type::unsignedShort() => {}
-                // Type::unsignedByte() => {}
-                // Type::positiveInteger() => {}
-                // Type::gYearMonth() => {}
-                // Type::gYear() => {}
-                // Type::gMonthDay() => {}
-                // Type::gDay() => {}
-                // Type::gMonth() => {}
-                // Type::String(_) => {}
-                // Type::NormalizedString(_) => {}
-                // Type::Token(_) => {}
-                // Type::language(_) => {}
-                // Type::NMTOKEN(_) => {}
-                // Type::Name(_) => {}
-                // Type::NCName(_) => {}
-                // Type::ID(_) => {}
-                // Type::IDREF(_) => {}
-                // Type::ENTITY(_) => {}
-                // Type::Boolean(_) => {}
-                // Type::base64Binary() => {}
-                // Type::hexBinary() => {}
-                // Type::AnyURI(_) => {}
-                // Type::QName() => {}
-                // Type::NOTATION() => {}
-                _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+            type_to_number(t)
+        }
+        _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+    }
+}
+
+pub(crate) fn type_to_number(t: Type) -> Result<Box<dyn Operand>, ErrorInfo> {
+    match t {
+        Type::Untyped(str) => {
+            match string_to_double(&str) {
+                Ok(Object::Atomic(Type::Double(number))) => {
+                    Ok(Box::new(VDouble { number: number.into_inner() }))
+                },
+                _ => Err((ErrorCode::FORG0001, String::from("TODO")))
             }
-        },
+        }
+        // Type::dateTime() => {}
+        // Type::dateTimeStamp() => {}
+        // Type::Date { .. } => {}
+        // Type::Time { .. } => {}
+        // Type::Duration { .. } => {}
+        // Type::YearMonthDuration { .. } => {}
+        // Type::DayTimeDuration { .. } => {}
+        Type::Integer(number) => Ok(Box::new( VInteger { number } )),
+        Type::Decimal(number) => Ok(Box::new( VDecimal { number } )),
+        Type::Float(number) => Ok(Box::new( VFloat { number: number.into_inner() } )),
+        Type::Double(number) => Ok(Box::new( VDouble { number: number.into_inner() } )),
+        // Type::nonPositiveInteger() => {}
+        // Type::negativeInteger() => {}
+        // Type::long() => {}
+        // Type::int() => {}
+        // Type::short() => {}
+        // Type::byte() => {}
+        // Type::nonNegativeInteger() => {}
+        // Type::unsignedLong() => {}
+        // Type::unsignedInt() => {}
+        // Type::unsignedShort() => {}
+        // Type::unsignedByte() => {}
+        // Type::positiveInteger() => {}
+        // Type::gYearMonth() => {}
+        // Type::gYear() => {}
+        // Type::gMonthDay() => {}
+        // Type::gDay() => {}
+        // Type::gMonth() => {}
+        // Type::String(_) => {}
+        // Type::NormalizedString(_) => {}
+        // Type::Token(_) => {}
+        // Type::language(_) => {}
+        // Type::NMTOKEN(_) => {}
+        // Type::Name(_) => {}
+        // Type::NCName(_) => {}
+        // Type::ID(_) => {}
+        // Type::IDREF(_) => {}
+        // Type::ENTITY(_) => {}
+        // Type::Boolean(_) => {}
+        // Type::base64Binary() => {}
+        // Type::hexBinary() => {}
+        // Type::AnyURI(_) => {}
+        // Type::QName() => {}
+        // Type::NOTATION() => {}
         _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
     }
 }
