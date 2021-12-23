@@ -91,6 +91,19 @@ impl Environment {
         }
     }
 
+    fn unwind<T, F: FnMut(&Environment) -> Option<T>>(&self, mut op: F) -> Option<T> {
+        let mut env = self;
+        loop {
+            if let Some(obj) = op(env) {
+                break Some(obj);
+            } else if let Some(prev) = &env.prev {
+                env = prev
+            } else {
+                break None
+            }
+        }
+    }
+
     pub fn xml_writer<F>(&mut self, mutation: F) -> Reference
         where F: FnOnce(&mut MutexGuard<Box<dyn XMLTreeWriter>>) -> Reference
     {
@@ -112,36 +125,35 @@ impl Environment {
         }
     }
 
+    pub fn default_namespace_for_element(&self) -> String {
+        match self.unwind(|env| env.namespaces.default_for_element.clone()) {
+            Some(ns) => ns,
+            None => "".to_string()
+        }
+    }
+
+    pub fn default_namespace_for_function(&self) -> String {
+        match self.unwind(|env| env.namespaces.default_for_function.clone()) {
+            Some(ns) => ns,
+            None => XPATH_FUNCTIONS.uri.to_string()
+        }
+    }
+
     pub fn set_variable(&mut self, name: QNameResolved, value: Object) {
         // println!("set_variable {:?} {:?}", name, value);
         self.vars.insert(name, value);
     }
 
     pub fn get_variable(&self, name: &QNameResolved) -> Option<Object> {
-        let obj = self.vars.get(name).map(|val| val.clone());
-        if obj.is_some() {
-            // println!("get_variable {:?} => {:?}", name, obj);
-            obj
-        } else if let Some(prev) = &self.prev {
-            prev.get_variable(name)
-        } else {
-            // println!("get_variable {:?} => None", name);
-            None
-        }
+        self.unwind(|env| env.vars.get(name).map(|val| val.clone()))
     }
 
     pub fn get_function(&self, name: &QNameResolved, arity: usize) -> Option<FUNCTION> {
-        let obj = self.functions.get(name, arity).map(|val| val.clone());
-        if obj.is_some() {
-            obj
-        } else if let Some(prev) = &self.prev {
-            prev.get_function(name, arity)
-        } else {
-            None
-        }
+        self.unwind(|env| env.functions.get(name, arity).map(|val| val.clone()))
     }
 
     pub fn declared_functions(&self, name: &QNameResolved, arity: usize) -> Option<&Function> {
+        // TODO self.unwind(|env| env.functions.declared(name, arity))
         let obj = self.functions.declared(name, arity);
         if obj.is_some() {
             obj

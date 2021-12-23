@@ -143,6 +143,17 @@ pub enum Types {
     NOTATION,
 }
 
+impl Types {
+    pub(crate) fn is(&self, other: &Types) -> bool {
+        if self == other {
+            true
+        } else {
+            println!("{:?} vs {:?} = false", self, other);
+            false
+        }
+    }
+}
+
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone, Hash)]
 pub enum Type {
     Untyped(String),
@@ -400,7 +411,10 @@ impl Type {
                     Types::Time => {
                         match parse_time_complete(str) {
                             Ok((_, t)) => Ok(t),
-                            Err(_) => Err((ErrorCode::FORG0001, format!("can't convert to Time {:?}", str)))
+                            Err(e) => {
+                                println!("{:?}", e);
+                                Err((ErrorCode::FORG0001, format!("can't convert to Time {:?}", str)))
+                            }
                         }
                     }
                     Types::Duration => {
@@ -4233,19 +4247,24 @@ impl Object {
     }
 
     pub(crate) fn into_iter(self) -> Box<dyn std::iter::Iterator<Item = Object>> {
+        self.into_iter_with_total().0
+    }
+
+    pub(crate) fn into_iter_with_total(self) -> (Box<dyn std::iter::Iterator<Item = Object>>, usize) {
         match self {
-            Object::Empty => Box::new(std::iter::empty()),
+            Object::Empty => (Box::new(std::iter::empty()), 0),
             Object::Node(..) |
             Object::Array(_) |
             Object::Map(_) |
-            Object::Atomic(..) => Box::new(std::iter::once(self)),
+            Object::Atomic(..) => (Box::new(std::iter::once(self)), 1),
             Object::Range { min , max } => {
-                let (it, _) = RangeIterator::create(min, max);
-                Box::new(it)
+                let (it, total) = RangeIterator::create(min, max);
+                (Box::new(it), total)
             },
             Object::Sequence(items) => {
+                let total = items.len();
                 let it = items.into_iter();
-                Box::new(it)
+                (Box::new(it), total)
             },
             _ => panic!("TODO iter {:?}", self)
         }
@@ -4274,6 +4293,14 @@ impl Object {
             },
             _ => panic!("TODO iter {:?}", self)
         };
+    }
+
+    pub(crate) fn is_nan(&self) -> bool {
+        match self {
+            Object::Atomic(Type::Float(num)) => num.is_nan(),
+            Object::Atomic(Type::Double(num)) => num.is_nan(),
+            _ => false
+        }
     }
 
     pub(crate) fn is_node(&self) -> bool {

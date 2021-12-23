@@ -2,9 +2,9 @@ use crate::eval::expression::{Expression, NodeTest};
 use crate::parser::op::{Representation, OperatorArithmetic, OperatorComparison};
 use bigdecimal::BigDecimal;
 use ordered_float::OrderedFloat;
-use crate::values::{QName, resolve_function_qname, resolve_element_qname, Types, QNameResolved};
+use crate::values::{QName, resolve_function_qname, resolve_element_qname, Types, QNameResolved, atomization};
 use crate::fns::{Param, call};
-use crate::eval::{Environment, DynamicContext, EvalResult, Object, Type, eval_predicates, Axis, step_and_test, object_to_qname, object_owned_to_sequence, object_to_integer, ErrorInfo, INS};
+use crate::eval::{Environment, DynamicContext, EvalResult, Object, Type, eval_predicates, Axis, step_and_test, object_to_qname, object_owned_to_sequence, object_to_integer, ErrorInfo, INS, comparison};
 use crate::serialization::{object_to_string};
 use crate::serialization::to_string::object_to_string_xml;
 use crate::eval::helpers::{relax, relax_sequences, sort_and_dedup, process_items, join_sequences};
@@ -450,10 +450,10 @@ impl Expression for DeclareDefaultNamespace {
 
         match self.what.as_str() {
             "element" => {
-                new_env.namespaces.default_for_element = uri;
+                new_env.namespaces.default_for_element = Some(uri);
             }
             "function" => {
-                new_env.namespaces.default_for_function = uri;
+                new_env.namespaces.default_for_function = Some(uri);
             }
             _ => panic!("internal error")
         }
@@ -704,7 +704,18 @@ impl ValidateExpr {
 
 impl Expression for ValidateExpr {
     fn eval<'a>(&self, mut env: Box<Environment>, context: &DynamicContext) -> EvalResult {
-        todo!()
+        let (new_env, node) = self.expr.eval(env, context)?;
+
+        match &self.mode {
+            Some(mode) => {
+                match mode {
+                    ValidationMode::Lax => todo!(),
+                    ValidationMode::Strict => todo!(),
+                    ValidationMode::Type(name) => todo!(),
+                }
+            }
+            None => todo!()
+        }
     }
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
@@ -1840,17 +1851,16 @@ impl Expression for Comparison {
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         let mut current_env = env;
 
-        let it = object_owned_to_sequence(value);
+        let (it, total) = value.into_iter_with_total();
 
-        let mut evaluated = vec![];
+        let mut evaluated = Vec::with_capacity(total);
 
-        let last = Some(it.len());
         let mut position = 0;
         for item in it {
             position += 1;
             let context = DynamicContext {
                 initial_node_sequence: None,
-                item, position: Some(position), last
+                item, position: Some(position), last: Some(total),
             };
 
             let (new_env, l_value) = self.left.eval(current_env, &context)?;
@@ -1858,6 +1868,9 @@ impl Expression for Comparison {
 
             let (new_env, r_value) = self.right.eval(current_env, &context)?;
             current_env = new_env;
+
+            println!("l_value: {:?}", l_value);
+            println!("r_value: {:?}", r_value);
 
             let (new_env, v) = eval_comparison_item(
                 current_env, self.operator.clone(), l_value, r_value
@@ -2576,5 +2589,156 @@ impl Expression for ArrowExpr {
 
     fn predicate(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
         todo!()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SwitchExpr {
+    source: Box<dyn Expression>,
+    clauses: Vec<SwitchCaseClause>,
+    default_expr: Box<dyn Expression>
+}
+
+impl SwitchExpr {
+    pub(crate) fn boxed(
+        source: Box<dyn Expression>,
+        clauses: Vec<SwitchCaseClause>,
+        default_expr: Box<dyn Expression>
+    ) -> Box<dyn Expression> {
+        Box::new(SwitchExpr { source, clauses, default_expr })
+    }
+}
+
+impl Expression for SwitchExpr {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
+        let mut current_env = env;
+
+        let (new_env, mut source) = self.source.eval(current_env, context)?;
+        current_env = new_env;
+
+        source = atomization(&current_env, source)?;
+
+        for clause in &self.clauses {
+
+            for operand in &clause.operands {
+                let (new_env, mut value) = operand.eval(current_env, context)?;
+                current_env = new_env;
+
+                value = atomization(&current_env, value)?;
+
+                match comparison::deep_eq((&current_env, &source), (&current_env, &value)) {
+                    Ok(v) => {
+                        if v { return clause.expr.eval(current_env, context); }
+                    },
+                    _ => {}
+                }
+            }
+        }
+
+        self.default_expr.eval(current_env, context)
+    }
+
+    fn predicate(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
+        todo!()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SwitchCaseClause {
+    operands: Vec<Box<dyn Expression>>,
+    expr: Box<dyn Expression>
+}
+
+impl SwitchCaseClause {
+    pub(crate) fn new(
+        operands: Vec<Box<dyn Expression>>,
+        expr: Box<dyn Expression>
+    ) -> Self {
+        SwitchCaseClause { operands, expr }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct TypeswitchExpr {
+    source: Box<dyn Expression>,
+    clauses: Vec<CaseClause>,
+    default_name: Option<QName>,
+    default_expr: Box<dyn Expression>
+}
+
+impl TypeswitchExpr {
+    pub(crate) fn boxed(
+        source: Box<dyn Expression>,
+        clauses: Vec<CaseClause>,
+        default_name: Option<QName>,
+        default_expr: Box<dyn Expression>
+    ) -> Box<dyn Expression> {
+        Box::new(TypeswitchExpr { source, clauses, default_name, default_expr })
+    }
+}
+
+impl Expression for TypeswitchExpr {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
+        let mut current_env = env;
+
+        let (new_env, items) = self.source.eval(current_env, context)?;
+        current_env = new_env;
+
+        for clause in &self.clauses {
+            for st in &clause.stu {
+                match st.check(&current_env, &items) {
+                    Ok(flag) => {
+                        if flag {
+
+                            let mut env = current_env.next();
+
+                            if let Some(name) = clause.name.as_ref() {
+                                let name = resolve_element_qname(&name, &env);
+                                env.set_variable(name, items)
+                            }
+
+                            let (new_env, result) = clause.expr.eval(env, context)?;
+                            current_env = new_env.prev();
+
+                            return Ok((current_env, result))
+                        }
+                    }
+                    Err(_) => {}
+                }
+            }
+        }
+
+        let mut env = current_env.next();
+
+        if let Some(name) = self.default_name.as_ref() {
+            let name = resolve_element_qname(&name, &env);
+            env.set_variable(name, items)
+        }
+
+        let (new_env, result) = self.default_expr.eval(env, context)?;
+        current_env = new_env.prev();
+
+        return Ok((current_env, result))
+    }
+
+    fn predicate(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
+        todo!()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct CaseClause {
+    name: Option<QName>,
+    stu: Vec<SequenceType>,
+    expr: Box<dyn Expression>
+}
+
+impl CaseClause {
+    pub(crate) fn new(
+        name: Option<QName>,
+        stu: Vec<SequenceType>,
+        expr: Box<dyn Expression>
+    ) -> Self {
+        CaseClause { name, stu, expr }
     }
 }

@@ -1,7 +1,7 @@
 use crate::eval::{Environment, ErrorInfo, Object, Type};
 use crate::values::*;
 use crate::eval::expression::{NodeTest, Expression};
-use crate::tree::Reference;
+use crate::tree::{NodeType, Reference};
 use crate::namespaces::{Namespace, SCHEMA};
 use std::collections::HashMap;
 use bigdecimal::Zero;
@@ -433,6 +433,329 @@ impl SequenceType {
         !self.is_same(env, other)
     }
 
+    pub fn check(&self, env: &Environment, obj: &Object) -> Result<bool, ErrorInfo> {
+        // println!("check:\n st: {:#?}\n ob: {:#?}", self, obj);
+        match &self.item_type {
+            ItemType::SequenceEmpty => {
+                match obj {
+                    Object::Empty => Ok(true),
+                    _ => Err((ErrorCode::XPTY0004, format!("TODO {:?} {:?}", self, obj)))
+                }
+            }
+            ItemType::Item => {
+                match obj {
+                    Object::Placeholder |
+                    Object::Nothing => panic!("raise error?"),
+                    Object::Empty => {
+                        let result = match self.occurrence_indicator {
+                            OccurrenceIndicator::OneOrMore |
+                            OccurrenceIndicator::ExactlyOne => false,
+                            OccurrenceIndicator::ZeroOrOne |
+                            OccurrenceIndicator::ZeroOrMore => true,
+                        };
+                        Ok(result)
+                    }
+                    Object::Range { min, max } => {
+                        let result = match self.occurrence_indicator {
+                            OccurrenceIndicator::ExactlyOne |
+                            OccurrenceIndicator::ZeroOrOne => min == max,
+                            OccurrenceIndicator::ZeroOrMore |
+                            OccurrenceIndicator::OneOrMore => true,
+                        };
+                        Ok(result)
+                    }
+                    Object::Atomic(_) |
+                    Object::Node(_) |
+                    Object::Array(_) |
+                    Object::Map(_) => Ok(true),
+                    Object::Sequence(items) => {
+                        let result = match self.occurrence_indicator {
+                            OccurrenceIndicator::ExactlyOne => items.len() == 1,
+                            OccurrenceIndicator::ZeroOrOne => items.len() >= 0 && items.len() <= 1,
+                            OccurrenceIndicator::ZeroOrMore => items.len() >= 0,
+                            OccurrenceIndicator::OneOrMore => items.len() >= 1
+                        };
+                        Ok(result)
+                    }
+                    Object::Error { .. } |
+                    Object::CharRef { .. } |
+                    Object::EntityRef(_) |
+                    Object::Function { .. } |
+                    Object::FunctionRef { .. } => Ok(true),
+                    Object::Return(_) => todo!(),
+                }
+            }
+            ItemType::AnyAtomicType => {
+                match obj {
+                    Object::Empty => {
+                        let result = match self.occurrence_indicator {
+                            OccurrenceIndicator::OneOrMore |
+                            OccurrenceIndicator::ExactlyOne => false,
+                            OccurrenceIndicator::ZeroOrOne |
+                            OccurrenceIndicator::ZeroOrMore => true,
+                        };
+                        Ok(result)
+                    }
+                    Object::Atomic(_) => Ok(true),
+                    Object::Node(rf) => {
+                        if let Ok(data) = rf.to_typed_value() {
+                            Ok(true)
+                        } else {
+                            Ok(false)
+                        }
+                    }
+                    Object::Sequence(items) => {
+                        let result = match self.occurrence_indicator {
+                            OccurrenceIndicator::ExactlyOne => items.len() == 1,
+                            OccurrenceIndicator::ZeroOrOne => items.len() >= 0 && items.len() <= 1,
+                            OccurrenceIndicator::ZeroOrMore => items.len() >= 0,
+                            OccurrenceIndicator::OneOrMore => items.len() >= 1
+                        };
+                        Ok(result)
+                    }
+                    _ => todo!("raise error?")
+                }
+            }
+            ItemType::AtomicOrUnionType(original_qname) => {
+                let name = env.namespaces.resolve(original_qname);
+                if name.is_same_qn(&XS_NOTATION)
+                    || name.is_same_qn(&XS_ANY_ATOMIC_TYPE)
+                    || name.is_same_qn(&XS_ANY_SIMPLE_TYPE)
+                {
+                    return Err((ErrorCode::XPST0080, String::from("TODO")));
+                } else if name.is_same_qn(&XS_ANY_ATOMIC_TYPE) {
+                    match obj {
+                        Object::Empty => {
+                            let result = match self.occurrence_indicator {
+                                OccurrenceIndicator::OneOrMore |
+                                OccurrenceIndicator::ExactlyOne => false,
+                                OccurrenceIndicator::ZeroOrOne |
+                                OccurrenceIndicator::ZeroOrMore => true,
+                            };
+                            Ok(result)
+                        },
+                        Object::Range { .. } |
+                        Object::Atomic(_) => Ok(true),
+                        _ => todo!("{:?}", obj),
+                    }
+                } else if name.is_same_qn(&XS_NUMERIC) {
+                    match obj {
+                        Object::Atomic(Type::UnsignedByte(_)) |
+                        Object::Atomic(Type::UnsignedShort(_)) |
+                        Object::Atomic(Type::UnsignedInt(_)) |
+                        Object::Atomic(Type::UnsignedLong(_)) |
+                        Object::Atomic(Type::Byte(_)) |
+                        Object::Atomic(Type::Short(_)) |
+                        Object::Atomic(Type::Int(_)) |
+                        Object::Atomic(Type::Long(_)) |
+                        Object::Atomic(Type::PositiveInteger(_)) |
+                        Object::Atomic(Type::NonNegativeInteger(_)) |
+                        Object::Atomic(Type::NonPositiveInteger(_)) |
+                        Object::Atomic(Type::NegativeInteger(_)) |
+                        Object::Atomic(Type::Integer(_)) |
+                        Object::Atomic(Type::Decimal(_)) |
+                        Object::Atomic(Type::Float(_)) |
+                        Object::Atomic(Type::Double(_)) => Ok(true),
+                        _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                    }
+                } else {
+                    match obj {
+                        Object::Empty => {
+                            let result = match self.occurrence_indicator {
+                                OccurrenceIndicator::OneOrMore |
+                                OccurrenceIndicator::ExactlyOne => false,
+                                OccurrenceIndicator::ZeroOrOne |
+                                OccurrenceIndicator::ZeroOrMore => true,
+                            };
+                            Ok(result)
+                        },
+                        Object::Atomic(t) => {
+                            if let Some(types) = QNameToTypes.get(&name) {
+                                Ok(t.to_type().is(types))
+                            } else {
+                                todo!("handle custom types")
+                            }
+                        },
+                        Object::Range { .. } => {
+                            if match self.occurrence_indicator {
+                                OccurrenceIndicator::ZeroOrOne |
+                                OccurrenceIndicator::ExactlyOne => false,
+                                OccurrenceIndicator::OneOrMore |
+                                OccurrenceIndicator::ZeroOrMore => true,
+                            } {
+                                if name == XS_INTEGER {
+                                    Ok(true)
+                                } else {
+                                    // name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                    //     || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER
+                                    todo!()
+                                }
+                            } else {
+                                Err((ErrorCode::XPTY0004, format!("TODO {:?} {:?}", self, obj)))
+                            }
+                        }
+                        Object::Sequence(items) => {
+                            if match self.occurrence_indicator {
+                                OccurrenceIndicator::ZeroOrOne |
+                                OccurrenceIndicator::ExactlyOne => false,
+                                OccurrenceIndicator::OneOrMore |
+                                OccurrenceIndicator::ZeroOrMore => true,
+                            } {
+                                for item in items {
+                                    if !self.check(env, item)? {
+                                        return Ok(false);
+                                    }
+                                }
+                                Ok(true)
+                            } else {
+                                Err((ErrorCode::XPTY0004, String::from("TODO")))
+                            }
+                        },
+                        Object::Array(items) => {
+                            for item in items {
+                                if !self.check(env, item)? {
+                                    return Ok(false);
+                                }
+                            }
+                            Ok(true)
+                        }
+                        Object::Map(items) => {
+                            Err((ErrorCode::FOTY0013, String::from("TODO")))
+                        }
+                        Object::Node(rf) => {
+                            let str = match rf.to_typed_value() {
+                                Ok(str) => str,
+                                Err(msg) => todo!("{}", msg)
+                            };
+                            self.check(env, &Object::Atomic(Type::Untyped(str)))
+                        }
+                        _ => todo!("{:?}", obj),
+                    }
+                }
+            },
+            ItemType::Map(st) => {
+                match obj {
+                    Object::Map(items) => {
+                        if self.occurrence_indicator == OccurrenceIndicator::ExactlyOne {
+                            if let Some(item_st) = st {
+                                todo!()
+                            } else {
+                                Ok(true)
+                            }
+                        } else {
+                            Ok(false)
+                        }
+                    }
+                    _ => Ok(false)
+                }
+            }
+            ItemType::Array(st) => {
+                match obj {
+                    Object::Array(items) => {
+                        if self.occurrence_indicator == OccurrenceIndicator::ExactlyOne {
+                            if let Some(item_st) = st {
+                                for item in items {
+                                    if !item_st.check(env, item)? {
+                                        return Ok(false);
+                                    }
+                                }
+                            }
+                            Ok(true)
+                        } else {
+                            Ok(false)
+                        }
+                    },
+                    Object::Sequence(_) => {
+                        todo!()
+                    }
+                    _ => Ok(false)
+                }
+            }
+            ItemType::Function { args, st } => {
+                match obj {
+                    Object::FunctionRef { name, arity } => {
+                        if let Some(((fn_args, fn_st), body)) = env.get_function(&name, *arity) {
+                            println!("FN:\n {:?}\n {:?}", fn_args, fn_st);
+                            if let Some(st) = st {
+                                if st.is_not_same(env, &fn_st) {
+                                    panic!("raise error?")
+                                }
+                            }
+                            if let Some(args) = args {
+                                if args.len() != fn_args.len() {
+                                    panic!("raise error?")
+                                }
+                                for (st, fn_st) in args.into_iter().zip(fn_args.into_iter()) {
+                                    if st.is_not_same(env, &fn_st) {
+                                        panic!("raise error?")
+                                    }
+                                }
+                            }
+                            Ok(true)
+                        } else {
+                            Ok(false)
+                        }
+                    }
+                    Object::Function { parameters, st: fn_st, body } => {
+                        if let Some(st) = st {
+                            if let Some(fn_st) = fn_st.as_ref() {
+                                if st.is_not_same(env, fn_st) {
+                                    panic!("raise error?")
+                                }
+                            } else {
+                                panic!("raise error?")
+                            }
+                        }
+                        if let Some(args) = args {
+                            if args.len() != parameters.len() {
+                                panic!("raise error?")
+                            }
+                            for (st, param) in args.into_iter().zip(parameters.clone().into_iter()) {
+                                if let Some(fn_st) = &param.sequence_type {
+                                    if st.is_not_same(env, fn_st) {
+                                        panic!("raise error?")
+                                    }
+                                } else {
+                                    todo!()
+                                }
+                            }
+                        }
+                        Ok(true)
+                    }
+                    Object::Map(_) => {
+                        todo!()
+                    }
+                    Object::Array(_) => {
+                        todo!()
+                    }
+                    _ => panic!("TODO: {:?}", obj)
+                }
+            }
+            ItemType::Node(test) => {
+                match obj {
+                    Object::Node(rf) => {
+                        Ok(test.test_node(&rf))
+                    }
+                    Object::Sequence(items) => {
+                        for item in items {
+                            match item {
+                                Object::Node(rf) => {
+                                    if !test.test_node(&rf) {
+                                        return Ok(false)
+                                    }
+                                }
+                                _ => return Ok(false)
+                            }
+                        }
+                        Ok(true)
+                    }
+                    _ => Ok(false)
+                }
+            }
+            _ => panic!("TODO: {:?}", self.item_type)
+        }
+    }
+
     pub fn cascade(&self, env: &Environment, obj: Object) -> Result<Object, ErrorInfo> {
         // println!("cascade:\n st: {:#?}\n ob: {:#?}", self, obj);
         let is_array = false;
@@ -640,9 +963,13 @@ impl SequenceType {
                                 OccurrenceIndicator::OneOrMore |
                                 OccurrenceIndicator::ZeroOrMore => true,
                             } {
-                                // name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
-                                //     || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER
-                                todo!()
+                                if name == XS_INTEGER {
+                                    Ok(obj)
+                                } else {
+                                    // name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                    //     || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER
+                                    todo!()
+                                }
                             } else {
                                 Err((ErrorCode::XPTY0004, format!("TODO {:?} {:?}", self, obj)))
                             }
@@ -662,7 +989,7 @@ impl SequenceType {
                                 }
                                 Ok(Object::Sequence(result))
                             } else {
-                                panic!("raise error?")
+                                Err((ErrorCode::XPTY0004, String::from("TODO")))
                             }
                         },
                         Object::Array(items) => {
@@ -1537,7 +1864,26 @@ impl ElementTest {
 
 impl NodeTest for ElementTest {
     fn test_node(&self, rf: &Reference) -> bool {
-        todo!()
+        if let Some(node) = rf.get_node() {
+            if let Some(test_name) = &self.name {
+                // TODO let test_name = resolve_element_qname(test_name);
+                if let Some(node_name) = node.name() {
+                    // TODO let node_name = resolve_element_qname(node_name);
+                    if test_name != &node_name {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            }
+            if node.get_type() != NodeType::Element {
+                return false;
+            }
+            if let Some(ta) = &self.type_annotation {
+                todo!()
+            }
+        }
+        return true;
     }
 }
 
@@ -1549,7 +1895,7 @@ pub(crate) struct AttributeTest {
 
 impl AttributeTest {
     pub(crate) fn boxed(name: Option<QName>, type_annotation: Option<QName>) -> Box<dyn NodeTest> {
-        Box::new(AttributeTest { name: None, type_annotation: None })
+        Box::new(AttributeTest { name, type_annotation })
     }
 }
 

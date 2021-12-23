@@ -229,7 +229,15 @@ pub fn parse_time(input: &str) -> IResult<&str, Type> {
             preceded(tag(":"), parse_second_and_ms),
             opt(alt((timezone_hour, timezone_utc))),
         )),
-        |(h, m, (s, ms), tz)| {
+        |(mut h, m, (s, ms), tz)| {
+            // workaround for 24:00:00 case
+            if h == 24 {
+                if m != 0 && s != 0 && ms.unwrap_or(0) != 0 {
+                    return Err(nom::Err::Failure(Error::from_error_kind(input, ErrorKind::MapRes)));
+                }
+                h = 0;
+            }
+
             let time = if let Some(ms) = ms {
                 if let Some(time) = NaiveTime::from_hms_milli_opt(h, m, s, ms) {
                     time

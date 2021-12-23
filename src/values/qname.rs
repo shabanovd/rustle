@@ -41,14 +41,14 @@ impl<'a> PartialEq<QN<'a>> for QNameResolved {
 }
 
 pub fn resolve_element_qname(qname: &QName, env: &Box<Environment>) -> QNameResolved {
-    resolve_qname(qname, env, &env.namespaces.default_for_element)
+    resolve_qname(qname, env, |env| env.default_namespace_for_element())
 }
 
 pub fn resolve_function_qname(qname: &QName, env: &Box<Environment>) -> QNameResolved {
-    resolve_qname(qname, env, &env.namespaces.default_for_function)
+    resolve_qname(qname, env, |env| env.default_namespace_for_function())
 }
 
-fn resolve_qname(qname: &QName, env: &Box<Environment>, default: &String) -> QNameResolved {
+fn resolve_qname(qname: &QName, env: &Box<Environment>, default: fn(&Box<Environment>) -> String) -> QNameResolved {
     if let Some(url) = &qname.url {
         QNameResolved { url: url.clone(), local_part: qname.local_part.clone() }
     } else {
@@ -63,7 +63,7 @@ fn resolve_qname(qname: &QName, env: &Box<Environment>, default: &String) -> QNa
             }
         } else {
             QNameResolved {
-                url: default.clone(),
+                url: default(env),
                 local_part: qname.local_part.clone(),
             }
         }

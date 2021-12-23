@@ -490,10 +490,16 @@ pub(crate) fn deep_eq(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<boo
         Ok(true)
     } else {
         match left.1 {
+            Object::Empty => {
+                match right.1 {
+                    Object::Empty => Ok(true),
+                    _ => Ok(false)
+                }
+            }
             Object::Atomic(..) => {
                 match right.1 {
                     Object::Atomic(..) => {
-                        eq(left, right)
+                        Ok(eq(left, right)? || (left.1.is_nan() && right.1.is_nan()))
                     }
                     _ => Ok(false)
                 }

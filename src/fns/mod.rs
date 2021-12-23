@@ -338,14 +338,9 @@ impl FunctionsRegister {
     }
 
     pub(crate) fn declared(&self, qname: &QNameResolved, arity: usize) -> Option<&Function> {
-        // println!("function get {:?} {:?} {:?}", uri, local_part, arity);
         if let Some(list) = self.declared.get(qname) {
-            // println!("function list {:?}", list.len());
-            //TODO: fix it!
-            let rf = list.get(&arity).unwrap();
-            Some(rf)
+            list.get(&arity)
         } else {
-            // println!("function list NONE");
             None
         }
     }
@@ -403,8 +398,12 @@ pub(crate) fn call(env: Box<Environment>, name: QNameResolved, arguments: Vec<Ob
             fn_env.set_variable(resolve_element_qname(&parameter.name, &fn_env), argument.clone())
         }
 
-        let (new_env, result) = fun.body.eval(fn_env, context)?;
+        let (new_env, mut result) = fun.body.eval(fn_env, context)?;
         let env = new_env.prev();
+
+        if let Some(st) = fun.st {
+            result = st.cascade(&env, result)?;
+        }
 
         Ok((env, result))
 

@@ -384,6 +384,6 @@ pub(crate) fn fn_error(env: Box<Environment>, arguments: Vec<Object>, _context: 
         [] => {
             Err((ErrorCode::FOER0000, String::new()))
         },
-        _ => panic!("error")
+        _ => todo!("arguments: {:?}", arguments)
     }
 }

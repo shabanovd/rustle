@@ -95,16 +95,16 @@ lazy_static! {
 #[derive(Clone)]
 pub struct Namespaces {
     prefixes: HashMap<String, NS_heap>,
-    pub default_for_element: String,
-    pub default_for_function: String,
+    pub default_for_element: Option<String>,
+    pub default_for_function: Option<String>,
 }
 
 impl Namespaces {
     pub fn new() -> Self {
         let mut instance = Namespaces {
             prefixes: HashMap::new(),
-            default_for_element: "".to_string(),
-            default_for_function: XPATH_FUNCTIONS.uri.to_string(),
+            default_for_element: None, // "".to_string(),
+            default_for_function: None, // XPATH_FUNCTIONS.uri.to_string(),
         };
 
         instance.add(&XML);
@@ -134,11 +134,11 @@ impl Namespaces {
         QNameResolved { url, local_part: name.local_part.clone() }
     }
 
-    pub fn default_for_element(&self) -> String {
+    pub fn default_for_element(&self) -> Option<String> {
         self.default_for_element.clone()
     }
 
-    pub fn default_for_function(&self) -> String {
+    pub fn default_for_function(&self) -> Option<String> {
         self.default_for_function.clone()
     }
 

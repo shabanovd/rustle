@@ -211,6 +211,7 @@ impl PartialEq for Reference {
     }
 }
 
+#[derive(Debug, PartialEq)]
 pub enum NodeType {
     Document,
     PI,

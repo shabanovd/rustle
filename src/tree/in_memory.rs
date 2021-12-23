@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fs;
 use std::rc::Rc;
@@ -907,7 +908,7 @@ impl XMLNode for Element {
                     buf.push_str(" ");
                     buf.push_str(name.string().as_str());
                     buf.push_str("=\"");
-                    buf.push_str(attr.value.as_str());
+                    buf.push_str(escape_str_attribute(attr.value.as_str()).to_string().as_str());
                     buf.push_str("\"");
                 }
             }
@@ -998,7 +999,7 @@ impl XMLNode for Attribute {
 
     fn attribute_value(&self, name: &QName) -> Option<String> {
         if &self.name == name {
-            Some(self.value.clone())
+            Some(escape_str_attribute(self.value.as_str()).to_string())
         } else {
             None
         }
@@ -1170,7 +1171,7 @@ impl XMLNode for Text {
     }
 
     fn to_xml_open(&self, namespaces: &mut LinkedHashMap<String, String>) -> String {
-        self.content.clone()
+        escape_str_content(self.content.as_str()).to_string()
     }
 
     fn to_xml_start_children(&self) -> String {
@@ -1242,19 +1243,19 @@ impl XMLNode for Comment {
     }
 
     fn to_xml_open(&self, namespaces: &mut LinkedHashMap<String, String>) -> String {
-        todo!()
+        "<!--".to_string()
     }
 
     fn to_xml_start_children(&self) -> String {
-        todo!()
+        "".to_string()
     }
 
     fn to_xml_close_empty(&self) -> String {
-        todo!()
+        "-->".to_string()
     }
 
     fn to_xml_close(&self) -> String {
-        todo!()
+        "-->".to_string()
     }
 
     fn dump(&self) -> String {
@@ -1335,4 +1336,102 @@ impl XMLNode for LinkedNode {
     fn dump(&self) -> String {
         format!("LinkedNode {{ id={}; rf={:?} }}", self.id, self.rf)
     }
+}
+
+enum Value {
+    Char(char),
+    Str(&'static str)
+}
+
+impl Value {
+    fn dispatch_for_attribute(c: char) -> Value {
+        match c {
+            '<'  => Value::Str("&lt;"),
+            '>'  => Value::Str("&gt;"),
+            '"'  => Value::Str("&quot;"),
+            '\'' => Value::Str("&apos;"),
+            '&'  => Value::Str("&amp;"),
+            '\n' => Value::Str("&#xA;"),
+            '\r' => Value::Str("&#xD;"),
+            _    => Value::Char(c)
+        }
+    }
+
+    fn dispatch_for_content(c: char) -> Value {
+        match c {
+            '<'  => Value::Str("&lt;"),
+            '>'  => Value::Str("&gt;"),
+            '&'  => Value::Str("&amp;"),
+            _    => Value::Char(c)
+        }
+    }
+
+    fn dispatch_for_pcdata(c: char) -> Value {
+        match c {
+            '<'  => Value::Str("&lt;"),
+            '&'  => Value::Str("&amp;"),
+            _    => Value::Char(c)
+        }
+    }
+}
+
+enum Process<'a> {
+    Borrowed(&'a str),
+    Owned(String)
+}
+
+impl<'a> Process<'a> {
+    fn process(&mut self, (i, next): (usize, Value)) {
+        match next {
+            Value::Str(s) => match *self {
+                Process::Owned(ref mut o) => o.push_str(s),
+                Process::Borrowed(b) => {
+                    let mut r = String::with_capacity(b.len() + s.len());
+                    r.push_str(&b[..i]);
+                    r.push_str(s);
+                    *self = Process::Owned(r);
+                }
+            },
+            Value::Char(c) => match *self {
+                Process::Borrowed(_) => {}
+                Process::Owned(ref mut o) => o.push(c)
+            }
+        }
+    }
+
+    fn into_result(self) -> Cow<'a, str> {
+        match self {
+            Process::Borrowed(b) => Cow::Borrowed(b),
+            Process::Owned(o) => Cow::Owned(o)
+        }
+    }
+}
+
+impl<'a> Extend<(usize, Value)> for Process<'a> {
+    fn extend<I: IntoIterator<Item=(usize, Value)>>(&mut self, it: I) {
+        for v in it.into_iter() {
+            self.process(v);
+        }
+    }
+}
+
+fn escape_str(s: &str, dispatch: fn(char) -> Value) -> Cow<str> {
+    let mut p = Process::Borrowed(s);
+    p.extend(s.char_indices().map(|(ind, c)| (ind, dispatch(c))));
+    p.into_result()
+}
+
+#[inline]
+pub fn escape_str_attribute(s: &str) -> Cow<str> {
+    escape_str(s, Value::dispatch_for_attribute)
+}
+
+#[inline]
+pub fn escape_str_content(s: &str) -> Cow<str> {
+    escape_str(s, Value::dispatch_for_content)
+}
+
+#[inline]
+pub fn escape_str_pcdata(s: &str) -> Cow<str> {
+    escape_str(s, Value::dispatch_for_pcdata)
 }

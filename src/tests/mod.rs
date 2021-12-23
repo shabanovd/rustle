@@ -16,9 +16,10 @@ pub(crate) fn eval_on_spec(
     input: &str
 ) -> EvalResult {
     match spec {
+        "XQ10 XQ30" | "XP20 XP30 XQ10 XQ30" |
         "XQ10" | "XP20 XQ10" | "XQ10 XP20" |
         "XQ10+" | "XP20+ XQ10+" | "XP30+ XQ10+" |
-        "XQ30+" | "XP30+ XQ30+" |
+        "XQ30+" | "XP30+ XQ30+" | "XQ30+ XP30+" |
         "XQ31+" | "XP31+ XQ31+" => {
             eval(sources_namespaces, input)
         }
@@ -230,35 +231,55 @@ pub(crate) fn bool_check_assert_xml(result: &EvalResult, check: &str) -> bool {
         relax(tmp_env, items).unwrap()
     };
 
-    match &expected {
-        Object::Node(l_rf) => {
-            let expect = l_rf.to_xml().unwrap();
-            println!("expect: {:?}", expect);
-            match obj {
-                Object::Node(r_rf) => {
-                    let result = r_rf.to_xml().unwrap();
-                    println!("result: {:?}", result);
-                    // l_rf.deep_eq(r_rf)
-                    expect == result
-                }
-                Object::Atomic(t) => {
-                    match t.convert(Types::String) {
-                        Ok(str) => {
-                            match str {
-                                Type::String(result) => {
-                                    println!("result: {:?}", result);
-                                    expect == result
-                                },
-                                _ => panic!("result is wrong: {:?}", str)
+    println!("expected: {:?}", expected);
+    println!("obj: {:?}", obj);
+
+    let mut expected_it = expected.into_iter();
+    let mut result_it = obj.clone().into_iter();
+
+    loop {
+        if let Some(expected) = expected_it.next() {
+            if let Some(result) = result_it.next() {
+                match &expected {
+                    Object::Node(l_rf) => {
+                        let expect = l_rf.to_xml().unwrap();
+                        match result {
+                            Object::Node(r_rf) => {
+                                let result = r_rf.to_xml().unwrap();
+                                if expect != result {
+                                    break false;
+                                }
                             }
+                            Object::Atomic(t) => {
+                                match t.convert(Types::String) {
+                                    Ok(str) => {
+                                        match str {
+                                            Type::String(result) => {
+                                                if expect != result {
+                                                    break false;
+                                                }
+                                            },
+                                            _ => panic!("result is wrong: {:?}", str)
+                                        }
+                                    }
+                                    Err(e) => panic!("result is error: {:?}", e)
+                                }
+                            }
+                            _ => panic!("{:?} vs {:?}", expected, result)
                         }
-                        Err(e) => panic!("result is error: {:?}", e)
                     }
+                    _ => panic!("{:?} vs {:?}", expected, result)
                 }
-                _ => panic!()
+            } else {
+                panic!("{:?} vs NONE", expected)
+            }
+        } else {
+            if let Some(result) = result_it.next() {
+                panic!("NONE vs {:?}", result)
+            } else {
+                break true;
             }
         }
-        _ => panic!()
     }
 }
 
@@ -348,6 +369,21 @@ pub(crate) fn _check_assert_type(result: &EvalResult, check: &str) -> Option<Str
         match result {
             Object::Atomic(Type::Integer(..)) => None,
             _ => Some(String::from("not xs:integer"))
+        }
+    } else if check == "xs:decimal" {
+        match result {
+            Object::Atomic(Type::Decimal(..)) => None,
+            _ => Some(String::from("not xs:decimal"))
+        }
+    } else if check == "xs:float" {
+        match result {
+            Object::Atomic(Type::Float(..)) => None,
+            _ => Some(String::from("not xs:float"))
+        }
+    } else if check == "xs:double" {
+        match result {
+            Object::Atomic(Type::Double(..)) => None,
+            _ => Some(String::from("not xs:double"))
         }
     } else if check == "namespace-node()" {
         match result {

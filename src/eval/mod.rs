@@ -1,3 +1,4 @@
+use bigdecimal::ToPrimitive;
 use crate::parser::op::Statement;
 
 pub use self::environment::Environment;
@@ -204,12 +205,14 @@ fn eval_predicates(exprs: &Vec<PrimaryExprSuffix>, env: Box<Environment>, value:
                         fn_env.set_variable(resolve_element_qname(&parameter.name, &fn_env), argument)
                     }
 
-                    let (new_env, new_value) = body.eval(fn_env, context)?;
+                    let (new_env, mut result) = body.eval(fn_env, context)?;
                     current_env = new_env.prev();
 
-                    // TODO handle st
+                    if let Some(st) = st {
+                        result = st.cascade(&current_env, result)?;
+                    }
 
-                    new_value
+                    result
                 },
                 Object::FunctionRef { name, arity } => {
                     // TODO check arity
@@ -223,6 +226,7 @@ fn eval_predicates(exprs: &Vec<PrimaryExprSuffix>, env: Box<Environment>, value:
 
                     let (new_env, value) = call(current_env, name, evaluated_arguments, context)?;
                     current_env = new_env;
+
                     value
                 }
                 Object::Array(items) => {
@@ -247,7 +251,30 @@ fn eval_predicates(exprs: &Vec<PrimaryExprSuffix>, env: Box<Environment>, value:
                 _ => return Err((ErrorCode::XPTY0004, format!("{:?}", result)))
             };
         } else if let Some(key) = lookup {
-            todo!()
+            println!("{:?}", result);
+
+            let (new_env, key) = key.eval(current_env, context)?;
+            current_env = new_env;
+
+
+            result = match result {
+                Object::Array(items) => {
+                    let number = key.to_integer()?;
+                    if let Some(index) = (number-1).to_usize() {
+                        if let Some(item) = items.get(index) {
+                            item.clone()
+                        } else {
+                            Object::Empty
+                        }
+                    } else {
+                        Object::Empty
+                    }
+                }
+                Object::Map(map) => {
+                    todo!()
+                },
+                _ => panic!("raise error?")
+            };
         }
 
     }

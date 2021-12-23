@@ -594,17 +594,29 @@ pub(crate) fn parse_expr(input: &str) -> IResult<&str, Box<dyn Expression>, Cust
 
 // [40]    	ExprSingle 	   ::=    	FLWORExpr
 //  | QuantifiedExpr
-//  TODO: | SwitchExpr
-//  TODO: | TypeswitchExpr
-// | IfExpr
+//  | SwitchExpr
+//  | TypeswitchExpr
+//  | IfExpr
 //  TODO: | TryCatchExpr
-// | OrExpr
-parse_one_of!(parse_expr_single,
-    parse_flwor_expr,
-    parse_quantified_expr,
-    parse_if_expr,
-    parse_or_expr,
-);
+//  | OrExpr
+// parse_one_of!(parse_expr_single,
+//     parse_flwor_expr,
+//     parse_quantified_expr,
+//     parse_typeswitch_expr,
+//     parse_if_expr,
+//     parse_or_expr,
+// );
+
+fn parse_expr_single(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
+    alt((
+        parse_flwor_expr,
+        parse_quantified_expr,
+        parse_switch_expr,
+        parse_typeswitch_expr,
+        parse_if_expr,
+        parse_or_expr
+    ))(input)
+}
 
 // [41]    	FLWORExpr 	   ::=    	InitialClause IntermediateClause* ReturnClause
 // [69]    	ReturnClause 	   ::=    	"return" ExprSingle
@@ -798,6 +810,84 @@ fn parse_quantified_expr(input: &str) -> IResult<&str, Box<dyn Expression>, Cust
         };
         QuantifiedExpr::boxed(op, name, st, seq, vars, satisfies)
     }
+    )(input)
+}
+
+// [71]    	SwitchExpr 	   ::=    	"switch" "(" Expr ")" SwitchCaseClause+ "default" "return" ExprSingle
+fn parse_switch_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
+    map(
+        tuple((
+            preceded(
+                tuple((ws, tag("switch"), ws)),
+                delimited(tag("("), parse_expr, tuple((ws, tag(")"))))
+            ),
+            many1(parse_switch_case_clause),
+            preceded(
+                tuple((ws, tag("default"), ws1, tag("return"))),
+                parse_expr_single
+            )
+        )),
+        |(source, clauses, default_expr)|
+            SwitchExpr::boxed(source, clauses, default_expr)
+    )(input)
+}
+
+// [72]    	SwitchCaseClause 	   ::=    	("case" SwitchCaseOperand)+ "return" ExprSingle
+// [73]    	SwitchCaseOperand 	   ::=    	ExprSingle
+fn parse_switch_case_clause(input: &str) -> IResult<&str, SwitchCaseClause, CustomError<&str>> {
+    map(
+        tuple((
+            many1(
+                preceded(tuple((ws, tag("case"))), parse_expr_single)
+            ),
+            preceded(tuple((ws1, tag("return"))), parse_expr_single)
+        )),
+        |(operands, expr)| SwitchCaseClause::new(operands, expr)
+    )(input)
+}
+
+// [74]    	TypeswitchExpr 	   ::=    	"typeswitch" "(" Expr ")" CaseClause+ "default" ("$" VarName)? "return" ExprSingle
+fn parse_typeswitch_expr(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
+    map(
+        tuple((
+            preceded(
+                tuple((ws, tag("typeswitch"), ws)),
+                delimited(tag("("), parse_expr, tuple((ws, tag(")"))))
+            ),
+            many1(parse_case_clause),
+            preceded(
+                tuple((ws1, tag("default"))),
+                tuple((
+                    opt(preceded(tuple((ws1, tag("$"))), parse_var_name)),
+                    preceded(tuple((ws1, tag("return"), ws1)), parse_expr_single)
+                ))
+            )
+        )),
+        |(source, clauses, (default_name, default_expr))|
+            TypeswitchExpr::boxed(source, clauses, default_name, default_expr)
+    )(input)
+}
+
+// [75]    	CaseClause 	   ::=    	"case" ("$" VarName "as")? SequenceTypeUnion "return" ExprSingle
+fn parse_case_clause(input: &str) -> IResult<&str, CaseClause, CustomError<&str>> {
+    map(
+        preceded(
+            tuple((ws1, tag("case"), ws1)),
+            tuple((
+                opt(preceded(tag("$"), terminated(parse_var_name, tuple((ws1, tag("as"), ws1))))),
+                parse_sequence_type_union,
+                preceded(tuple((ws1, tag("return"), ws1)), parse_expr_single)
+            ))
+        ),
+        |(name, stu, expr)| CaseClause::new(name, stu, expr)
+    )(input)
+}
+
+// [76]    	SequenceTypeUnion 	   ::=    	SequenceType ("|" SequenceType)*
+fn parse_sequence_type_union(input: &str) -> IResult<&str, Vec<SequenceType>, CustomError<&str>> {
+    separated_list1(
+        tuple((ws1, tag("|"), ws1)),
+        parse_sequence_type,
     )(input)
 }
 
@@ -1216,12 +1306,16 @@ fn parse_validate_expr(input: &str) -> IResult<&str, Box<dyn Expression>, Custom
         preceded(
             tuple((ws, tag("validate"), ws1)),
             tuple((
-                opt(
-                    alt((
-                        map(alt((tag("lax"), tag("strict"))), |name| ValidationMode::from(name)),
-                        map(preceded(tag("type"), parse_type_name), |type_name| ValidationMode::Type(type_name))
-                    ))
-                ),
+                opt(alt((
+                    map(
+                        alt((terminated(tag("lax"), ws1), terminated(tag("strict"), ws1))),
+                        |name| ValidationMode::from(name)
+                    ),
+                    map(
+                        preceded(tuple((ws, tag("type"), ws1)), parse_type_name),
+                        |type_name| ValidationMode::Type(type_name)
+                    )
+                ))),
                 delimited(
                 tuple((ws, tag("{"))),
                 parse_expr,

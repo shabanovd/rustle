@@ -1,3 +1,4 @@
+use bigdecimal::ToPrimitive;
 use crate::eval::{Object, Type, EvalResult, DynamicContext};
 use crate::eval::Environment;
 use crate::eval::sequence_type::*;
@@ -39,13 +40,24 @@ pub(crate) fn FN_ARRAY_GET() -> FUNCTION {
 }
 
 pub(crate) fn array_get(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
-    match arguments.as_slice() {
-        [Object::Array(array), item] => {
-            todo!()
+    let result = match arguments.as_slice() {
+        [Object::Array(items), key] => {
+            let number = key.to_integer()?;
+            if let Some(index) = (number-1).to_usize() {
+                if let Some(item) = items.get(index) {
+                    item.clone()
+                } else {
+                    Object::Empty
+                }
+            } else {
+                Object::Empty
+            }
         }
 
         _ => panic!("error")
-    }
+    };
+
+    Ok((env, result))
 }
 
 // array:put($array as array(*), $position as xs:integer, $member as item()*) as array(*)
