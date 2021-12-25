@@ -313,7 +313,7 @@ pub(crate) fn _check_assert_type(result: &EvalResult, check: &str) -> Option<Str
     let (env, result) = result.as_ref().unwrap();
     if check == "array(*)" {
         match result {
-            Object::Array(..) => None,
+            Object::Array(_) => None,
             _ => Some(String::from("not array(*)"))
         }
     } else if check == "array(xs:string)" {
@@ -324,7 +324,7 @@ pub(crate) fn _check_assert_type(result: &EvalResult, check: &str) -> Option<Str
                 } else {
                     for item in items {
                         match item {
-                            Object::Atomic(Type::String(..)) => {},
+                            Object::Atomic(Type::String(_)) => {},
                             _ => return Some(format!("not xs:string: {:?}", item))
                         }
                     }
@@ -341,11 +341,11 @@ pub(crate) fn _check_assert_type(result: &EvalResult, check: &str) -> Option<Str
                 } else {
                     for item in items {
                         match item {
-                            Object::Atomic(Type::String(..)) => {},
+                            Object::Atomic(Type::String(_)) => {},
                             Object::Sequence(items) => {
                                 for item in items {
                                     match item {
-                                        Object::Atomic(Type::String(..)) => {},
+                                        Object::Atomic(Type::String(_)) => {},
                                         _ => return Some(format!("not xs:string: {:?}", item))
                                     }
                                 }
@@ -362,27 +362,32 @@ pub(crate) fn _check_assert_type(result: &EvalResult, check: &str) -> Option<Str
         }
     } else if check == "xs:boolean" {
         match result {
-            Object::Atomic(Type::Boolean(..)) => None,
+            Object::Atomic(Type::Boolean(_)) => None,
             _ => Some(String::from("not xs:boolean"))
+        }
+    } else if check == "xs:string" {
+        match result {
+            Object::Atomic(Type::String(_)) => None,
+            _ => Some(String::from("not xs:string"))
         }
     } else if check == "xs:integer" {
         match result {
-            Object::Atomic(Type::Integer(..)) => None,
+            Object::Atomic(Type::Integer(_)) => None,
             _ => Some(String::from("not xs:integer"))
         }
     } else if check == "xs:decimal" {
         match result {
-            Object::Atomic(Type::Decimal(..)) => None,
+            Object::Atomic(Type::Decimal(_)) => None,
             _ => Some(String::from("not xs:decimal"))
         }
     } else if check == "xs:float" {
         match result {
-            Object::Atomic(Type::Float(..)) => None,
+            Object::Atomic(Type::Float(_)) => None,
             _ => Some(String::from("not xs:float"))
         }
     } else if check == "xs:double" {
         match result {
-            Object::Atomic(Type::Double(..)) => None,
+            Object::Atomic(Type::Double(_)) => None,
             _ => Some(String::from("not xs:double"))
         }
     } else if check == "namespace-node()" {

@@ -3835,25 +3835,25 @@ impl Type {
                 }
             },
 
-            Type::Byte(..) |
-            Type::Short(..) |
-            Type::Int(..) |
-            Type::Long(..) |
+            Type::Byte(_) |
+            Type::Short(_) |
+            Type::Int(_) |
+            Type::Long(_) |
 
-            Type::UnsignedByte(..) |
-            Type::UnsignedShort(..) |
-            Type::UnsignedInt(..) |
-            Type::UnsignedLong(..) |
+            Type::UnsignedByte(_) |
+            Type::UnsignedShort(_) |
+            Type::UnsignedInt(_) |
+            Type::UnsignedLong(_) |
 
-            Type::PositiveInteger(..) |
-            Type::NonNegativeInteger(..) |
-            Type::NonPositiveInteger(..) |
-            Type::NegativeInteger(..) |
+            Type::PositiveInteger(_) |
+            Type::NonNegativeInteger(_) |
+            Type::NonPositiveInteger(_) |
+            Type::NegativeInteger(_) |
 
-            Type::Integer(..) |
-            Type::Decimal(..) |
-            Type::Float(..) |
-            Type::Double(..) => {
+            Type::Integer(_) |
+            Type::Decimal(_) |
+            Type::Float(_) |
+            Type::Double(_) => {
                 let lnt = self.to_type();
                 let rnt = other.to_type();
 
@@ -4129,14 +4129,14 @@ pub fn string_to_double(string: &String) -> Result<Object, ErrorCode> {
         Ok(number) => {
             Ok(Object::Atomic(Type::Double(number)))
         },
-        Err(..) => Err(ErrorCode::FORG0001)
+        Err(_) => Err(ErrorCode::FORG0001)
     }
 }
 
 pub fn string_to_decimal(string: &String) -> Result<BigDecimal, ErrorCode> {
     match string.trim().parse() {
         Ok(num) => Ok(num),
-        Err(..) => Err(ErrorCode::FORG0001)
+        Err(_) => Err(ErrorCode::FORG0001)
     }
 }
 
@@ -4253,10 +4253,10 @@ impl Object {
     pub(crate) fn into_iter_with_total(self) -> (Box<dyn std::iter::Iterator<Item = Object>>, usize) {
         match self {
             Object::Empty => (Box::new(std::iter::empty()), 0),
-            Object::Node(..) |
+            Object::Node(_) |
             Object::Array(_) |
             Object::Map(_) |
-            Object::Atomic(..) => (Box::new(std::iter::once(self)), 1),
+            Object::Atomic(_) => (Box::new(std::iter::once(self)), 1),
             Object::Range { min , max } => {
                 let (it, total) = RangeIterator::create(min, max);
                 (Box::new(it), total)
@@ -4275,8 +4275,8 @@ impl Object {
             Object::Empty => {
                 return Box::new(std::iter::empty());
             },
-            Object::Node(..) |
-            Object::Atomic(..) => {
+            Object::Node(_) |
+            Object::Atomic(_) => {
                 return Box::new(std::iter::once(self.clone()));
             },
             Object::Range { min , max } => {
@@ -4310,6 +4310,46 @@ impl Object {
         }
     }
 
+    pub(crate) fn to_string(&self) -> Result<String, ErrorInfo> {
+        match self {
+            Object::Atomic(t) => {
+                let n = t.convert(Types::String)?;
+                match n {
+                    Type::String(str) => Ok(str),
+                    _ => Err((ErrorCode::XPTY0004, format!("can't convert to String {:?}", t)))
+                }
+            },
+            Object::Node(rf) => {
+                match rf.to_typed_value() {
+                    Ok(str) => Ok(str),
+                    Err(msg) => Err((ErrorCode::XPTY0004, format!("can't convert to String: {}", msg)))
+                }
+            },
+            Object::Array(items) |
+            Object::Sequence(items) => {
+                let mut buf = Vec::with_capacity(items.len());
+                for item in items {
+                    let data = item.to_string()?;
+                    buf.push(data);
+                }
+                let data = buf.join(" ");
+                Ok(data)
+            }
+            Object::Range { min, max } => {
+                let (it, count) = RangeIterator::create(*min, *max);
+
+                let mut buf = Vec::with_capacity(count);
+                for item in it {
+                    buf.push(item.to_string()?);
+                }
+
+                Ok(buf.join(" "))
+            }
+            Object::Map(_) => Err((ErrorCode::FOTY0013, format!("can't convert to String {:?}", self))),
+            _ => Err((ErrorCode::XPTY0004, format!("can't convert to String {:?}", self)))
+        }
+    }
+
     pub(crate) fn to_bool(&self) -> Result<bool, ErrorInfo> {
         match self {
             Object::Atomic(Type::Boolean(v)) => Ok(*v),
@@ -4331,7 +4371,7 @@ impl Object {
                     Ok(num) => {
                         match num.parse() {
                             Ok(v) => Ok(v),
-                            Err(..) => Err((ErrorCode::XPTY0004, format!("can't convert to int {:?}", num)))
+                            Err(_) => Err((ErrorCode::XPTY0004, format!("can't convert to int {:?}", num)))
                         }
                     },
                     Err(msg) => Err((ErrorCode::XPTY0004, format!("can't convert node to int")))
@@ -4589,7 +4629,7 @@ pub fn atomization_of_vec(env: &Box<Environment>, items: Vec<Object>) -> Result<
 
 pub(crate) fn atomization(env: &Box<Environment>, obj: Object) -> Result<Object, ErrorInfo> {
     match obj {
-        Object::Atomic(..) => Ok(obj),
+        Object::Atomic(_) => Ok(obj),
         Object::Node(rf) => {
             match rf.to_typed_value() {
                 Ok(data) => Ok(Object::Atomic(Type::Untyped(data))),
@@ -4597,7 +4637,6 @@ pub(crate) fn atomization(env: &Box<Environment>, obj: Object) -> Result<Object,
             }
 
         },
-        Object::Array(items) => atomization_of_vec(env, items),
         Object::Sequence(items) => atomization_of_vec(env, items),
         Object::Range { min, max } => {
             if min == max {
@@ -4609,7 +4648,8 @@ pub(crate) fn atomization(env: &Box<Environment>, obj: Object) -> Result<Object,
         Object::Empty => Ok(obj), // or it can be XPST0005?
         Object::Function { .. } |
         Object::FunctionRef { .. } |
-        Object::Map(..) => Err((ErrorCode::FOTY0013, String::from("TODO"))),
+        Object::Array(_) |
+        Object::Map(_) => Err((ErrorCode::FOTY0013, String::from("TODO"))),
         _ => todo!()
     }
 }
@@ -4617,9 +4657,9 @@ pub(crate) fn atomization(env: &Box<Environment>, obj: Object) -> Result<Object,
 pub(crate) fn sequence_atomization(env: &Box<Environment>, obj: Object) -> Result<Object, ErrorInfo> {
     match obj {
         Object::Range { .. } |
-        Object::Array(..) |
-        Object::Sequence(..) |
-        Object::Atomic(..) => Ok(obj),
+        Object::Array(_) |
+        Object::Sequence(_) |
+        Object::Atomic(_) => Ok(obj),
         Object::Node(rf) => {
             match rf.to_typed_value() {
                 Ok(data) => Ok(Object::Atomic(Type::Untyped(data))),

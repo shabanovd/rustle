@@ -1,7 +1,7 @@
 use crate::parse_one_of;
 
 use crate::parser::op::{Representation, found_expr};
-use crate::parser::errors::{CustomError, IResultExt};
+use crate::parser::errors::{CustomError, ErrorCode, IResultExt};
 use crate::parser::parse_literal::{is_digits, is_0_9a_f};
 
 use nom::{branch::alt, bytes::complete::{is_not, tag, take_until, take_while1}, character::complete::multispace1, error::Error, IResult, InputTakeAtPosition, FindToken};
@@ -14,6 +14,7 @@ use crate::eval::prolog::*;
 use crate::eval::expression::Expression;
 use nom::character::complete::multispace0;
 use nom::sequence::preceded;
+use crate::parser::errors::ErrorCode::*;
 
 // [140]    	NodeConstructor 	   ::=    	DirectConstructor | ComputedConstructor
 parse_one_of!(parse_node_constructor,
@@ -34,9 +35,9 @@ pub(crate) fn parse_direct_constructor(input: &str) -> IResult<&str, Box<dyn Exp
     let result = tag("!--")(input);
     if result.is_ok() {
         let (input, _) = result?;
-        let (input, content) = take_until("-->")(input).or_failure(CustomError::XPST0003)?;
+        let (input, content) = take_until("-->")(input).or_failure(ErrorCode::XPST0003)?;
 
-        let input = tag("-->")(input).or_failure(CustomError::XPST0003)?.0;
+        let input = tag("-->")(input).or_failure(ErrorCode::XPST0003)?.0;
 
         //TODO: raise error if content end by '-'
 
@@ -51,14 +52,14 @@ pub(crate) fn parse_direct_constructor(input: &str) -> IResult<&str, Box<dyn Exp
     if result.is_ok() {
         let input = result?.0;
 
-        let (input, target) = parse_qname_expr(input).or_failure(CustomError::XPST0003)?;
+        let (input, target) = parse_qname_expr(input).or_failure(ErrorCode::XPST0003)?;
         let (input, _) = ws(input)?;
 
         //TODO: target must not be 'xml'
 
-        let (input, content) = take_until("?>")(input).or_failure(CustomError::XPST0003)?;
+        let (input, content) = take_until("?>")(input).or_failure(ErrorCode::XPST0003)?;
 
-        let input = tag("?>")(input).or_failure(CustomError::XPST0003)?.0;
+        let input = tag("?>")(input).or_failure(ErrorCode::XPST0003)?.0;
 
         let content = Box::new(StringExpr::from(content));
 
@@ -69,7 +70,7 @@ pub(crate) fn parse_direct_constructor(input: &str) -> IResult<&str, Box<dyn Exp
 
     // "<" QName DirAttributeList ("/>" | (">" DirElemContent* "</" QName S? ">"))
 
-    let (input, tag_name) = parse_qname(input).or_failure(CustomError::XPST0003)?;
+    let (input, tag_name) = parse_qname(input).or_failure(ErrorCode::XPST0003)?;
 
     let (input, attributes) = parse_attribute_list(input)?;
 
@@ -82,7 +83,7 @@ pub(crate) fn parse_direct_constructor(input: &str) -> IResult<&str, Box<dyn Exp
         current_input = check?.0;
 
     } else {
-        current_input = tag(">")(current_input).or_failure(CustomError::XPST0003)?.0;
+        current_input = tag(">")(current_input).or_failure(ErrorCode::XPST0003)?.0;
         loop {
             let check_for_close = tag("</")(current_input);
             if check_for_close.is_ok() {
@@ -92,29 +93,27 @@ pub(crate) fn parse_direct_constructor(input: &str) -> IResult<&str, Box<dyn Exp
 
             let check = parse_dir_elem_content(current_input);
             match check {
-                Ok(..) => {
+                Ok(_) => {
                     let (input, child) = check?;
                     current_input = input;
 
                     children.push(child);
                 },
-                Err(nom::Err::Failure(..)) => {
-                    return check;
-                },
+                Err(nom::Err::Failure(_)) => return check,
                 _ => break
             }
         }
-        current_input = tag("</")(current_input).or_failure(CustomError::XPST0003)?.0;
+        current_input = tag("</")(current_input).or_failure(ErrorCode::XPST0003)?.0;
 
-        let (input, close_tag_name) = parse_qname(current_input).or_failure(CustomError::XPST0003)?;
+        let (input, close_tag_name) = parse_qname(current_input).or_failure(ErrorCode::XPST0003)?;
 
         if close_tag_name != tag_name {
-            return Err(nom::Err::Failure(CustomError::XQST0118));
+            return Err(CustomError::failed(input, XQST0118));
         }
 
         current_input = multispace0(input)?.0;
 
-        current_input = tag(">")(current_input).or_failure(CustomError::XPST0003)?.0;
+        current_input = tag(">")(current_input).or_failure(ErrorCode::XPST0003)?.0;
     };
 
     found_expr(current_input, Box::new(NodeElement { name: Box::new(tag_name), attributes, children }))
@@ -137,13 +136,13 @@ pub(crate) fn parse_attribute_list(input: &str) -> IResult<&str, Option<Attribut
         if check.is_ok() {
             let (input, name) = check?;
 
-            let input = s_tag_s("=", input).or_failure(CustomError::XPST0003)?.0;
+            let input = s_tag_s("=", input).or_failure(ErrorCode::XPST0003)?.0;
 
-            let (input, value) = parse_dir_attribute_value(input).or_failure(CustomError::XPST0003)?;
+            let (input, value) = parse_dir_attribute_value(input).or_failure(ErrorCode::XPST0003)?;
             current_input = input;
 
             match attributes.add(name, value) {
-                Err((code, msg)) => return Err(nom::Err::Failure(CustomError::XQST0040)),
+                Err((code, msg)) => return Err(CustomError::failed(input, XQST0040)),
                 _ => {}
             }
         } else {
@@ -190,7 +189,7 @@ pub(crate) fn parse_dir_attribute_value(input: &str) -> IResult<&str, Box<dyn Ex
 
             data.push(expr);
         } else {
-            let (input, _) = tag(open)(current_input).or_failure(CustomError::XPST0003)?;
+            let (input, _) = tag(open)(current_input).or_failure(ErrorCode::XPST0003)?;
             current_input = input;
 
             // lookahead
@@ -211,13 +210,13 @@ pub(crate) fn parse_dir_attribute_value(input: &str) -> IResult<&str, Box<dyn Ex
                     let expr = data.remove(0);
                     Ok((current_input, expr))
                 } else {
-                    found_expr(current_input, StringComplex::new(data))
+                    found_expr(current_input, StringComplex::boxed(data))
                 }
             }
         }
 
         if current_input == begin_input {
-            return Err(nom::Err::Failure(CustomError::XPST0003));
+            return Err(CustomError::failed(input, XPST0003));
         }
     }
 }
@@ -302,11 +301,11 @@ pub(crate) fn parse_computed_constructor(input: &str) -> IResult<&str, Box<dyn E
             let (input, name) = if check.is_ok() {
                 check?
             } else {
-                let (input, _) = tag("{")(input).or_failure(CustomError::XPST0003)?;
+                let (input, _) = tag("{")(input).or_failure(ErrorCode::XPST0003)?;
 
                 let (input, expr) = parse_expr(input)?;
 
-                let (input, _) = tag("}")(input).or_failure(CustomError::XPST0003)?;
+                let (input, _) = tag("}")(input).or_failure(ErrorCode::XPST0003)?;
 
                 (input, expr)
             };
@@ -327,7 +326,7 @@ pub(crate) fn parse_computed_constructor(input: &str) -> IResult<&str, Box<dyn E
 
                 let (input, expr) = parse_expr(input)?;
 
-                let (input, _) = tag("}")(input).or_failure(CustomError::XPST0003)?;
+                let (input, _) = tag("}")(input).or_failure(ErrorCode::XPST0003)?;
 
                 (input, expr)
             };
@@ -359,11 +358,11 @@ pub(crate) fn parse_computed_constructor(input: &str) -> IResult<&str, Box<dyn E
 
                 (input, StringExpr::new(name))
             } else {
-                let (input, _) = tag("{")(input).or_failure(CustomError::XPST0003)?;
+                let (input, _) = tag("{")(input).or_failure(ErrorCode::XPST0003)?;
 
                 let (input, expr) = parse_expr(input)?;
 
-                let (input, _) = tag("}")(input).or_failure(CustomError::XPST0003)?;
+                let (input, _) = tag("}")(input).or_failure(ErrorCode::XPST0003)?;
 
                 (input, expr)
             };
@@ -387,14 +386,12 @@ pub(crate) fn parse_refs(input: &str) -> IResult<&str, Box<dyn Expression>, Cust
         Ok(r) => {
             return Ok(r);
         },
-        Err(nom::Err::Failure(e)) => {
-            return Err(nom::Err::Failure(e));
-        },
+        Err(nom::Err::Failure(e)) => return Err(nom::Err::Failure(e)),
         _ => {}
     }
 
     if must_have.is_ok() {
-        Err(nom::Err::Failure(CustomError::XPST0003))
+        Err(CustomError::failed(input, XPST0003))
     } else {
         Err(nom::Err::Error(ParseError::from_char(input, '&')))
     }
@@ -405,17 +402,13 @@ pub(crate) fn parse_refs_as_char(input: &str) -> IResult<&str, char, CustomError
 
     let check = alt((parse_predefined_entity_ref_as_char, parse_char_ref_as_char))(input);
     match check {
-        Ok(r) => {
-            return Ok(r);
-        },
-        Err(nom::Err::Failure(e)) => {
-            return Err(nom::Err::Failure(e));
-        },
+        Ok(r) => return Ok(r),
+        Err(nom::Err::Failure(e)) => return Err(nom::Err::Failure(e)),
         _ => {}
     }
 
     if must_have.is_ok() {
-        Err(nom::Err::Failure(CustomError::XPST0003))
+        Err(CustomError::failed(input, XPST0003))
     } else {
         Err(nom::Err::Error(ParseError::from_char(input, '&')))
     }
@@ -433,16 +426,16 @@ pub(crate) fn parse_char_ref(input: &str) -> IResult<&str, Box<dyn Expression>, 
     let (input, reference, representation) = if check.is_ok() {
         let (input, _) = check?;
 
-        let (input, code) = take_while1(is_0_9a_f)(input).or_failure(CustomError::XPST0003)?;
+        let (input, code) = take_while1(is_0_9a_f)(input).or_failure(ErrorCode::XPST0003)?;
 
-        let (input, _) = tag(";")(input).or_failure(CustomError::XPST0003)?;
+        let (input, _) = tag(";")(input).or_failure(ErrorCode::XPST0003)?;
 
         (input, u32::from_str_radix(code, 16), Representation::Hexadecimal)
 
     } else {
-        let (input, code) = take_while1(is_digits)(input).or_failure(CustomError::XPST0003)?;
+        let (input, code) = take_while1(is_digits)(input).or_failure(ErrorCode::XPST0003)?;
 
-        let (input, _) = tag(";")(input).or_failure(CustomError::XPST0003)?;
+        let (input, _) = tag(";")(input).or_failure(ErrorCode::XPST0003)?;
 
         (input, u32::from_str_radix(code, 10), Representation::Decimal)
     };
@@ -458,10 +451,10 @@ pub(crate) fn parse_char_ref(input: &str) -> IResult<&str, Box<dyn Expression>, 
         {
             found_expr(input, Box::new(CharRef { representation, reference }))
         } else {
-            Err(nom::Err::Failure(CustomError::XQST0090))
+            Err(CustomError::failed(input, XQST0090))
         }
     } else {
-        Err(nom::Err::Failure(CustomError::XQST0090))
+        Err(CustomError::failed(input, XQST0090))
     }
 }
 
@@ -472,16 +465,16 @@ pub(crate) fn parse_char_ref_as_char(input: &str) -> IResult<&str, char, CustomE
     let (input, reference, representation) = if check.is_ok() {
         let (input, _) = check?;
 
-        let (input, code) = take_while1(is_0_9a_f)(input).or_failure(CustomError::XPST0003)?;
+        let (input, code) = take_while1(is_0_9a_f)(input).or_failure(ErrorCode::XPST0003)?;
 
-        let (input, _) = tag(";")(input).or_failure(CustomError::XPST0003)?;
+        let (input, _) = tag(";")(input).or_failure(ErrorCode::XPST0003)?;
 
         (input, u32::from_str_radix(code, 16), Representation::Hexadecimal)
 
     } else {
-        let (input, code) = take_while1(is_digits)(input).or_failure(CustomError::XPST0003)?;
+        let (input, code) = take_while1(is_digits)(input).or_failure(ErrorCode::XPST0003)?;
 
-        let (input, _) = tag(";")(input).or_failure(CustomError::XPST0003)?;
+        let (input, _) = tag(";")(input).or_failure(ErrorCode::XPST0003)?;
 
         (input, u32::from_str_radix(code, 10), Representation::Decimal)
     };
@@ -500,7 +493,7 @@ pub(crate) fn parse_char_ref_as_char(input: &str) -> IResult<&str, char, CustomE
             }
         }
     }
-    Err(nom::Err::Failure(CustomError::XQST0090))
+    Err(CustomError::failed(input, XQST0090))
 }
 
 // [225]    	PredefinedEntityRef 	   ::=    	"&" ("lt" | "gt" | "amp" | "quot" | "apos") ";"
@@ -515,7 +508,7 @@ pub(crate) fn parse_predefined_entity_ref(input: &str) -> IResult<&str, Box<dyn 
         tag("apos")
     ))(input)?;
 
-    let (input, _) = tag(";")(input).or_failure(CustomError::XPST0003)?;
+    let (input, _) = tag(";")(input).or_failure(ErrorCode::XPST0003)?;
 
     found_expr(input, EntityRef::boxed(name))
 }
@@ -531,7 +524,7 @@ pub(crate) fn parse_predefined_entity_ref_as_char(input: &str) -> IResult<&str, 
         tag("apos")
     ))(input)?;
 
-    let (input, _) = tag(";")(input).or_failure(CustomError::XPST0003)?;
+    let (input, _) = tag(";")(input).or_failure(ErrorCode::XPST0003)?;
 
     let ch = match name {
         "lt" => '<',

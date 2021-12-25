@@ -1,5 +1,5 @@
 use nom::{bytes::complete::tag, IResult};
-use crate::parser::errors::CustomError;
+use crate::parser::errors::{CustomError, ErrorCode};
 use nom::bytes::complete::take;
 use nom::character::complete::multispace0;
 
@@ -7,7 +7,7 @@ pub(crate) fn ws(input: &str) -> Result<(&str, &str), nom::Err<CustomError<&str>
     match find_ws_end(input) {
         Some((pos, err)) => {
             if err {
-                Err(nom::Err::Failure(CustomError::XPST0003))
+                Err(nom::Err::Failure(CustomError::XQ(input, ErrorCode::XPST0003)))
             } else {
                 take(pos as usize)(input)
             }
@@ -20,16 +20,16 @@ pub(crate) fn ws1(input: &str) -> Result<(&str, &str), nom::Err<CustomError<&str
     match find_ws_end(input) {
         Some((pos, err)) => {
             if err {
-                Err(nom::Err::Failure(CustomError::XPST0003))
+                Err(nom::Err::Failure(CustomError::XQ(input, ErrorCode::XPST0003)))
             } else {
                 if pos > 0 {
                     take(pos as usize)(input)
                 } else {
-                    Err(nom::Err::Error(CustomError::XPST0003))
+                    Err(nom::Err::Error(CustomError::XQ(input, ErrorCode::XPST0003)))
                 }
             }
         },
-        None => Err(nom::Err::Error(CustomError::XPST0003))
+        None => Err(nom::Err::Error(CustomError::XQ(input, ErrorCode::XPST0003)))
     }
 }
 

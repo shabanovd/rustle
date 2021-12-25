@@ -18,6 +18,7 @@ use crate::eval::sequence_type::{ItemType, OccurrenceIndicator, SequenceType, XS
 use linked_hash_map::LinkedHashMap;
 use crate::namespaces::{Namespace, NS_heap};
 use crate::eval::sequence_type::QNameToTypes;
+use crate::parser::errors::ErrorCode::*;
 
 //internal
 #[derive(Clone, Debug)]
@@ -100,13 +101,13 @@ pub(crate) struct VersionDecl {
 }
 
 impl VersionDecl {
-    pub(crate) fn boxed<I>(encoding: Option<String>, version: Option<String>) -> Result<Box<dyn Expression>, (CustomError<I>, String)> {
+    pub(crate) fn boxed<'a>(encoding: Option<String>, version: Option<String>) -> Result<Box<dyn Expression>, ErrorInfo> {
         if let Some(version) = &version {
             match version.as_str() {
                 "1.0" | "3.0" | "3.1" => {
                     // TODO
                 }
-                _ => return Err((CustomError::XQST0031, format!("unsupported version {}", version)))
+                _ => return Err((XQST0031, format!("unsupported version {}", version)))
             }
         }
         if let Some(encoding) = &encoding {
@@ -116,7 +117,7 @@ impl VersionDecl {
                 "UTF-8" => {
                     // TODO
                 },
-                _ => return Err((CustomError::XQST0087, format!("unsupported encoding {}", encoding)))
+                _ => return Err((XQST0087, format!("unsupported encoding {}", encoding)))
             }
         }
         Ok(Box::new(VersionDecl { encoding, version }))
@@ -981,7 +982,7 @@ pub(crate) struct StringComplex {
 }
 
 impl StringComplex {
-    pub(crate) fn new(exprs: Vec<Box<dyn Expression>>) -> Box<Self> {
+    pub(crate) fn boxed(exprs: Vec<Box<dyn Expression>>) -> Box<dyn Expression> {
         Box::new(StringComplex { exprs })
     }
 }
@@ -995,7 +996,7 @@ impl Expression for StringComplex {
             let (new_env, object) = expr.eval(current_env, context)?;
             current_env = new_env;
 
-            let str = object_to_string(&current_env, &object);
+            let str = object.to_string()?;
             strings.push(str);
         }
 

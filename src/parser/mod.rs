@@ -1,6 +1,7 @@
 use nom::combinator::opt;
 use nom::Err;
 use crate::parser::errors::{CustomError, ErrorCode};
+use crate::parser::errors::ErrorCode::XPST0003;
 use crate::parser::helper::ws;
 use crate::parser::op::Statement;
 use crate::parser::parse_expr::{parse_main_module, parse_version_decl};
@@ -21,15 +22,10 @@ pub fn parse(input: &str) -> Result<Vec<Statement>, ErrorCode> {
         Ok(program) => Ok(program),
         Err(code) => {
             let code = match code {
-                CustomError::XQST0039 => ErrorCode::XQST0039,
-                CustomError::XQST0040 => ErrorCode::XQST0040,
-                CustomError::XQST0031 => ErrorCode::XQST0031,
-                CustomError::XQST0070 => ErrorCode::XQST0070,
-                CustomError::XQST0087 => ErrorCode::XQST0087,
-                CustomError::XPST0003 => ErrorCode::XPST0003,
-                CustomError::FOAR0002 => ErrorCode::FOAR0002,
-                CustomError::XQST0090 => ErrorCode::XQST0090,
-                CustomError::XQST0118 => ErrorCode::XQST0118,
+                CustomError::XQ(place, code) => {
+                    println!("error at {:?}", place);
+                    code
+                },
                 CustomError::Nom(_, _) => ErrorCode::XPST0003,
             };
             Err(code)
@@ -42,14 +38,14 @@ pub fn parse_script(input: &str) -> Result<Vec<Statement>, CustomError<&str>> {
 
     if input.len() == 0 {
         // empty is invalid
-        Err(CustomError::XPST0003)
+        Err(CustomError::new(input, XPST0003))
     } else {
         let (input, program) = parse_main_module(input)?;
         let (input, _) = ws(input)?;
         if input.len() > 0 {
             println!("unparsed {:?}", input);
             // something left un-parsed
-            Err(CustomError::XPST0003)
+            Err(CustomError::new(input, XPST0003))
         } else {
             Ok(program)
         }

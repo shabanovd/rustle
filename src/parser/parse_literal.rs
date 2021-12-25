@@ -1,6 +1,6 @@
 use crate::parse_one_of;
 
-use crate::parser::errors::{CustomError, IResultExt};
+use crate::parser::errors::{CustomError, ErrorCode, IResultExt};
 
 use nom::{
     branch::alt,
@@ -18,6 +18,7 @@ use nom::combinator::map;
 use nom::sequence::{preceded, terminated, tuple};
 use crate::eval::expression::Expression;
 use crate::eval::prolog::*;
+use crate::parser::errors::ErrorCode::*;
 use crate::parser::parse_names::parse_ncname;
 use crate::values::{QName, string_to_token};
 
@@ -69,7 +70,7 @@ pub(crate) fn parse_numeric_literal(input: &str) -> IResult<&str, Box<dyn Expres
         };
 
         let (input, e) = take_while1(is_digits)(input)
-            .or_failure(CustomError::XPST0003)?;
+            .or_failure(ErrorCode::XPST0003)?;
 
         let number = format!("{}.{}e{}{}", b, a, sign, e);
 
@@ -79,7 +80,7 @@ pub(crate) fn parse_numeric_literal(input: &str) -> IResult<&str, Box<dyn Expres
                 found_expr(input, Box::new(Double { number: OrderedFloat(number) }))
             },
             Err(..) => {
-                Err(nom::Err::Failure(CustomError::FOAR0002))
+                Err(CustomError::failed(input, FOAR0002))
             }
         }
 
@@ -91,9 +92,7 @@ pub(crate) fn parse_numeric_literal(input: &str) -> IResult<&str, Box<dyn Expres
                 Ok(number) => {
                     found_expr(input, Box::new(Integer { number }))
                 },
-                Err(..) => {
-                    Err(nom::Err::Failure(CustomError::FOAR0002))
-                }
+                Err(_) => Err(CustomError::failed(input, FOAR0002))
             }
         } else {
             let number = format!("{}.{}", b, a);
@@ -103,7 +102,7 @@ pub(crate) fn parse_numeric_literal(input: &str) -> IResult<&str, Box<dyn Expres
                     found_expr(input, Box::new(Decimal { number: number.normalized() }))
                 },
                 Err(..) => {
-                    Err(nom::Err::Failure(CustomError::FOAR0002))
+                    Err(CustomError::failed(input, FOAR0002))
                 }
             }
         }
@@ -135,9 +134,7 @@ pub(crate) fn parse_string_literal(input: &str) -> IResult<&str, Box<dyn Express
                 data.push(expr);
                 continue;
             },
-            Err(nom::Err::Failure(e)) => {
-                return Err(nom::Err::Failure(e));
-            },
+            Err(nom::Err::Failure(e)) => return Err(nom::Err::Failure(e)),
             _ => {}
         }
 
@@ -153,7 +150,7 @@ pub(crate) fn parse_string_literal(input: &str) -> IResult<&str, Box<dyn Express
 
         let check: Result<(&str, &str), nom::Err<Error<&str>>> = tag("&")(current_input);
         if check.is_err() {
-            let (input, _) = tag(open)(current_input).or_failure(CustomError::XPST0003)?;
+            let (input, _) = tag(open)(current_input).or_failure(ErrorCode::XPST0003)?;
             current_input = input;
 
             // lookahead
@@ -198,9 +195,7 @@ pub(crate) fn parse_string_literal_as_string(input: &str) -> IResult<&str, Strin
                 data.push(expr.to_string());
                 continue;
             },
-            Err(nom::Err::Failure(e)) => {
-                return Err(nom::Err::Failure(e));
-            },
+            Err(nom::Err::Failure(e)) => return Err(nom::Err::Failure(e)),
             _ => {}
         }
 
@@ -216,7 +211,7 @@ pub(crate) fn parse_string_literal_as_string(input: &str) -> IResult<&str, Strin
 
         let check: Result<(&str, &str), nom::Err<Error<&str>>> = tag("&")(current_input);
         if check.is_err() {
-            let (input, _) = tag(open)(current_input).or_failure(CustomError::XPST0003)?;
+            let (input, _) = tag(open)(current_input).or_failure(ErrorCode::XPST0003)?;
             current_input = input;
 
             // lookahead
@@ -255,7 +250,7 @@ pub(crate) fn parse_uri_qualified_name(input: &str) -> IResult<&str, QName, Cust
                 (Some(QName { prefix: None, url: None, local_part }), None)
             } else {
                 if "http://www.w3.org/2000/xmlns/" == url {
-                    (None, Some(CustomError::XQST0070))
+                    (None, Some(ErrorCode::XQST0070))
                 } else {
                     (Some(QName { prefix: None, url: Some(url.to_string()), local_part }), None)
                 }
@@ -264,11 +259,11 @@ pub(crate) fn parse_uri_qualified_name(input: &str) -> IResult<&str, QName, Cust
     )(input)?;
 
     if let Some(code) = error {
-        Err(nom::Err::Failure(code))
+        Err(CustomError::failed(input, code))
     } else if let Some(qname) = qname {
         Ok((input, qname))
     } else {
-        Err(nom::Err::Error(CustomError::XPST0003))
+        Err(CustomError::error(input, XPST0003))
     }
 }
 
@@ -300,9 +295,7 @@ pub(crate) fn parse_string(input: &str) -> IResult<&str, String, CustomError<&st
                 data.push(expr.to_string());
                 continue;
             },
-            Err(nom::Err::Failure(e)) => {
-                return Err(nom::Err::Failure(e));
-            },
+            Err(nom::Err::Failure(e)) => return Err(nom::Err::Failure(e)),
             _ => {}
         }
 

@@ -1,10 +1,10 @@
 use std::collections::{HashMap, HashSet};
 use crate::parse_one_of;
-use crate::parser::errors::{CustomError, IResultExt};
+use crate::parser::errors::{CustomError, ErrorCode, IResultExt};
 use crate::eval::prolog::*;
 
 use nom::{branch::alt, bytes::complete::tag, error::Error, IResult};
-use nom::bytes::complete::{is_a, is_not};
+use nom::bytes::complete::{is_a, is_not, take, take_until};
 use nom::sequence::{preceded, delimited, tuple, terminated, separated_pair};
 use nom::multi::{many0, many1, separated_list0, separated_list1};
 use nom::combinator::{map, opt, peek};
@@ -21,6 +21,7 @@ use crate::parser::op::{found_expr, Statement, OperatorComparison, OperatorArith
 use crate::eval::expression::{Expression, NodeTest};
 use crate::eval::sequence_type::*;
 use crate::eval::navigation::NodeParent;
+use crate::parser::errors::ErrorCode::*;
 
 // [2]    	VersionDecl 	   ::=    	"xquery" (("encoding" StringLiteral) | ("version" StringLiteral ("encoding" StringLiteral)?)) Separator
 pub fn parse_version_decl(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
@@ -33,11 +34,11 @@ pub fn parse_version_decl(input: &str) -> IResult<&str, Box<dyn Expression>, Cus
         "encoding" => {
             let (input, _) = tuple(
                 (ws, tag(";"))
-            )(input).or_failure(CustomError::XPST0003)?;
+            )(input).or_failure(ErrorCode::XPST0003)?;
 
             match VersionDecl::boxed(Some(value), None) {
                 Ok(expr) => Ok((input, expr)),
-                Err((code, msg)) => Err(nom::Err::Failure(code))
+                Err((code, msg)) => Err(CustomError::failed(input, code))
             }
         },
         "version" => {
@@ -50,7 +51,7 @@ pub fn parse_version_decl(input: &str) -> IResult<&str, Box<dyn Expression>, Cus
 
             match VersionDecl::boxed(encoding, Some(value)) {
                 Ok(expr) => Ok((input, expr)),
-                Err((code, msg)) => Err(nom::Err::Failure(code))
+                Err((code, msg)) => Err(CustomError::failed(input, code))
             }
         },
         _ => panic!("internal error")
@@ -353,8 +354,9 @@ pub(crate) fn parse_annotated_decl(input: &str) -> IResult<&str, Box<dyn Express
     let mut current_input = input;
 
     let mut annotations = vec![];
+    let mut check;
     loop {
-        let check = parse_annotation(current_input);
+        check = parse_annotation(current_input);
         if check.is_ok() {
             let (input, annotation) = check?;
             current_input = input;
@@ -365,7 +367,7 @@ pub(crate) fn parse_annotated_decl(input: &str) -> IResult<&str, Box<dyn Express
         }
     }
 
-    let check = parse_var_decl(current_input);
+    check = parse_var_decl(current_input);
     let (input, decl) = if check.is_ok() {
         check?
     } else {
@@ -477,7 +479,7 @@ fn parse_param_list(input: &str) -> IResult<&str, Vec<Param>, CustomError<&str>>
     let mut names = HashSet::with_capacity(params.len() as usize);
     for param in &params {
         if names.insert(param.name.clone()) == false {
-            return Err(nom::Err::Failure(CustomError::XQST0039));
+            return Err(nom::Err::Failure(CustomError::XQ(input, ErrorCode::XQST0039)));
         }
     }
 
@@ -599,24 +601,24 @@ pub(crate) fn parse_expr(input: &str) -> IResult<&str, Box<dyn Expression>, Cust
 //  | IfExpr
 //  TODO: | TryCatchExpr
 //  | OrExpr
-// parse_one_of!(parse_expr_single,
-//     parse_flwor_expr,
-//     parse_quantified_expr,
-//     parse_typeswitch_expr,
-//     parse_if_expr,
-//     parse_or_expr,
-// );
-
-fn parse_expr_single(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
-    alt((
-        parse_flwor_expr,
-        parse_quantified_expr,
-        parse_switch_expr,
-        parse_typeswitch_expr,
-        parse_if_expr,
-        parse_or_expr
-    ))(input)
-}
+parse_one_of!(parse_expr_single,
+    parse_flwor_expr,
+    parse_quantified_expr,
+    parse_switch_expr,
+    parse_typeswitch_expr,
+    parse_if_expr,
+    parse_or_expr,
+);
+// fn parse_expr_single(input: &str) -> IResult<&str, Box<dyn Expression>, CustomError<&str>> {
+//     alt((
+//         parse_flwor_expr,
+//         parse_quantified_expr,
+//         parse_switch_expr,
+//         parse_typeswitch_expr,
+//         parse_if_expr,
+//         parse_or_expr
+//     ))(input)
+// }
 
 // [41]    	FLWORExpr 	   ::=    	InitialClause IntermediateClause* ReturnClause
 // [69]    	ReturnClause 	   ::=    	"return" ExprSingle
@@ -1753,7 +1755,7 @@ fn parse_lookup(input: &str) -> IResult<&str, PrimaryExprSuffix, CustomError<&st
 //  | FunctionItemExpr
 //  | MapConstructor
 //  | ArrayConstructor
-//  TODO: | StringConstructor
+//  | StringConstructor
 //  TODO: | UnaryLookup
 parse_one_of!(parse_primary_expr,
     parse_literal,
@@ -1765,6 +1767,7 @@ parse_one_of!(parse_primary_expr,
     parse_function_item_expr,
     parse_map_constructor,
     parse_array_constructor,
+    parse_string_constructor,
 );
 
 // [131]    	VarRef 	   ::=    	"$" VarName
@@ -1853,7 +1856,7 @@ fn parse_function_name(input: &str) -> IResult<&str, QName, CustomError<&str>> {
             "switch" |
             "text" |
             "typeswitch" => {
-                return Err(nom::Err::Error(CustomError::XPST0003));
+                return Err(CustomError::error(input, XPST0003));
             }
             _ => {}
         }
@@ -2012,6 +2015,63 @@ fn parse_curly_array_constructor(input: &str) -> IResult<&str, Box<dyn Expressio
     let (input, expr) = parse_enclosed_expr(input)?;
 
     found_expr(input, Box::new(CurlyArrayConstructor { expr }))
+}
+
+// [177]    	StringConstructor 	   ::=    	"``[" StringConstructorContent "]``" 	/* ws: explicit */
+// [178]    	StringConstructorContent 	   ::=    	StringConstructorChars (StringConstructorInterpolation StringConstructorChars)* 	/* ws: explicit */
+// [179]    	StringConstructorChars 	   ::=    	(Char* - (Char* ('`{' | ']``') Char*)) 	/* ws: explicit */
+// [180]    	StringConstructorInterpolation 	   ::=    	"`{" Expr? "}`"
+fn parse_string_constructor<'a>(input: &'a str) -> IResult<&'a str, Box<dyn Expression>, CustomError<&'a str>> {
+    let (mut current_input, _) = tuple((ws, tag("``[")))(input)?;
+
+    let mut exprs = vec![];
+    let mut check;
+    loop {
+        check = is_not("`]")(current_input);
+        if check.is_ok() {
+            let (input, str) = check?;
+            current_input = input;
+
+            if str.len() > 0 {
+                exprs.push(StringExpr::new(str.to_string()));
+            }
+        }
+
+        check = tag("]``")(current_input);
+        if check.is_ok() {
+            current_input = check?.0;
+            break;
+        } else {
+            check = tag("`{")(current_input);
+            if check.is_ok() {
+                current_input = check?.0;
+                match parse_expr(current_input) {
+                    Ok((input, expr)) => {
+                        current_input = input;
+                        exprs.push(expr);
+                    }
+                    Err(nom::Err::Failure(e)) => return Err(nom::Err::Failure(e)),
+                    Err(_) => {}
+                }
+                current_input = tuple((ws, tag("}`")))(current_input)?.0;
+                continue;
+            } else {
+                check = take(1_usize)(current_input);
+                if check.is_ok() {
+                    let (input, str) = check?;
+                    current_input = input;
+
+                    if str.len() > 0 {
+                        exprs.push(StringExpr::new(str.to_string()));
+                    }
+                } else {
+                    return Err(CustomError::failed(current_input, XPST0003));
+                }
+            }
+        }
+    }
+
+    Ok((current_input, StringComplex::boxed(exprs)))
 }
 
 // [182]    	SingleType 	   ::=    	SimpleTypeName "?"?
@@ -2382,4 +2442,13 @@ fn parse_escape_apos(input: &str) -> IResult<&str, Box<dyn Expression>, CustomEr
     let (input, _) = tag("''")(input)?;
 
     found_expr(input, Box::new(EscapeApos{}))
+}
+
+fn take_until_and_consume<T, I, E>(tag: T) -> impl Fn(I) -> nom::IResult<I, I, E>
+where
+    T: nom::InputLength + std::clone::Clone,
+    I: nom::InputTake + nom::FindSubstring<T> + nom::InputIter,
+    E: nom::error::ParseError<I>
+{
+    move |input: I| terminated(take_until(tag.clone()), take(tag.input_len()))(input)
 }

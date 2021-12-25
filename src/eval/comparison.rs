@@ -347,10 +347,10 @@ fn value_comparison(op: &OperatorComparison, left: ObjectRefInEnv, right: Object
                     let value = op.to_comparison().is_it(cmp_result)?;
                     Ok(Object::Atomic(Type::Boolean(value)))
                 },
-                _ => todo!()
+                _ => todo!("{:?} vs {:?}", left.1, right.1)
             }
         }
-        _ => todo!()
+        _ => todo!("{:?} vs {:?}", left.1, right.1)
     }
 }
 

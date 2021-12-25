@@ -32,7 +32,7 @@ num-integer = "0.1.44"
 lazy_static = "1.4.0"
 dyn-clone = "1.0.4"
 
-nom = "7.0"
+nom = "7.1.0"
 xmlparser = "0.13.3"
 quick-xml = "0.22.0"
 
