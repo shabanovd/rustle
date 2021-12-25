@@ -583,7 +583,7 @@ pub(crate) fn deep_eq_sequence_and_range<'a>(env: &'a Box<Environment>, left_ite
 
         loop {
             if let Some(left_item) = left_it.next() {
-                if deep_eq((env, left_item), (env, &Object::Atomic(Type::Integer(right_item))))? {
+                if !deep_eq((env, left_item), (env, &Object::Atomic(Type::Integer(right_item))))? {
                     return Ok(false);
                 }
 

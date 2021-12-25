@@ -316,20 +316,27 @@ pub(crate) fn _check_assert_type(result: &EvalResult, check: &str) -> Option<Str
             Object::Array(_) => None,
             _ => Some(String::from("not array(*)"))
         }
+    } else if check == "array(empty-sequence())" {
+        match result {
+            Object::Array(items) => {
+                if items.len() != 0 {
+                    Some(String::from("not array(empty-sequence())"))
+                } else {
+                    None
+                }
+            },
+            _ => Some(String::from("not array(empty-sequence())"))
+        }
     } else if check == "array(xs:string)" {
         match result {
             Object::Array(items) => {
-                if items.len() == 0 {
-                    Some(String::from("not array(xs:string)"))
-                } else {
-                    for item in items {
-                        match item {
-                            Object::Atomic(Type::String(_)) => {},
-                            _ => return Some(format!("not xs:string: {:?}", item))
-                        }
+                for item in items {
+                    match item {
+                        Object::Atomic(Type::String(_)) => {},
+                        _ => return Some(format!("not xs:string: {:?}", item))
                     }
-                    None
                 }
+                None
             },
             _ => Some(String::from("not array(xs:string)"))
         }

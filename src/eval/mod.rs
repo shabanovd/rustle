@@ -242,7 +242,7 @@ fn eval_predicates(exprs: &Vec<PrimaryExprSuffix>, env: Box<Environment>, value:
                         if let Some(item) = items.get((index - 1) as usize) {
                             item.clone()
                         } else {
-                            todo!()
+                            return Err((ErrorCode::FOAY0001, format!("index outside of bounds: {:?}", index)))
                         }
                     } else {
                         todo!()
