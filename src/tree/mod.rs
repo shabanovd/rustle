@@ -46,6 +46,11 @@ impl Reference {
         storage.id()
     }
 
+    fn get_type(&self) -> Option<NodeType> {
+        let storage = self.storage.lock().unwrap();
+        storage.as_reader().get_type(self)
+    }
+
     pub fn is_namespace(&self) -> bool {
         let storage = self.storage.lock().unwrap();
         storage.as_reader().is_namespace(self)

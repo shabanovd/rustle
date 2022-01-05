@@ -377,6 +377,26 @@ pub(crate) fn _check_assert_type(result: &EvalResult, check: &str) -> Option<Str
             Object::Atomic(Type::String(_)) => None,
             _ => Some(String::from("not xs:string"))
         }
+    } else if check == "xs:byte" {
+        match result {
+            Object::Atomic(Type::Byte(_)) => None,
+            _ => Some(String::from("not xs:byte"))
+        }
+    } else if check == "xs:short" {
+        match result {
+            Object::Atomic(Type::Short(_)) => None,
+            _ => Some(String::from("not xs:short"))
+        }
+    } else if check == "xs:int" {
+        match result {
+            Object::Atomic(Type::Int(_)) => None,
+            _ => Some(String::from("not xs:int"))
+        }
+    } else if check == "xs:long" {
+        match result {
+            Object::Atomic(Type::Long(_)) => None,
+            _ => Some(String::from("not xs:long"))
+        }
     } else if check == "xs:integer" {
         match result {
             Object::Atomic(Type::Integer(_)) => None,

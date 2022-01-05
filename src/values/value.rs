@@ -369,6 +369,8 @@ impl Type {
                         }
                     }
 
+                    Types::Numeric => crate::values::string_to::double(str, false),
+
                     Types::Byte => crate::values::string_to::byte(str),
                     Types::Short => crate::values::string_to::short(str),
                     Types::Int => crate::values::string_to::int(str),
@@ -514,6 +516,8 @@ impl Type {
                     }
                     Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
+
+                    Types::Numeric => Ok(Type::Byte(*number)),
 
                     Types::UnsignedLong => {
                         if let Some(num) = number.to_u64() {
@@ -665,6 +669,8 @@ impl Type {
                     Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
 
+                    Types::Numeric => Ok(Type::Short(*number)),
+
                     Types::UnsignedLong => {
                         if let Some(num) = number.to_u64() {
                             Ok(Type::UnsignedLong(num))
@@ -815,6 +821,8 @@ impl Type {
                     Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
 
+                    Types::Numeric => Ok(Type::Int(*number)),
+
                     Types::UnsignedLong => {
                         if let Some(num) = number.to_u64() {
                             Ok(Type::UnsignedLong(num))
@@ -964,6 +972,8 @@ impl Type {
                     }
                     Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
+
+                    Types::Numeric => Ok(Type::Long(*number)),
 
                     Types::UnsignedLong => {
                         if let Some(num) = number.to_u64() {
@@ -1116,6 +1126,8 @@ impl Type {
                     Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
 
+                    Types::Numeric => Ok(Type::UnsignedByte(*number)),
+
                     Types::UnsignedLong => {
                         if let Some(num) = number.to_u64() {
                             Ok(Type::UnsignedLong(num))
@@ -1265,6 +1277,8 @@ impl Type {
                     }
                     Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
+
+                    Types::Numeric => Ok(Type::UnsignedShort(*number)),
 
                     Types::UnsignedLong => {
                         if let Some(num) = number.to_u64() {
@@ -1416,6 +1430,8 @@ impl Type {
                     Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
 
+                    Types::Numeric => Ok(Type::UnsignedInt(*number)),
+
                     Types::UnsignedLong => {
                         if let Some(num) = number.to_u64() {
                             Ok(Type::UnsignedLong(num))
@@ -1565,6 +1581,8 @@ impl Type {
                     }
                     Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
+
+                    Types::Numeric => Ok(Type::UnsignedLong(*number)),
 
                     Types::UnsignedLong => {
                         if let Some(num) = number.to_u64() {
@@ -1717,6 +1735,8 @@ impl Type {
                     Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
 
+                    Types::Numeric => Ok(Type::PositiveInteger(*number)),
+
                     Types::UnsignedLong => {
                         if let Some(num) = number.to_u64() {
                             Ok(Type::UnsignedLong(num))
@@ -1866,6 +1886,8 @@ impl Type {
                     }
                     Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
+
+                    Types::Numeric => Ok(Type::NonNegativeInteger(*number)),
 
                     Types::UnsignedLong => {
                         if let Some(num) = number.to_u64() {
@@ -2017,6 +2039,8 @@ impl Type {
                     Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
 
+                    Types::Numeric => Ok(Type::NonPositiveInteger(*number)),
+
                     Types::UnsignedLong => {
                         if let Some(num) = number.to_u64() {
                             Ok(Type::UnsignedLong(num))
@@ -2167,6 +2191,8 @@ impl Type {
                     Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
 
+                    Types::Numeric => Ok(Type::NegativeInteger(*number)),
+
                     Types::UnsignedLong => {
                         if let Some(num) = number.to_u64() {
                             Ok(Type::UnsignedLong(num))
@@ -2315,8 +2341,18 @@ impl Type {
                         let data = number.to_string();
                         Ok(Type::String(data))
                     }
+                    Types::NormalizedString => {
+                        let data = number.to_string();
+                        Ok(Type::NormalizedString(data))
+                    }
+                    Types::Token => {
+                        let data = number.to_string();
+                        Ok(Type::Token(data))
+                    }
                     Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
+
+                    Types::Numeric => Ok(Type::Integer(*number)),
 
                     Types::UnsignedLong => {
                         if let Some(num) = number.to_u64() {
@@ -2452,7 +2488,7 @@ impl Type {
                             None => Err((ErrorCode::FORG0001, String::from("TODO")))
                         }
                     },
-                    _ => Err((ErrorCode::XPTY0004, String::from("TODO")))
+                    _ => Err((ErrorCode::XPTY0004, format!("can't convert Integer {:?} to {:?}", number, to)))
                 }
             }
             Type::Decimal(number) => {
@@ -2467,6 +2503,8 @@ impl Type {
                     }
                     Types::Language => Err((ErrorCode::FORG0001, String::from("TODO"))),
                     Types::Boolean => Ok(Type::Boolean(!number.is_zero())),
+
+                    Types::Numeric => Ok(Type::Decimal(number.clone())),
 
                     Types::UnsignedLong => {
                         if let Some(num) = number.to_u64() {
@@ -2619,6 +2657,8 @@ impl Type {
                         };
                         Ok(Type::Boolean(b))
                     }
+
+                    Types::Numeric => Ok(Type::Float(number.clone())),
 
                     Types::UnsignedLong => {
                         if number.is_zero()|| number.is_normal() {
@@ -2816,6 +2856,8 @@ impl Type {
                         };
                         Ok(Type::Boolean(b))
                     }
+
+                    Types::Numeric => Ok(Type::Double(number.clone())),
 
                     Types::UnsignedLong => {
                         if number.is_zero()|| number.is_normal() {
@@ -3377,6 +3419,11 @@ impl Type {
                     Types::Language => {
                         let data = if *v { "true".to_string() } else { "false".to_string() };
                         Ok(Type::Language(data))
+                    }
+
+                    Types::Numeric => {
+                        let number = if *v { 1 } else { 0 } as f64;
+                        Ok(Type::Double(OrderedFloat::from(number)))
                     }
 
                     Types::UnsignedLong => {
@@ -4318,6 +4365,17 @@ impl Object {
                     Type::String(str) => Ok(str),
                     _ => Err((ErrorCode::XPTY0004, format!("can't convert to String {:?}", t)))
                 }
+            },
+            Object::EntityRef(reference) => {
+                let str = match reference.as_str() {
+                    "lt" => String::from("<"),
+                    "gt" => String::from(">"),
+                    "amp" => String::from("&"),
+                    "quot" => String::from("\""),
+                    "apos" => String::from("'"),
+                    _ => panic!("unexpected {:?}", reference)
+                };
+                Ok(str)
             },
             Object::Node(rf) => {
                 match rf.to_typed_value() {

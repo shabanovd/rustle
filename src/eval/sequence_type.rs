@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use bigdecimal::Zero;
 use nom::bytes::complete::is_a;
 use crate::parser::errors::ErrorCode;
+use crate::serialization::to_string::ref_to_char;
 
 pub const XS_ANY_SIMPLE_TYPE: QN = QN::full("xs", "anySimpleType", SCHEMA.uri);
 pub const XS_ANY_ATOMIC_TYPE: QN = QN::full("xs", "anyAtomicType", SCHEMA.uri);
@@ -851,6 +852,7 @@ impl SequenceType {
                             }
                         }
                     }
+                    Object::CharRef { .. } |
                     Object::Atomic(_) => Ok(obj),
                     Object::Node(rf) => {
                         if let Ok(data) = rf.to_typed_value() {
@@ -875,7 +877,7 @@ impl SequenceType {
                             }
                         }
                     }
-                    _ => todo!("raise error?")
+                    _ => todo!("raise error? {:?} {:?}", self.item_type, obj)
                 }
             }
             ItemType::AtomicOrUnionType(original_qname) => {
@@ -1143,6 +1145,15 @@ impl SequenceType {
 
     fn is_castable_internal(&self, env: &Environment, obj: &Object, type_only: bool, is_array: bool) -> Result<bool, ErrorInfo> {
         println!("is_castable:\n st: {:#?}\n ob: {:#?}", self, obj);
+
+        match obj {
+            Object::CharRef { representation, reference } => {
+                let str = String::from(ref_to_char(*reference));
+                return self.is_castable_internal(env, &Object::Atomic(Type::String(str)), type_only, is_array);
+            }
+            _ => {}
+        }
+
         let result = match &self.item_type {
             ItemType::Item => {
                 match obj {
@@ -1240,6 +1251,11 @@ impl SequenceType {
                             match t {
                                 Type::Untyped(str) |
 
+                                Type::Token(str) |
+                                Type::Language(str) |
+                                Type::NMTOKEN(str) |
+                                Type::Name(str) |
+                                Type::NCName(str) |
                                 Type::ID(str) |
                                 Type::IDREF(str) |
                                 Type::ENTITY(str) |
@@ -1250,16 +1266,23 @@ impl SequenceType {
                                         match types {
                                             Types::Untyped |
 
+                                            Types::String |
+                                            Types::NormalizedString |
+                                            Types::Token |
+                                            Types::Language |
+                                            Types::NMTOKEN |
+                                            Types::Name |
+                                            Types::NCName |
                                             Types::ID |
                                             Types::IDREF |
                                             Types::ENTITY |
 
-                                            Types::NormalizedString |
-                                            Types::String |
                                             Types::AnyURI |
                                             Types::QName |
 
                                             Types::Boolean |
+
+                                            Types::Numeric |
 
                                             Types::UnsignedByte |
                                             Types::UnsignedShort |
@@ -1333,7 +1356,9 @@ impl SequenceType {
                                         || name == XS_POSITIVE_INTEGER || name == XS_NON_NEGATIVE_INTEGER
                                         || name == XS_NON_POSITIVE_INTEGER || name == XS_NEGATIVE_INTEGER
 
-                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_UNTYPED_ATOMIC
+                                        || name == XS_STRING || name == XS_NORMALIZED_STRING || name == XS_TOKEN
+                                        || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
                                 Type::Short(_) =>
                                     name == XS_NUMERIC
@@ -1345,7 +1370,9 @@ impl SequenceType {
                                         || name == XS_POSITIVE_INTEGER || name == XS_NON_NEGATIVE_INTEGER
                                         || name == XS_NON_POSITIVE_INTEGER || name == XS_NEGATIVE_INTEGER
 
-                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_UNTYPED_ATOMIC
+                                        || name == XS_STRING || name == XS_NORMALIZED_STRING || name == XS_TOKEN
+                                        || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
                                 Type::Int(_) =>
                                     name == XS_NUMERIC
@@ -1357,7 +1384,9 @@ impl SequenceType {
                                         || name == XS_POSITIVE_INTEGER || name == XS_NON_NEGATIVE_INTEGER
                                         || name == XS_NON_POSITIVE_INTEGER || name == XS_NEGATIVE_INTEGER
 
-                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_UNTYPED_ATOMIC
+                                        || name == XS_STRING || name == XS_NORMALIZED_STRING || name == XS_TOKEN
+                                        || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
                                 Type::Long(_) =>
                                     name == XS_NUMERIC
@@ -1369,7 +1398,9 @@ impl SequenceType {
                                         || name == XS_POSITIVE_INTEGER || name == XS_NON_NEGATIVE_INTEGER
                                         || name == XS_NON_POSITIVE_INTEGER || name == XS_NEGATIVE_INTEGER
 
-                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_UNTYPED_ATOMIC
+                                        || name == XS_STRING || name == XS_NORMALIZED_STRING || name == XS_TOKEN
+                                        || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
 
                                 Type::UnsignedByte(_) =>
@@ -1382,7 +1413,9 @@ impl SequenceType {
                                         || name == XS_POSITIVE_INTEGER || name == XS_NON_NEGATIVE_INTEGER
                                         || name == XS_NON_POSITIVE_INTEGER || name == XS_NEGATIVE_INTEGER
 
-                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_UNTYPED_ATOMIC
+                                        || name == XS_STRING || name == XS_NORMALIZED_STRING || name == XS_TOKEN
+                                        || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
                                 Type::UnsignedShort(_) =>
                                     name == XS_NUMERIC
@@ -1394,7 +1427,9 @@ impl SequenceType {
                                         || name == XS_POSITIVE_INTEGER || name == XS_NON_NEGATIVE_INTEGER
                                         || name == XS_NON_POSITIVE_INTEGER || name == XS_NEGATIVE_INTEGER
 
-                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_UNTYPED_ATOMIC
+                                        || name == XS_STRING || name == XS_NORMALIZED_STRING || name == XS_TOKEN
+                                        || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
                                 Type::UnsignedInt(_) =>
                                     name == XS_NUMERIC
@@ -1406,7 +1441,9 @@ impl SequenceType {
                                         || name == XS_POSITIVE_INTEGER || name == XS_NON_NEGATIVE_INTEGER
                                         || name == XS_NON_POSITIVE_INTEGER || name == XS_NEGATIVE_INTEGER
 
-                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_UNTYPED_ATOMIC
+                                        || name == XS_STRING || name == XS_NORMALIZED_STRING || name == XS_TOKEN
+                                        || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
                                 Type::UnsignedLong(_) =>
                                     name == XS_NUMERIC
@@ -1418,7 +1455,9 @@ impl SequenceType {
                                         || name == XS_POSITIVE_INTEGER || name == XS_NON_NEGATIVE_INTEGER
                                         || name == XS_NON_POSITIVE_INTEGER || name == XS_NEGATIVE_INTEGER
 
-                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_UNTYPED_ATOMIC
+                                        || name == XS_STRING || name == XS_NORMALIZED_STRING || name == XS_TOKEN
+                                        || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
 
                                 Type::PositiveInteger(_) =>
@@ -1431,7 +1470,9 @@ impl SequenceType {
                                         || name == XS_POSITIVE_INTEGER || name == XS_NON_NEGATIVE_INTEGER
                                         || name == XS_NON_POSITIVE_INTEGER || name == XS_NEGATIVE_INTEGER
 
-                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_UNTYPED_ATOMIC
+                                        || name == XS_STRING || name == XS_NORMALIZED_STRING || name == XS_TOKEN
+                                        || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
                                 Type::NonNegativeInteger(_) =>
                                     name == XS_NUMERIC
@@ -1443,7 +1484,9 @@ impl SequenceType {
                                         || name == XS_POSITIVE_INTEGER || name == XS_NON_NEGATIVE_INTEGER
                                         || name == XS_NON_POSITIVE_INTEGER || name == XS_NEGATIVE_INTEGER
 
-                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_UNTYPED_ATOMIC
+                                        || name == XS_STRING || name == XS_NORMALIZED_STRING || name == XS_TOKEN
+                                        || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
                                 Type::NonPositiveInteger(_) =>
                                     name == XS_NUMERIC
@@ -1455,7 +1498,9 @@ impl SequenceType {
                                         || name == XS_POSITIVE_INTEGER || name == XS_NON_NEGATIVE_INTEGER
                                         || name == XS_NON_POSITIVE_INTEGER || name == XS_NEGATIVE_INTEGER
 
-                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_UNTYPED_ATOMIC
+                                        || name == XS_STRING || name == XS_NORMALIZED_STRING || name == XS_TOKEN
+                                        || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
                                 Type::NegativeInteger(_) =>
                                     name == XS_NUMERIC
@@ -1467,25 +1512,35 @@ impl SequenceType {
                                         || name == XS_POSITIVE_INTEGER || name == XS_NON_NEGATIVE_INTEGER
                                         || name == XS_NON_POSITIVE_INTEGER || name == XS_NEGATIVE_INTEGER
 
-                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_UNTYPED_ATOMIC
+                                        || name == XS_STRING || name == XS_NORMALIZED_STRING || name == XS_TOKEN
+                                        || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
 
                                 Type::Integer(_) =>
                                     name == XS_NUMERIC
-                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_UNTYPED_ATOMIC
+                                        || name == XS_STRING || name == XS_NORMALIZED_STRING || name == XS_TOKEN
+                                        || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
                                 Type::Decimal { .. } =>
                                     name == XS_NUMERIC
-                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_UNTYPED_ATOMIC
+                                        || name == XS_STRING || name == XS_NORMALIZED_STRING || name == XS_TOKEN
+                                        || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT || name == XS_DECIMAL || name == XS_INTEGER,
                                 Type::Float(num) =>
                                     name == XS_NUMERIC
-                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_UNTYPED_ATOMIC
+                                        || name == XS_STRING || name == XS_NORMALIZED_STRING || name == XS_TOKEN
+                                        || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT
                                         || ((num.is_zero() || num.is_normal()) && (name == XS_DECIMAL || name == XS_INTEGER)),
                                 Type::Double(num) =>
                                     name == XS_NUMERIC
-                                        || name == XS_UNTYPED_ATOMIC || name == XS_STRING || name == XS_BOOLEAN
+                                        || name == XS_UNTYPED_ATOMIC
+                                        || name == XS_STRING || name == XS_NORMALIZED_STRING || name == XS_TOKEN
+                                        || name == XS_BOOLEAN
                                         || name == XS_DOUBLE || name == XS_FLOAT
                                         || ((num.is_zero() || num.is_normal()) && (name == XS_DECIMAL || name == XS_INTEGER)),
 
@@ -1591,7 +1646,7 @@ impl SequenceType {
                                 true
                             }
                         }
-                        Object::Map(items) => {
+                        Object::Map(_) => {
                             return Err((ErrorCode::FOTY0013, String::from("TODO")));
                         }
                         Object::Node(rf) => {

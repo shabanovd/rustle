@@ -61,6 +61,7 @@ impl FunctionsRegister {
         };
 
         instance.register(&*SCHEMA.uri, "untypedAtomic", 1, types::FN_XS_UNTYPED_ATOMIC());
+        instance.register(&*SCHEMA.uri, "numeric", 1, types::FN_XS_NUMERIC());
 
         instance.register(&*SCHEMA.uri, "string", 1, types::FN_XS_STRING());
         instance.register(&*SCHEMA.uri, "normalizedString", 1, types::FN_XS_NORMALIZED_STRING());
@@ -381,7 +382,7 @@ fn function_conversion_rules(env: &Box<Environment>, sequence_type: Option<Seque
 }
 
 pub(crate) fn call(env: Box<Environment>, name: QNameResolved, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
-    // println!("call: {:?} {:?}", name, arguments);
+    println!("call: {:?} {:?}", name, arguments);
 
     let mut fn_env = env.next();
 

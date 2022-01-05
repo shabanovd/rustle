@@ -1303,15 +1303,19 @@ impl XMLNode for LinkedNode {
     }
 
     fn get_type(&self) -> NodeType {
-        todo!()
+        if let Some(node_type) = self.rf.get_type() {
+            node_type
+        } else {
+            todo!("raise error")
+        }
     }
 
     fn is_text(&self) -> bool {
-        todo!()
+        self.rf.is_text()
     }
 
     fn is_comment(&self) -> bool {
-        todo!()
+        self.rf.is_comment()
     }
 
     fn to_xml_open(&self, namespaces: &mut LinkedHashMap<String, String>) -> String {

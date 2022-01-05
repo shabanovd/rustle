@@ -182,6 +182,8 @@ pub(crate) fn float_to_string(number: &OrderedFloat<f32>, rules: bool) -> String
         } else {
             String::from("-INF")
         }
+    } else if number.is_zero() {
+        number.to_string()
     } else if rules {
         // If SV has an absolute value that is greater than or equal to 0.000001 (one millionth)
         // and less than 1000000 (one million), then the value is converted to an xs:decimal
@@ -226,6 +228,8 @@ pub(crate) fn double_to_string(number: &OrderedFloat<f64>, rules: bool) -> Strin
         } else {
             String::from("-INF")
         }
+    } else if number.is_zero() {
+        number.to_string()
     } else if rules {
         // If SV has an absolute value that is greater than or equal to 0.000001 (one millionth)
         // and less than 1000000 (one million), then the value is converted to an xs:decimal

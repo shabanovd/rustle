@@ -6,11 +6,17 @@ use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use crate::eval::sequence_type::*;
 use crate::serialization::object_to_string;
 use crate::fns::FUNCTION;
+use crate::serialization::to_string::ref_to_char;
 use crate::values::{string_to_binary_base64, string_to_binary_hex, string_to_qname, Types};
 
 fn convert(to_type: Types, env: Box<Environment>, arguments: Vec<Object>) -> EvalResult {
     match arguments.as_slice() {
         [Object::Empty] => Ok((env, Object::Empty)),
+        [Object::CharRef { reference, .. }] => {
+            let t = Type::String(String::from(ref_to_char(*reference)));
+            let n = t.convert(to_type)?;
+            Ok((env, Object::Atomic(n)))
+        }
         [Object::Atomic(t)] => {
             let n = t.convert(to_type)?;
             Ok((env, Object::Atomic(n)))
@@ -693,7 +699,42 @@ pub(crate) fn xs_date_time_stamp_eval(env: Box<Environment>, arguments: Vec<Obje
 // TODO xs:ENTITIES($arg as xs:anyAtomicType?) as xs:ENTITY*
 // TODO xs:IDREFS($arg as xs:anyAtomicType?) as xs:IDREF*
 
-// TODO xs:numeric($arg as xs:anyAtomicType?) as xs:numeric?
+// xs:numeric($arg as xs:anyAtomicType?) as xs:numeric?
+pub(crate) fn FN_XS_NUMERIC() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_one(ItemType::AnyAtomicType)].to_vec(),
+            SequenceType::zero_or_one(ItemType::AtomicOrUnionType(XS_NUMERIC.into()))
+        ),
+        xs_numeric_eval
+    )
+}
+
+pub(crate) fn xs_numeric_eval(env: Box<Environment>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    let arg = arguments.remove(0);
+    match arg {
+        Object::Empty => Ok((env, Object::Empty)),
+        Object::Atomic(t) => {
+            let t = match t {
+                Type::Untyped(str) |
+                Type::String(str) => {
+                    crate::values::string_to::double(str.as_str(), false)?
+                }
+                Type::Boolean(v) => {
+                    let number = if v { 1.0 } else { 0.0 };
+                    Type::Double(OrderedFloat::from(number))
+                },
+                Type::Integer(_) |
+                Type::Decimal(_) |
+                Type::Float(_) |
+                Type::Double(_) => t,
+                _ => return Err((ErrorCode::FORG0001, String::from("TODO")))
+            };
+            Ok((env, Object::Atomic(t)))
+        }
+        _ => todo!("{:?}", arguments)
+    }
+}
 
 // TODO xs:error($arg as xs:anyAtomicType?) as xs:error?
 
