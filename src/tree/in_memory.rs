@@ -695,8 +695,23 @@ impl XMLTreeWriter for InMemoryXMLTree {
     }
 
     fn text(&mut self, content: String) -> Reference {
-        let id = self.next_sibling();
+        // join with previous text node
+        if let Some((id, _)) = self.stack.last() {
+            if let Some(node) = self.items.get(id) {
+                if node.is_text() {
+                    if let Some(mut current_content) = node.content() {
+                        current_content.push_str(content.as_str());
 
+                        let node = Box::new(Text { id: id.clone(), content: current_content });
+                        self.items.insert(id.clone(), node);
+
+                        return self.reference(id.clone(), None);
+                    }
+                }
+            }
+        }
+
+        let id = self.next_sibling();
         let node = Box::new(Text { id: id.clone(), content });
 
         self.items.insert(id.clone(), node);

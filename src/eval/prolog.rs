@@ -1380,7 +1380,19 @@ impl Expression for NodeDocument {
                                 current_env.xml_writer(|w| w.link_node(&rf));
                             }
                         },
-                        _ => panic!("unexpected object {:?}", item) //TODO: better error
+                        Object::Atomic(t) => {
+                            let content = t.convert(Types::String)?;
+                            match content {
+                                Type::String(content) => {
+                                    if !content.is_empty() {
+                                        current_env.xml_writer(|w| w.text(content));
+                                    }
+                                }
+                                _ => panic!("unexpected type {:?}", content)
+                            }
+
+                        }
+                        _ => panic!("unexpected object {:?}", item)
                     }
                 }
             },
@@ -1450,7 +1462,9 @@ impl NodeElement {
         let elements = self.processing(env, object, elements);
 
         let content = elements.join(" ");
-        env.xml_writer(|w| w.text(content));
+        if !content.is_empty() {
+            env.xml_writer(|w| w.text(content));
+        }
     }
 
     fn processing(&self, env: &mut Box<Environment>, object: Object, elements: Vec<String>) -> Vec<String> {
@@ -1465,10 +1479,12 @@ impl NodeElement {
             },
             Object::Node(rf) => {
                 let content = elements.join(" ");
-                env.xml_writer(|w| w.text(content));
+                if !content.is_empty() {
+                    env.xml_writer(|w| w.text(content));
 
-                if env.xml_tree_id() != rf.xml_tree_id() {
-                    env.xml_writer(|w| w.link_node(&rf));
+                    if env.xml_tree_id() != rf.xml_tree_id() {
+                        env.xml_writer(|w| w.link_node(&rf));
+                    }
                 }
             },
             Object::Atomic(..) => {
@@ -1570,9 +1586,13 @@ impl Expression for NodeText {
 
         let content = object_to_string(&new_env, &evaluated);
 
-        let pointer = new_env.xml_writer(|w| w.text(content));
+        if content.is_empty() {
+            Ok((new_env, Object::Empty))
+        } else {
+            let pointer = new_env.xml_writer(|w| w.text(content));
 
-        Ok((new_env, Object::Node(pointer) ))
+            Ok((new_env, Object::Node(pointer)))
+        }
     }
 
     fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
