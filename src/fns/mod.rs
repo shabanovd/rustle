@@ -1,9 +1,8 @@
 use std::collections::HashMap;
-use crate::eval::{Object, Type, eval_expr, EvalResult, DynamicContext};
+use crate::eval::{Object, DynamicContext, EvalResult, ErrorInfo, Type};
 use crate::eval::Environment;
 use crate::namespaces::*;
-use crate::parser::op::Expr;
-use crate::values::{QName, QNameResolved, resolve_element_qname};
+use crate::values::{QName, QNameResolved, resolve_element_qname, Types};
 
 mod fun;
 mod sequences;
@@ -12,29 +11,33 @@ mod boolean;
 mod strings;
 mod types;
 mod datetime;
+mod nodes;
+mod context;
 mod comparison;
 mod math;
 mod map;
 mod array;
 mod aggregates;
 
-pub use crate::fns::boolean::object_to_bool;
-
 use crate::parser::errors::ErrorCode;
+use crate::eval::expression::Expression;
+use crate::eval::sequence_type::{ItemType, SequenceType, XS_NOTATION, XS_QNAME};
+use crate::fns::types::*;
 
-pub type FUNCTION<'a> = fn(Box<Environment<'a>>, Vec<Object>, &DynamicContext) -> EvalResult<'a>;
+pub type FUNCTION = ((Vec<SequenceType>, SequenceType), fn(Box<Environment>, Vec<Object>, &DynamicContext) -> EvalResult);
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Clone)]
 pub struct Function {
     name: QNameResolved,
     parameters: Vec<Param>,
-    body: Expr,
+    st: Option<SequenceType>,
+    body: Box<dyn Expression>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Clone, Debug)]
 pub struct Param {
     pub name: QName,
-    pub sequence_type: Option<Type> // TODO: new type?
+    pub sequence_type: Option<SequenceType> // TODO: new type?
 }
 
 pub enum Occurrence {
@@ -45,163 +48,288 @@ pub enum Occurrence {
 }
 
 #[derive(Clone)]
-pub struct FunctionsRegister<'a> {
-    functions: HashMap<QNameResolved, HashMap<usize, FUNCTION<'a>>>,
+pub struct FunctionsRegister {
+    functions: HashMap<QNameResolved, HashMap<usize, FUNCTION>>,
     declared: HashMap<QNameResolved, HashMap<usize, Function>>,
 }
 
-impl<'a> FunctionsRegister<'a> {
+impl FunctionsRegister {
     pub(crate) fn new() -> Self {
         let mut instance = FunctionsRegister {
             functions: HashMap::new(),
             declared: HashMap::new(),
         };
 
-        instance.register(SCHEMA.url, "untypedAtomic", 1, types::xs_untyped_atomic_eval);
-        instance.register(SCHEMA.url, "boolean", 1, boolean::fn_boolean);
-        instance.register(SCHEMA.url, "string", 1, types::xs_string_eval);
-        instance.register(SCHEMA.url, "NCName", 1, types::xs_ncname_eval);
-        instance.register(SCHEMA.url, "anyURI", 1, types::xs_anyuri_eval);
-        instance.register(SCHEMA.url, "date", 1, types::xs_date_eval);
-        instance.register(SCHEMA.url, "yearMonthDuration", 1, types::xs_year_month_duration_eval);
-        instance.register(SCHEMA.url, "dayTimeDuration", 1, types::xs_day_time_duration_eval);
-        instance.register(SCHEMA.url, "duration", 1, types::xs_duration_eval);
+        instance.register(&*SCHEMA.uri, "untypedAtomic", 1, types::FN_XS_UNTYPED_ATOMIC());
+        instance.register(&*SCHEMA.uri, "numeric", 1, types::FN_XS_NUMERIC());
 
-        instance.register(SCHEMA.url, "integer", 1, types::xs_integer_eval);
-        instance.register(SCHEMA.url, "decimal", 1, types::xs_decimal_eval);
-        instance.register(SCHEMA.url, "float", 1, types::xs_float_eval);
-        instance.register(SCHEMA.url, "double", 1, types::xs_double_eval);
+        instance.register(&*SCHEMA.uri, "string", 1, types::FN_XS_STRING());
+        instance.register(&*SCHEMA.uri, "normalizedString", 1, types::FN_XS_NORMALIZED_STRING());
 
-        instance.register(SCHEMA.url, "nonPositiveInteger", 1, types::xs_non_positive_integer_eval);
-        instance.register(SCHEMA.url, "negativeInteger", 1, types::xs_negative_integer_eval);
-        instance.register(SCHEMA.url, "long", 1, types::xs_long_eval);
-        instance.register(SCHEMA.url, "int", 1, types::xs_int_eval);
-        instance.register(SCHEMA.url, "short", 1, types::xs_short_eval);
-        instance.register(SCHEMA.url, "byte", 1, types::xs_byte_eval);
-        instance.register(SCHEMA.url, "nonNegativeInteger", 1, types::xs_non_negative_integer_eval);
-        instance.register(SCHEMA.url, "unsignedLong", 1, types::xs_unsigned_long_eval);
-        instance.register(SCHEMA.url, "unsignedInt", 1, types::xs_unsigned_int_eval);
-        instance.register(SCHEMA.url, "unsignedShort", 1, types::xs_unsigned_short_eval);
-        instance.register(SCHEMA.url, "unsignedByte", 1, types::xs_unsigned_byte_eval);
-        instance.register(SCHEMA.url, "positiveInteger", 1, types::xs_positive_integer_eval);
+        instance.register(&*SCHEMA.uri, "boolean", 1, types::FN_XS_BOOLEAN());
 
-        instance.register(XPATH_FUNCTIONS.url, "resolve-QName", 2, qname::fn_resolve_qname);
-        instance.register(XPATH_FUNCTIONS.url, "QName", 2, qname::fn_qname);
+        instance.register(&*SCHEMA.uri, "unsignedByte", 1, types::FN_XS_UNSIGNED_BYTE());
+        instance.register(&*SCHEMA.uri, "unsignedShort", 1, types::FN_XS_UNSIGNED_SHORT());
+        instance.register(&*SCHEMA.uri, "unsignedInt", 1, types::FN_XS_UNSIGNED_INT());
+        instance.register(&*SCHEMA.uri, "unsignedLong", 1, types::FN_XS_UNSIGNED_LONG());
+
+        instance.register(&*SCHEMA.uri, "byte", 1, types::FN_XS_BYTE());
+        instance.register(&*SCHEMA.uri, "short", 1, types::FN_XS_SHORT());
+        instance.register(&*SCHEMA.uri, "int", 1, types::FN_XS_INT());
+        instance.register(&*SCHEMA.uri, "long", 1, types::FN_XS_LONG());
+
+        instance.register(&*SCHEMA.uri, "positiveInteger", 1, types::FN_XS_POSITIVE_INTEGER());
+        instance.register(&*SCHEMA.uri, "nonNegativeInteger", 1, types::FN_XS_NON_NEGATIVE_INTEGER());
+        instance.register(&*SCHEMA.uri, "nonPositiveInteger", 1, types::FN_XS_NON_POSITIVE_INTEGER());
+        instance.register(&*SCHEMA.uri, "negativeInteger", 1, types::FN_XS_NEGATIVE_INTEGER());
+
+        instance.register(&*SCHEMA.uri, "integer", 1, types::FN_XS_INTEGER());
+        instance.register(&*SCHEMA.uri, "decimal", 1, types::FN_XS_DECIMAL());
+        instance.register(&*SCHEMA.uri, "float", 1, types::FN_XS_FLOAT());
+        instance.register(&*SCHEMA.uri, "double", 1, types::FN_XS_DOUBLE());
+
+        instance.register(&*SCHEMA.uri, "ID", 1, types::FN_XS_ID());
+        instance.register(&*SCHEMA.uri, "IDREF", 1, types::FN_XS_IDREF());
+        instance.register(&*SCHEMA.uri, "ENTITY", 1, types::FN_XS_ENTITY());
+
+        instance.register(&*SCHEMA.uri, "NCName", 1, types::FN_XS_NCNAME());
+
+        instance.register(&*SCHEMA.uri, "anyURI", 1, types::FN_XS_ANY_URI());
+
+        instance.register(&*SCHEMA.uri, "time", 1, types::FN_XS_TIME());
+        instance.register(&*SCHEMA.uri, "date", 1, types::FN_XS_DATE());
+        instance.register(&*SCHEMA.uri, "dateTime", 1, types::FN_XS_DATE_TIME());
+        instance.register(&*SCHEMA.uri, "yearMonthDuration", 1, types::FN_XS_YEAR_MONTH_DURATION());
+        instance.register(&*SCHEMA.uri, "dayTimeDuration", 1, types::FN_XS_DAY_TIME_DURATION());
+        instance.register(&*SCHEMA.uri, "duration", 1, types::FN_XS_DURATION());
+
+        instance.register(&*SCHEMA.uri, "gYearMonth", 1, types::FN_XS_G_YEAR_MONTH());
+        instance.register(&*SCHEMA.uri, "gYear", 1, types::FN_XS_G_YEAR());
+        instance.register(&*SCHEMA.uri, "gMonthDay", 1, types::FN_XS_G_MONTH_DAY());
+        instance.register(&*SCHEMA.uri, "gDay", 1, types::FN_XS_G_DAY());
+        instance.register(&*SCHEMA.uri, "gMonth", 1, types::FN_XS_G_MONTH());
+
+        instance.register(&*SCHEMA.uri, "hexBinary", 1, types::FN_XS_HEX_BINARY());
+        instance.register(&*SCHEMA.uri, "base64Binary", 1, types::FN_XS_BASE64_BINARY());
+
+        instance.register(&*SCHEMA.uri, "QName", 1, types::FN_XS_QNAME());
+        instance.register(&*SCHEMA.uri, "token", 1, types::FN_XS_TOKEN());
+        instance.register(&*SCHEMA.uri, "language", 1, types::FN_XS_LANGUAGE());
+        instance.register(&*SCHEMA.uri, "NMTOKEN", 1, types::FN_XS_NMTOKEN());
+        instance.register(&*SCHEMA.uri, "Name", 1, types::FN_XS_NAME());
+
+        instance.register(&*XPATH_FUNCTIONS.uri, "resolve-QName", 2, qname::FN_RESOLVE_QNAME());
+        instance.register(&*XPATH_FUNCTIONS.uri, "QName", 2, qname::FN_QNAME());
+        instance.register(&*XPATH_FUNCTIONS.uri, "prefix-from-QName", 1, qname::FN_PREFIX_FROM_QNAME());
+        instance.register(&*XPATH_FUNCTIONS.uri, "local-name-from-QName", 1, qname::FN_LOCAL_NAME_FROM_QNAME());
+        instance.register(&*XPATH_FUNCTIONS.uri, "namespace-uri-from-QName", 1, qname::FN_NAMESPACE_URI_FROM_QNAME());
+        instance.register(&*XPATH_FUNCTIONS.uri, "namespace-uri-for-prefix", 2, qname::FN_NAMESPACE_URI_FOR_PREFIX());
+        instance.register(&*XPATH_FUNCTIONS.uri, "in-scope-prefixes", 1, qname::FN_IN_SCOPE_PREFIXES());
+
+        instance.register(&*XPATH_FUNCTIONS.uri, "node-name", 0, qname::FN_NODE_NAME_0());
+        instance.register(&*XPATH_FUNCTIONS.uri, "node-name", 1, qname::FN_NODE_NAME_1());
 
 //        instance.register("op", "same-key", 2, map::map_merge);
-        instance.register(XPATH_MAP.url, "merge", 1, map::map_merge);
-        instance.register(XPATH_MAP.url, "merge", 2, map::map_merge);
-        instance.register(XPATH_MAP.url, "size", 1, map::map_size);
-        instance.register(XPATH_MAP.url, "contains", 2, map::map_contains);
-        instance.register(XPATH_MAP.url, "get", 2, map::map_get);
-        instance.register(XPATH_MAP.url, "find", 2, map::map_find);
-        instance.register(XPATH_MAP.url, "put", 3, map::map_put);
-        instance.register(XPATH_MAP.url, "find", 2, map::map_find);
-        instance.register(XPATH_MAP.url, "entry", 2, map::map_entry);
-        instance.register(XPATH_MAP.url, "remove", 2, map::map_remove);
-        instance.register(XPATH_MAP.url, "for-each", 2, map::map_for_each);
+        instance.register(&*XPATH_MAP.uri, "merge", 1, map::FN_MAP_MERGE_1());
+        instance.register(&*XPATH_MAP.uri, "merge", 2, map::FN_MAP_MERGE_2());
+        instance.register(&*XPATH_MAP.uri, "size", 1, map::FN_MAP_SIZE());
+        instance.register(&*XPATH_MAP.uri, "contains", 2, map::FN_MAP_CONTAINS());
+        instance.register(&*XPATH_MAP.uri, "get", 2, map::FN_MAP_GET());
+        instance.register(&*XPATH_MAP.uri, "find", 2, map::FN_MAP_FIND());
+        instance.register(&*XPATH_MAP.uri, "put", 3, map::FN_MAP_PUT());
+        instance.register(&*XPATH_MAP.uri, "find", 2, map::FN_MAP_FIND());
+        instance.register(&*XPATH_MAP.uri, "entry", 2, map::FN_MAP_ENTRY());
+        instance.register(&*XPATH_MAP.uri, "remove", 2, map::FN_MAP_REMOVE());
+        instance.register(&*XPATH_MAP.uri, "for-each", 3, map::FN_MAP_FOR_EACH());
 
-        instance.register(XPATH_ARRAY.url, "size", 1, array::size);
-        instance.register(XPATH_ARRAY.url, "get", 2, array::get);
-        instance.register(XPATH_ARRAY.url, "put", 3, array::put);
-        instance.register(XPATH_ARRAY.url, "append", 2, array::append);
-        instance.register(XPATH_ARRAY.url, "subarray", 2, array::subarray);
-        instance.register(XPATH_ARRAY.url, "subarray", 3, array::subarray);
-        instance.register(XPATH_ARRAY.url, "insert-before", 3, array::insert_before);
-        instance.register(XPATH_ARRAY.url, "head", 1, array::head);
-        instance.register(XPATH_ARRAY.url, "tail", 1, array::tail);
-        instance.register(XPATH_ARRAY.url, "reverse", 1, array::reverse);
-        instance.register(XPATH_ARRAY.url, "join", usize::MAX, array::join);
-        instance.register(XPATH_ARRAY.url, "for-each", 2, array::for_each);
-        instance.register(XPATH_ARRAY.url, "filter", 2, array::filter);
-        instance.register(XPATH_ARRAY.url, "fold-left", 3, array::fold_left);
-        instance.register(XPATH_ARRAY.url, "fold-right", 3, array::fold_right);
-        instance.register(XPATH_ARRAY.url, "for-each-pair", 3, array::for_each_pair);
-        instance.register(XPATH_ARRAY.url, "sort", 1, array::sort);
-        instance.register(XPATH_ARRAY.url, "sort", 2, array::sort);
-        instance.register(XPATH_ARRAY.url, "sort", 3, array::sort);
-        instance.register(XPATH_ARRAY.url, "flatten", 1, array::flatten);
+        instance.register(&*XPATH_ARRAY.uri, "size", 1, array::FN_ARRAY_SIZE());
+        instance.register(&*XPATH_ARRAY.uri, "get", 2, array::FN_ARRAY_GET());
+        instance.register(&*XPATH_ARRAY.uri, "put", 3, array::FN_ARRAY_PUT());
+        instance.register(&*XPATH_ARRAY.uri, "append", 2, array::FN_ARRAY_APPEND());
+        instance.register(&*XPATH_ARRAY.uri, "subarray", 2, array::FN_ARRAY_SUBARRAY_2());
+        instance.register(&*XPATH_ARRAY.uri, "subarray", 3, array::FN_ARRAY_SUBARRAY_3());
+        instance.register(&*XPATH_ARRAY.uri, "insert-before", 3, array::FN_ARRAY_INSERT_BEFORE());
+        instance.register(&*XPATH_ARRAY.uri, "head", 1, array::FN_ARRAY_HEAD());
+        instance.register(&*XPATH_ARRAY.uri, "tail", 1, array::FN_ARRAY_TAIL());
+        instance.register(&*XPATH_ARRAY.uri, "reverse", 1, array::FN_ARRAY_REVERSE());
+        // instance.register(&*XPATH_ARRAY.uri, "join", usize::MAX, array::FN_ARRAY_JOIN());
+        instance.register(&*XPATH_ARRAY.uri, "for-each", 2, array::FN_ARRAY_FOR_EACH());
+        instance.register(&*XPATH_ARRAY.uri, "filter", 2, array::FN_ARRAY_FILTER());
+        instance.register(&*XPATH_ARRAY.uri, "fold-left", 3, array::FN_ARRAY_FOLD_LEFT());
+        instance.register(&*XPATH_ARRAY.uri, "fold-right", 3, array::FN_ARRAY_FOLD_RIGHT());
+        instance.register(&*XPATH_ARRAY.uri, "for-each-pair", 3, array::FN_ARRAY_FOR_EACH_PAIR());
+        instance.register(&*XPATH_ARRAY.uri, "sort", 1, array::FN_ARRAY_SORT_1());
+        instance.register(&*XPATH_ARRAY.uri, "sort", 2, array::FN_ARRAY_SORT_2());
+        instance.register(&*XPATH_ARRAY.uri, "sort", 3, array::FN_ARRAY_SORT_3());
+        instance.register(&*XPATH_ARRAY.uri, "flatten", 1, array::FN_ARRAY_FLATTEN());
 
-        instance.register(XPATH_FUNCTIONS.url, "current-time", 0, datetime::fn_current_time);
-        instance.register(XPATH_FUNCTIONS.url, "month-from-date", 1, datetime::fn_month_from_date);
-        instance.register(XPATH_FUNCTIONS.url, "day-from-date", 1, datetime::fn_day_from_date);
-        instance.register(XPATH_FUNCTIONS.url, "days-from-duration", 1, datetime::fn_days_from_duration);
+        instance.register(&*XPATH_FUNCTIONS.uri, "current-dateTime", 0, datetime::FN_CURRENT_DATE_TIME());
+        instance.register(&*XPATH_FUNCTIONS.uri, "current-date", 0, datetime::FN_CURRENT_DATE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "current-time", 0, datetime::FN_CURRENT_TIME());
+        instance.register(&*XPATH_FUNCTIONS.uri, "year-from-date", 1, datetime::FN_YEAR_FROM_DATE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "month-from-date", 1, datetime::FN_MONTH_FROM_DATE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "day-from-date", 1, datetime::FN_DAY_FROM_DATE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "days-from-duration", 1, datetime::FN_DAYS_FROM_DURATION());
 
-        instance.register(XPATH_FUNCTIONS.url, "timezone-from-time", 1, datetime::fn_timezone_from_time);
+        instance.register(&*XPATH_FUNCTIONS.uri, "timezone-from-time", 1, datetime::FN_TIMEZONE_FROM_DATE_TIME());
+        instance.register(&*XPATH_FUNCTIONS.uri, "timezone-from-time", 1, datetime::FN_TIMEZONE_FROM_DATE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "timezone-from-time", 1, datetime::FN_TIMEZONE_FROM_TIME());
 
-        instance.register(XPATH_FUNCTIONS.url, "for-each", 2, fun::for_each);
-        instance.register(XPATH_FUNCTIONS.url, "filter", 2, fun::filter);
-        instance.register(XPATH_FUNCTIONS.url, "fold-left", 3, fun::fold_left);
-        instance.register(XPATH_FUNCTIONS.url, "fold-right", 3, fun::fold_right);
-        instance.register(XPATH_FUNCTIONS.url, "for-each-pair", 3, fun::for_each_pair);
-        instance.register(XPATH_FUNCTIONS.url, "sort", 1, fun::sort);
-        instance.register(XPATH_FUNCTIONS.url, "sort", 2, fun::sort);
-        instance.register(XPATH_FUNCTIONS.url, "sort", 3, fun::sort);
-        instance.register(XPATH_FUNCTIONS.url, "apply", 2, fun::apply);
+        instance.register(&*XPATH_FUNCTIONS.uri, "for-each", 2, fun::FN_FOR_EACH());
+        instance.register(&*XPATH_FUNCTIONS.uri, "filter", 2, fun::FN_FILTER());
+        instance.register(&*XPATH_FUNCTIONS.uri, "fold-left", 3, fun::FN_FOLD_LEFT());
+        instance.register(&*XPATH_FUNCTIONS.uri, "fold-right", 3, fun::FN_FOLD_RIGHT());
+        instance.register(&*XPATH_FUNCTIONS.uri, "for-each-pair", 3, fun::FN_FOR_EACH_PAIR());
+        instance.register(&*XPATH_FUNCTIONS.uri, "sort", 1, fun::FN_SORT_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "sort", 2, fun::FN_SORT_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "sort", 3, fun::FN_SORT_3());
+        instance.register(&*XPATH_FUNCTIONS.uri, "apply", 2, fun::FN_APPLY());
 
-        instance.register(XPATH_FUNCTIONS.url, "error", 0, fun::error);
-        instance.register(XPATH_FUNCTIONS.url, "error", 1, fun::error);
-        instance.register(XPATH_FUNCTIONS.url, "error", 2, fun::error);
-        instance.register(XPATH_FUNCTIONS.url, "error", 3, fun::error);
+        instance.register(&*XPATH_FUNCTIONS.uri, "error", 0, fun::FN_ERROR_0());
+        instance.register(&*XPATH_FUNCTIONS.uri, "error", 1, fun::FN_ERROR_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "error", 2, fun::FN_ERROR_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "error", 3, fun::FN_ERROR_3());
 
-        instance.register(XPATH_FUNCTIONS.url, "count", 1, aggregates::fn_count);
-        instance.register(XPATH_FUNCTIONS.url, "avg", 1, aggregates::fn_avg);
+        instance.register(&*XPATH_FUNCTIONS.uri, "format-number", 2, math::FN_MATH_FORMAT_NUMBER_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "format-number", 3, math::FN_MATH_FORMAT_NUMBER_3());
 
-        instance.register(XPATH_FUNCTIONS.url, "abs", 1, math::fn_abs);
-        instance.register(XPATH_FUNCTIONS.url, "floor", 1, math::fn_floor);
-        instance.register(XPATH_FUNCTIONS.url, "round", 1, math::fn_round);
-        instance.register(XPATH_FUNCTIONS.url, "round-half-to-even", 1, math::fn_round_half_to_even);
-        instance.register(XPATH_FUNCTIONS.url, "round-half-to-even", 2, math::fn_round_half_to_even);
+        instance.register(&*XPATH_FUNCTIONS.uri, "number", 0, math::FN_MATH_NUMBER_0());
+        instance.register(&*XPATH_FUNCTIONS.uri, "number", 1, math::FN_MATH_NUMBER_1());
 
-        instance.register(XPATH_FUNCTIONS.url, "boolean", 1, boolean::fn_boolean);
-        instance.register(XPATH_FUNCTIONS.url, "true", 0, boolean::fn_true);
-        instance.register(XPATH_FUNCTIONS.url, "false", 0, boolean::fn_false);
-        instance.register(XPATH_FUNCTIONS.url, "not", 1, boolean::fn_not);
+        instance.register(&*XPATH_FUNCTIONS.uri, "count", 1, aggregates::FN_COUNT());
+        instance.register(&*XPATH_FUNCTIONS.uri, "avg", 1, aggregates::FN_AVG());
+        instance.register(&*XPATH_FUNCTIONS.uri, "max", 1, aggregates::FN_MAX_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "max", 2, aggregates::FN_MAX_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "min", 1, aggregates::FN_MIN_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "min", 2, aggregates::FN_MIN_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "sum", 1, aggregates::FN_SUM_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "sum", 2, aggregates::FN_SUM_2());
 
-        instance.register(XPATH_FUNCTIONS.url, "string", 0, strings::fn_string);
-        instance.register(XPATH_FUNCTIONS.url, "string", 1, strings::fn_string);
-        instance.register(XPATH_FUNCTIONS.url, "concat", 2, strings::fn_concat); // TODO number of arguments 2 or more
-        instance.register(XPATH_FUNCTIONS.url, "concat", 3, strings::fn_concat);
-        instance.register(XPATH_FUNCTIONS.url, "string-join", 1, strings::fn_string_join);
-        instance.register(XPATH_FUNCTIONS.url, "string-join", 2, strings::fn_string_join);
-        instance.register(XPATH_FUNCTIONS.url, "string-length", 0, strings::fn_string_length);
-        instance.register(XPATH_FUNCTIONS.url, "string-length", 1, strings::fn_string_length);
-        instance.register(XPATH_FUNCTIONS.url, "upper-case", 1, strings::fn_upper_case);
-        instance.register(XPATH_FUNCTIONS.url, "lower-case", 1, strings::fn_lower_case);
-        instance.register(XPATH_FUNCTIONS.url, "string-to-codepoints", 1, strings::fn_string_to_codepoints);
+        instance.register(&*XPATH_MATH.uri, "pi", 0, math::FN_MATH_PI());
 
-        instance.register(XPATH_FUNCTIONS.url, "position", 0, sequences::fn_position);
-        instance.register(XPATH_FUNCTIONS.url, "last", 0, sequences::fn_last);
+        instance.register(&*XPATH_FUNCTIONS.uri, "abs", 1, math::FN_MATH_ABS());
+        instance.register(&*XPATH_FUNCTIONS.uri, "ceiling", 1, math::FN_MATH_CEILING());
+        instance.register(&*XPATH_FUNCTIONS.uri, "floor", 1, math::FN_MATH_FLOOR());
+        instance.register(&*XPATH_FUNCTIONS.uri, "round", 1, math::FN_MATH_ROUND_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "round", 2, math::FN_MATH_ROUND_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "round-half-to-even", 1, math::FN_MATH_ROUND_HALF_TO_EVEN_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "round-half-to-even", 2, math::FN_MATH_ROUND_HALF_TO_EVEN_2());
 
-        instance.register(XPATH_FUNCTIONS.url, "data", 0, sequences::fn_data);
-        instance.register(XPATH_FUNCTIONS.url, "data", 1, sequences::fn_data);
-        instance.register(XPATH_FUNCTIONS.url, "empty", 1, sequences::fn_empty);
-        instance.register(XPATH_FUNCTIONS.url, "remove", 2, sequences::fn_remove);
-        instance.register(XPATH_FUNCTIONS.url, "reverse", 1, sequences::fn_reverse);
-        instance.register(XPATH_FUNCTIONS.url, "subsequence", 2, sequences::fn_subsequence);
-        instance.register(XPATH_FUNCTIONS.url, "subsequence", 3, sequences::fn_subsequence);
+        instance.register(&*XPATH_FUNCTIONS.uri, "boolean", 1, boolean::FN_BOOLEAN());
+        instance.register(&*XPATH_FUNCTIONS.uri, "true", 0, boolean::FN_TRUE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "false", 0, boolean::FN_FALSE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "not", 1, boolean::FN_NOT());
 
-        instance.register(XPATH_FUNCTIONS.url, "deep-equal", 2, comparison::fn_deep_equal);
+        instance.register(&*XPATH_FUNCTIONS.uri, "string", 0, strings::FN_STRING_0());
+        instance.register(&*XPATH_FUNCTIONS.uri, "string", 1, strings::FN_STRING_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "codepoints-to-string", 1, strings::FN_CODEPOINTS_TO_STRING());
+        instance.register(&*XPATH_FUNCTIONS.uri, "string-to-codepoints", 1, strings::FN_STRING_TO_CODEPOINTS());
+        instance.register(&*XPATH_FUNCTIONS.uri, "string-join", 1, strings::FN_STRING_JOIN_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "string-join", 2, strings::FN_STRING_JOIN_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "substring", 2, strings::FN_SUBSTRING_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "substring", 3, strings::FN_SUBSTRING_3());
+        instance.register(&*XPATH_FUNCTIONS.uri, "string-length", 0, strings::FN_STRING_LENGTH_0());
+        instance.register(&*XPATH_FUNCTIONS.uri, "string-length", 1, strings::FN_STRING_LENGTH_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "normalize-space", 0, strings::FN_NORMALIZE_SPACE_0());
+        instance.register(&*XPATH_FUNCTIONS.uri, "normalize-space", 1, strings::FN_NORMALIZE_SPACE_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "normalize-unicode", 1, strings::FN_NORMALIZE_UNICODE_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "normalize-unicode", 2, strings::FN_NORMALIZE_UNICODE_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "upper-case", 1, strings::FN_UPPER_CASE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "lower-case", 1, strings::FN_LOWER_CASE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "translate", 3, strings::FN_TRANSLATE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "contains", 2, strings::FN_CONTAINS_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "contains", 3, strings::FN_CONTAINS_3());
+        instance.register(&*XPATH_FUNCTIONS.uri, "starts-with", 2, strings::FN_STARTS_WITH_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "starts-with", 3, strings::FN_STARTS_WITH_3());
+        instance.register(&*XPATH_FUNCTIONS.uri, "ends-with", 2, strings::FN_ENDS_WITH_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "ends-with", 3, strings::FN_ENDS_WITH_3());
+        instance.register(&*XPATH_FUNCTIONS.uri, "substring-before", 2, strings::FN_SUBSTRING_BEFORE_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "substring-before", 3, strings::FN_SUBSTRING_BEFORE_3());
+        instance.register(&*XPATH_FUNCTIONS.uri, "substring-after", 2, strings::FN_SUBSTRING_AFTER_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "substring-after", 3, strings::FN_SUBSTRING_AFTER_3());
+        instance.register(&*XPATH_FUNCTIONS.uri, "matches", 2, strings::FN_MATCHES_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "matches", 3, strings::FN_MATCHES_3());
+        instance.register(&*XPATH_FUNCTIONS.uri, "replace", 3, strings::FN_REPLACE_3());
+        instance.register(&*XPATH_FUNCTIONS.uri, "replace", 4, strings::FN_REPLACE_4());
+        instance.register(&*XPATH_FUNCTIONS.uri, "tokenize", 1, strings::FN_TOKENIZE_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "tokenize", 2, strings::FN_TOKENIZE_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "tokenize", 3, strings::FN_TOKENIZE_3());
+        instance.register(&*XPATH_FUNCTIONS.uri, "analyze-string", 2, strings::FN_ANALYZE_STRING_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "analyze-string", 3, strings::FN_ANALYZE_STRING_3());
+
+        instance.register(&*XPATH_FUNCTIONS.uri, "position", 0, sequences::FN_POSITION());
+        instance.register(&*XPATH_FUNCTIONS.uri, "last", 0, sequences::FN_LAST());
+        instance.register(&*XPATH_FUNCTIONS.uri, "default-collation", 0, context::FN_DEFAULT_COLLATION());
+        instance.register(&*XPATH_FUNCTIONS.uri, "default-language", 0, context::FN_DEFAULT_LANGUAGE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "static-base-uri", 0, context::FN_STATIC_BASE_URI());
+
+        instance.register(&*XPATH_FUNCTIONS.uri, "function-lookup", 2, fun::FN_FUNCTION_LOOKUP());
+        instance.register(&*XPATH_FUNCTIONS.uri, "function-name", 1, fun::FN_FUNCTION_NAME());
+        instance.register(&*XPATH_FUNCTIONS.uri, "function-arity", 1, fun::FN_FUNCTION_ARITY());
+
+        instance.register(&*XPATH_FUNCTIONS.uri, "distinct-values", 1, sequences::FN_DISTINCT_VALUES_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "distinct-values", 2, sequences::FN_DISTINCT_VALUES_2());
+
+        instance.register(&*XPATH_FUNCTIONS.uri, "data", 0, sequences::FN_DATA_0());
+        instance.register(&*XPATH_FUNCTIONS.uri, "data", 1, sequences::FN_DATA_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "empty", 1, sequences::FN_EMPTY());
+        instance.register(&*XPATH_FUNCTIONS.uri, "exists", 1, sequences::FN_EXISTS());
+        instance.register(&*XPATH_FUNCTIONS.uri, "head", 1, sequences::FN_HEAD());
+        instance.register(&*XPATH_FUNCTIONS.uri, "tail", 1, sequences::FN_TAIL());
+        instance.register(&*XPATH_FUNCTIONS.uri, "insert-before", 3, sequences::FN_INSERT_BEFORE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "remove", 2, sequences::FN_REMOVE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "reverse", 1, sequences::FN_REVERSE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "subsequence", 2, sequences::FN_SUBSEQUENCE_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "subsequence", 3, sequences::FN_SUBSEQUENCE_3());
+        instance.register(&*XPATH_FUNCTIONS.uri, "unordered", 1, sequences::FN_UNORDERED());
+
+        instance.register(&*XPATH_FUNCTIONS.uri, "zero-or-one", 1, sequences::FN_ZERO_OR_ONE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "one-or-more", 1, sequences::FN_ONE_OR_MORE());
+        instance.register(&*XPATH_FUNCTIONS.uri, "exactly-one", 1, sequences::FN_EXACTLY_ONE());
+
+        instance.register(&*XPATH_FUNCTIONS.uri, "deep-equal", 2, comparison::FN_DEEP_EQUAL_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "deep-equal", 3, comparison::FN_DEEP_EQUAL_3());
+
+        instance.register(&*XPATH_FUNCTIONS.uri, "name", 0, nodes::FN_NAME_0());
+        instance.register(&*XPATH_FUNCTIONS.uri, "name", 1, nodes::FN_NAME_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "local-name", 0, nodes::FN_LOCAL_NAME_0());
+        instance.register(&*XPATH_FUNCTIONS.uri, "local-name", 1, nodes::FN_LOCAL_NAME_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "namespace-uri", 0, nodes::FN_NAMESPACE_URI_0());
+        instance.register(&*XPATH_FUNCTIONS.uri, "namespace-uri", 1, nodes::FN_NAMESPACE_URI_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "lang", 1, nodes::FN_LANG_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "lang", 2, nodes::FN_LANG_2());
+        instance.register(&*XPATH_FUNCTIONS.uri, "root", 0, nodes::FN_ROOT_0());
+        instance.register(&*XPATH_FUNCTIONS.uri, "root", 1, nodes::FN_ROOT_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "path", 0, nodes::FN_PATH_0());
+        instance.register(&*XPATH_FUNCTIONS.uri, "path", 1, nodes::FN_PATH_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "has-children", 0, nodes::FN_HAS_CHILDREN_0());
+        instance.register(&*XPATH_FUNCTIONS.uri, "has-children", 1, nodes::FN_HAS_CHILDREN_1());
+        instance.register(&*XPATH_FUNCTIONS.uri, "innermost", 1, nodes::FN_INNERMOST());
+        instance.register(&*XPATH_FUNCTIONS.uri, "outermost", 1, nodes::FN_OUTERMOST());
 
         instance
     }
 
-    pub(crate) fn register(&mut self, url: &str, local_part: &str, arity: usize, fun: FUNCTION<'a>) {
-        self.functions.entry(QNameResolved { url: String::from(url), local_part: String::from(local_part) })
+    pub(crate) fn register<S: Into<String>>(&mut self, uri: S, local_part: &str, arity: usize, fun: FUNCTION) {
+        assert_eq!(
+            arity, fun.0.0.len(),
+            "unmatched arity for {}#{} vs {} .. ns {}", local_part, arity, fun.0.0.len(), uri.into()
+        );
+        self.functions.entry(QNameResolved { url: uri.into(), local_part: local_part.into() })
             .or_insert_with(HashMap::new)
             .insert(arity,fun);
     }
 
-    pub(crate) fn put(&mut self, name: QNameResolved, parameters: Vec<Param>, body: Box<Expr>) {
+    pub(crate) fn put(&mut self, name: QNameResolved, parameters: Vec<Param>, st: Option<SequenceType>, body: Box<dyn Expression>) {
         self.declared.entry(name.clone())
             .or_insert_with(HashMap::new)
-            .insert(parameters.len(), Function { name, parameters, body: *body });
+            .insert(parameters.len(), Function { name, parameters, st, body });
     }
 
-    pub(crate) fn get(&self, qname: &QNameResolved, arity: usize) -> Option<FUNCTION<'a>> {
+    pub(crate) fn get(&self, qname: &QNameResolved, arity: usize) -> Option<FUNCTION> {
         if let Some(list) = self.functions.get(qname) {
             if let Some(rf) = list.get(&arity) {
-                Some(*rf)
+                Some(rf.clone())
             } else {
                 None
             }
@@ -210,66 +338,114 @@ impl<'a> FunctionsRegister<'a> {
         }
     }
 
-    pub(crate) fn declared(&self, qname: &QNameResolved, arity: usize) -> Option<Function> {
-        // println!("function get {:?} {:?} {:?}", uri, local_part, arity);
+    pub(crate) fn declared(&self, qname: &QNameResolved, arity: usize) -> Option<&Function> {
         if let Some(list) = self.declared.get(qname) {
-            // println!("function list {:?}", list.len());
-            //TODO: fix it!
-            let rf = list.get(&arity).unwrap();
-            Some(rf.clone())
+            list.get(&arity)
         } else {
-            // println!("function list NONE");
             None
         }
     }
 }
 
-pub(crate) fn expr_to_params(expr: Expr) -> Vec<Param> {
-    match expr {
-        Expr::ParamList(exprs) => {
-            let mut params = Vec::with_capacity(exprs.len());
-            for expr in exprs {
-                let param = match expr {
-                    Expr::Param { name, type_declaration } => {
-                        Param { name, sequence_type: None }
-                    }
-                    _ => panic!("expected Param but got {:?}", expr)
-                };
-                params.push(param);
-            }
-            params
-        },
-        Expr::Param { name, type_declaration } => {
-            vec![Param { name, sequence_type: None }]
-        },
-        _ => panic!("expected ParamList but got {:?}", expr)
+pub(crate) fn cascade(env: &Environment, arguments: Vec<Object>, params: Vec<SequenceType>) -> Result<Vec<Object>, ErrorInfo> {
+    if arguments.len() != params.len() {
+        todo!("raise error?")
+    } else {
+        let mut args = Vec::with_capacity(arguments.len());
+        for (arg, st) in arguments.into_iter()
+            .zip(params.into_iter())
+            .into_iter()
+        {
+            args.push(
+                st.cascade(env, arg)?
+            );
+        }
+        Ok(args)
     }
 }
 
-pub(crate) fn call<'a>(env: Box<Environment<'a>>, name: QNameResolved, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult<'a> {
-    // println!("call: {:?} {:?}", name, arguments);
+fn function_conversion_rules(env: &Box<Environment>, sequence_type: Option<SequenceType>, argument: Object) -> Result<Object, ErrorInfo> {
+    if let Some(st) = sequence_type {
+        match argument {
+            Object::Atomic(Type::Untyped(_)) => {
+                if st.item_type.is_same(env, &ItemType::AtomicOrUnionType(XS_QNAME.into()))
+                    || st.item_type.is_same(env, &ItemType::AtomicOrUnionType(XS_NOTATION.into())) {
+                    return Err((ErrorCode::XPTY0117, String::from("TODO")))
+                }
+            }
+            _ => {}
+        }
+        Ok(st.cascade(env, argument)?)
+    } else {
+        Ok(argument)
+    }
+}
 
-    let fun = env.functions.declared(&name, arguments.len());
+pub(crate) fn call(env: Box<Environment>, name: QNameResolved, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
+    println!("call: {:?} {:?}", name, arguments);
+
+    let mut fn_env = env.next();
+
+    let fun = fn_env.declared_functions(&name, arguments.len());
     if fun.is_some() {
-        let fun = fun.unwrap();
+        let fun = fun.unwrap().clone();
 
-        let mut fn_env = Environment::new();
-        fun.parameters.into_iter()
+        for (parameter, mut argument) in (&fun.parameters).into_iter()
             .zip(arguments.into_iter())
-            .for_each(
-                |(parameter, argument)|
-                    fn_env.set(resolve_element_qname(&parameter.name, &env), argument.clone())
-            );
+            .into_iter()
+        {
+            argument = function_conversion_rules(&fn_env, parameter.sequence_type.clone(), argument)?;
 
-        let (_, result) = eval_expr(fun.body.clone(), Box::new(fn_env), context)?;
+            fn_env.set_variable(resolve_element_qname(&parameter.name, &fn_env), argument.clone())
+        }
+
+        let (new_env, mut result) = fun.body.eval(fn_env, context)?;
+        let env = new_env.prev();
+
+        if let Some(st) = fun.st {
+            result = st.cascade(&env, result)?;
+        }
 
         Ok((env, result))
 
     } else {
-        let fun: Option<FUNCTION> = env.functions.get(&name, arguments.len());
+        let fun: Option<FUNCTION> =
+            // workaround for "concat" function
+            if name.local_part == "concat" {
+                if name.url == *XPATH_FUNCTIONS.uri && arguments.len() >= 2 {
+                    Some(strings::FN_CONCAT(arguments.len()))
+                } else {
+                    None
+                }
+            // workaround for "join" function
+            } else if name.local_part == "join" {
+                if name.url == *XPATH_FUNCTIONS.uri && arguments.len() >= 2 {
+                    Some(array::FN_ARRAY_JOIN(arguments.len()))
+                } else {
+                    None
+                }
+            } else {
+                fn_env.get_function(&name, arguments.len())
+            };
 
-        if fun.is_some() {
-            fun.unwrap()(env, arguments, context)
+        if let Some(((params, st), body)) = fun {
+
+            let mut checked_arguments = Vec::with_capacity(arguments.len());
+            for (parameter, mut argument) in (&params).into_iter()
+                .zip(arguments.into_iter())
+                .into_iter()
+            {
+                argument = function_conversion_rules(&fn_env, Some(parameter.clone()), argument)?;
+
+                checked_arguments.push(argument);
+            }
+
+            let (new_env, mut result) = body(fn_env, checked_arguments, context)?;
+            result = st.cascade(&new_env, result)?;
+
+            let env = new_env.prev();
+
+            Ok((env, result))
         } else {
             Err((ErrorCode::XPST0017, format!("no function {:?}#{:?}", name, arguments.len())))
         }

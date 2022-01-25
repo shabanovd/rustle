@@ -1,62 +1,73 @@
-use crate::eval::{Object, Type, EvalResult, DynamicContext};
-use crate::eval::Environment;
+use crate::eval::{Environment, Object, Type, DynamicContext, EvalResult, ErrorInfo};
+use crate::eval::sequence_type::*;
+use crate::fns::FUNCTION;
+use crate::parser::errors::ErrorCode;
 
 use bigdecimal::Zero;
+use crate::values::Types;
 
-pub(crate) fn fn_true<'a>(env: Box<Environment<'a>>, _arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+// fn:true() as xs:boolean
+pub(crate) fn FN_TRUE() -> FUNCTION {
+    (
+        (
+            [].to_vec(),
+            SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_BOOLEAN.into()))
+        ),
+        fn_true
+    )
+}
+
+pub(crate) fn fn_true(env: Box<Environment>, _arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     Ok((env, Object::Atomic(Type::Boolean(true))))
 }
 
-pub(crate) fn fn_false<'a>(env: Box<Environment<'a>>, _arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+// fn:false() as xs:boolean
+pub(crate) fn FN_FALSE() -> FUNCTION {
+    (
+        (
+            [].to_vec(),
+            SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_BOOLEAN.into()))
+        ),
+        fn_false
+    )
+}
+
+pub(crate) fn fn_false(env: Box<Environment>, _arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     Ok((env, Object::Atomic(Type::Boolean(false))))
 }
 
-pub(crate) fn fn_not<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
-    let result = match arguments.as_slice() {
-        [object] => {
-            !object_to_bool(object)
-        },
-        _ => panic!("error")
-    };
-
-    Ok((env, Object::Atomic(Type::Boolean(result))))
+// fn:boolean($arg as item()*) as xs:boolean
+pub(crate) fn FN_BOOLEAN() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_more(ItemType::Item)].to_vec(),
+            SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_BOOLEAN.into()))
+        ),
+        fn_boolean
+    )
 }
 
-pub(crate) fn fn_boolean<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
-    let item = arguments.get(0).unwrap();
+pub(crate) fn fn_boolean(env: Box<Environment>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    let item = arguments.remove(0);
 
-    let flag = object_to_bool(item);
-
-    Ok((env, Object::Atomic(Type::Boolean(flag))))
+    let v = item.effective_boolean_value()?;
+    Ok((env, Object::Atomic(Type::Boolean(v))))
 }
 
-pub fn object_to_bool(object: &Object) -> bool {
-    match object {
-        Object::Empty => false,
-        Object::Atomic(Type::Boolean(v)) => *v,
-        Object::Atomic(Type::String(str)) => str.len() != 0,
-        Object::Atomic(Type::Integer(number)) => !number.is_zero(),
-        Object::Atomic(Type::Decimal(number)) => !number.is_zero(),
-        Object::Atomic(Type::Float(number)) => {
-            if number.is_nan() {
-                false
-            } else if number.is_infinite() && !number.is_zero() {
-                true
-            } else {
-                false
-            }
-        },
-        Object::Atomic(Type::Double(number)) => {
-            if number.is_nan() {
-                false
-            } else if number.is_infinite() && !number.is_zero() {
-                true
-            } else {
-                false
-            }
-        },
-        Object::Node(..) |
-            Object::Atomic(..) => true,
-        _ => panic!("TODO object_to_bool {:?}", object)
-    }
+// fn:not($arg as item()*) as xs:boolean
+pub(crate) fn FN_NOT() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_more(ItemType::Item)].to_vec(),
+            SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_BOOLEAN.into()))
+        ),
+        fn_not
+    )
+}
+
+pub(crate) fn fn_not(env: Box<Environment>, mut arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    let item = arguments.remove(0);
+
+    let v = item.effective_boolean_value()?;
+    Ok((env, Object::Atomic(Type::Boolean(!v))))
 }

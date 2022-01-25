@@ -1,9 +1,10 @@
-use crate::eval::{Object, object_owned_to_sequence, Environment, EvalResult, eval_expr, DynamicContext};
+use crate::eval::{Object, Environment, EvalResult, DynamicContext, Type, range_to_sequence};
 use std::slice::Iter;
 use crate::values::{QNameResolved, resolve_element_qname};
-use crate::parser::op::Expr;
 use crate::eval::helpers::{relax, insert_into_sequences};
-use std::rc::Rc;
+use crate::eval::prolog::*;
+use crate::eval::expression::Expression;
+use crate::parser::errors::ErrorCode;
 
 struct SequenceIterator<'a> {
     name: &'a QNameResolved,
@@ -26,59 +27,138 @@ impl<'a> SequenceIterator<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone)]
 pub(crate) struct Pipe {
-    pub expr: Expr,
-    pub next: Option<Rc<Pipe>>,
+    pub binding: Option<Binding>,
+    pub where_expr: Option<Box<dyn Expression>>,
+    pub return_expr: Option<Box<dyn Expression>>,
+    pub next: Option<Box<Pipe>>,
 }
 
-pub(crate) fn eval_pipe<'a>(pipe: Rc<Pipe>, env: Box<Environment<'a>>, context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn eval_pipe<'a>(pipe: Box<Pipe>, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
     let mut current_env = env;
 
-    let expr = &pipe.expr;
-    let next = &pipe.next;
-    match expr {
-        Expr::ForBinding { name, values } => {
-            let name = resolve_element_qname(&name, &current_env);
-            let (new_env, evaluated) = eval_expr(*values.clone(), current_env, context)?;
-            current_env = new_env;
+    let next = pipe.next;
+    if let Some(binding) = pipe.binding {
+        match binding {
+            Binding::For { name, values, st, allowing_empty, positional_var } => {
+                let name = resolve_element_qname(&name, &current_env);
+                let positional_var = if let Some(positional_var) = positional_var {
+                    Some(resolve_element_qname(&positional_var, &current_env))
+                } else {
+                    None
+                };
 
-            let mut result = vec![];
+                let (new_env, evaluated) = values.eval(current_env, context)?;
+                current_env = new_env;
 
-            if let Some(next) = next {
-                let items = object_owned_to_sequence(evaluated);
-                for item in items {
-                    current_env.set(name.clone(), item);
+                let mut result = vec![];
 
-                    let (new_env, answer) = eval_pipe(next.clone(), current_env, context)?;
-                    current_env = new_env;
+                if let Some(next) = next {
+                    let items = range_to_sequence(evaluated);
+                    if items.len() == 0 {
+                        if allowing_empty {
 
-                    insert_into_sequences(&mut result, answer);
+                            let item = if let Some(st) = st.as_ref() {
+                                if st.is_castable(&current_env, &Object::Empty)? {
+                                    Object::Empty
+                                } else {
+                                    return Err((ErrorCode::XPTY0004, String::from("TODO")))
+                                }
+                            } else {
+                                Object::Empty
+                            };
+
+                            current_env.set_variable(name.clone(), item);
+                            if let Some(positional_var) = positional_var.clone() {
+                                current_env.set_variable(positional_var, Object::Atomic(Type::Integer(0)));
+                            }
+
+                            let (new_env, answer) = eval_pipe(next.clone(), current_env, context)?;
+                            current_env = new_env;
+
+                            insert_into_sequences(&mut result, answer);
+                        }
+                    } else {
+                        let mut pos = 0;
+                        for item in items {
+                            pos += 1;
+
+                            let item = if let Some(st) = st.as_ref() {
+                                if st.is_castable(&current_env, &item)? {
+                                    item
+                                } else {
+                                    return Err((ErrorCode::XPTY0004, String::from("TODO")))
+                                }
+                            } else {
+                                item
+                            };
+
+                            current_env.set_variable(name.clone(), item);
+                            if let Some(positional_var) = positional_var.clone() {
+                                current_env.set_variable(positional_var, Object::Atomic(Type::Integer(pos)));
+                            }
+
+                            let (new_env, answer) = eval_pipe(next.clone(), current_env, context)?;
+                            current_env = new_env;
+
+                            insert_into_sequences(&mut result, answer);
+                        }
+                    }
                 }
-            }
 
-            relax(current_env, result)
-        },
-        Expr::LetBinding { name, type_declaration,  value } => {
-            let (_, item) = eval_expr(*value.clone(), current_env.clone(), context)?;
+                relax(current_env, result)
+            },
+            Binding::Let { name, st: type_declaration, value } => {
+                let (new_env, item) = value.eval(current_env.next(), context)?;
+                // let item = match item {
+                //     Object::Node(rf) => {
+                //         if rf.storage.is_none() {
+                //             let storage = new_env.xml_tree.clone();
+                //             Object::Node(
+                //                 Reference { storage: Some(storage), storage_id: rf.storage_id, id: rf.id, attr_name: rf.attr_name }
+                //             )
+                //         } else {
+                //             Object::Node(rf)
+                //         }
+                //     },
+                //     _ => item,
+                // };
+                current_env = new_env.prev();
 
-            // TODO: handle typeDeclaration
+                // TODO: handle typeDeclaration
 
-            let name = resolve_element_qname(&name, &current_env);
-            current_env.set(name, item);
+                let name = resolve_element_qname(&name, &current_env);
+                current_env.set_variable(name, item);
 
+                if let Some(next) = next {
+                    eval_pipe(next, current_env, context)
+                } else {
+                    Ok((current_env, Object::Empty))
+                }
+            },
+        }
+    } else if let Some(expr) = pipe.where_expr {
+        let (new_env, v) = expr.eval(current_env, context)?;
+        current_env = new_env;
+
+        if v.effective_boolean_value()? {
             if let Some(next) = next {
-                eval_pipe(next.clone(), current_env, context)
+                eval_pipe(next, current_env, context)
             } else {
                 Ok((current_env, Object::Empty))
             }
-        },
-        _ => {
-            if let Some(next) = next {
-                panic!("internal error {:?}", pipe);
-            }
-
-            eval_expr(expr.clone(), current_env, context)
+        } else {
+            Ok((current_env, Object::Empty))
         }
+
+    } else if let Some(expr) = pipe.return_expr {
+        if let Some(..) = next {
+            panic!("internal error");
+        }
+
+        expr.eval(current_env, context)
+    } else {
+        panic!("internal error")
     }
 }

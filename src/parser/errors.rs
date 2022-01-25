@@ -1,9 +1,12 @@
+use std::fmt::Debug;
 use strum_macros::AsRefStr;
-use nom::error::{ErrorKind, ParseError};
+use nom::error::{ErrorKind, ParseError, FromExternalError};
 use nom::{IResult, Err};
+use crate::eval::ErrorInfo;
+use crate::values::{Type, Types};
 
 #[allow(dead_code)]
-#[derive(Debug, PartialEq, AsRefStr)]
+#[derive(Debug, Clone, PartialEq, AsRefStr)]
 pub enum ErrorCode {
     TODO,
     XPST0001,
@@ -172,13 +175,56 @@ pub enum ErrorCode {
     FOXT0006
 }
 
+impl ErrorCode {
+    pub(crate) fn forg0001(obj: &dyn std::any::Any, to: Types) -> ErrorInfo {
+        (ErrorCode::FORG0001, format!("{:?} cannot be cast to {:?}", obj, to))
+        // (ErrorCode::FORG0001, format!("The string {:?} cannot be cast to a {}", str, type_name))
+        // (ErrorCode::FORG0001, format!("can't convert to {} {:?}", type_name, str))
+    }
+
+    pub(crate) fn forg0006(obj: String) -> ErrorInfo {
+        (ErrorCode::FORG0006, format!("inappropriate value {:?}", obj))
+    }
+
+    pub(crate) fn xpty0004(t: &Type, to: Types) -> ErrorInfo {
+        (ErrorCode::XPTY0004, format!("{:?} cannot be cast to {:?}", t, to))
+    }
+}
+
 #[derive(Debug, PartialEq, AsRefStr)]
 pub enum CustomError<I> {
-    XPST0003,
-    FOAR0002,
-    XQST0090,
+    XQ(I, ErrorCode),
+    // XQST0039,
+    // XQST0040,
+    // XQST0031,
+    // XQST0070,
+    // XQST0087,
+    // XPST0003,
+    // FOAR0002,
+    // XQST0090,
+    // XQST0118,
 
     Nom(I, ErrorKind),
+}
+
+impl<I> CustomError<I> {
+    pub(crate) fn new(i: I, code: ErrorCode) -> CustomError<I> {
+        CustomError::XQ(i, code)
+    }
+
+    pub(crate) fn failed(i: I, code: ErrorCode) -> nom::Err<CustomError<I>> {
+        nom::Err::Failure(CustomError::XQ(i, code))
+    }
+
+    pub(crate) fn error(i: I, code: ErrorCode) -> nom::Err<CustomError<I>> {
+        nom::Err::Error(CustomError::XQ(i, code))
+    }
+}
+
+impl<I> FromExternalError<I, CustomError<I>> for CustomError<I> {
+    fn from_external_error(input: I, kind: ErrorKind, e: CustomError<I>) -> Self {
+        e
+    }
 }
 
 impl<I> ParseError<I> for CustomError<I> {
@@ -202,28 +248,50 @@ impl<I> From<nom::Err<CustomError<I>>> for CustomError<I> {
 }
 
 pub trait IResultExt<I, O, E> {
-    fn or_failure(self, error: CustomError<I>) -> IResult<I, O, E>;
+    fn or_failure(self, error: ErrorCode) -> IResult<I, O, E>;
+
+    fn or_error(self, error: ErrorCode) -> IResult<I, O, E>;
 }
 
 impl<I, O> IResultExt<I, O, CustomError<I>> for IResult<I, O, CustomError<I>> {
-    fn or_failure(self, error: CustomError<I>) -> IResult<I, O, CustomError<I>> {
-        if self.is_ok() {
-            self
-        } else {
-            match self {
-                Err(nom::Err::Error(CustomError::Nom(i,t))) |
-                Err(nom::Err::Failure(CustomError::Nom(i,t))) => {
-                    println!("ERROR: {:?}", t);
+    fn or_failure(self, code: ErrorCode) -> IResult<I, O, CustomError<I>> {
+        match self {
+            Ok(_) => self,
+            Err(error) => {
+                match error {
+                    Err::Incomplete(e) => Err(nom::Err::Incomplete(e)),
+                    Err::Error(e) |
+                    Err::Failure(e) => {
+                        match e {
+                            CustomError::XQ(i, _) |
+                            CustomError::Nom(i, _) => {
+                                Err(nom::Err::Failure(CustomError::XQ(i, code)))
+                            }
+                        }
+                    }
                 }
-                _ => {}
             }
-            Err(nom::Err::Failure(error))
         }
-        // match self {
-        //     Ok(res) => Ok(res),
-        //     Err(..) => Err(nom::Err::Failure(error)),
-        //     // Err(..) => Err(nom::Err::Error(nom::error::ParseError::from_char("", ' '))),
-        // }
+    }
+
+    fn or_error(self, code: ErrorCode) -> IResult<I, O, CustomError<I>> {
+        match self {
+            Ok(_) => self,
+            Err(error) => {
+                match error {
+                    Err::Incomplete(e) => Err(nom::Err::Incomplete(e)),
+                    Err::Error(e) |
+                    Err::Failure(e) => {
+                        match e {
+                            CustomError::XQ(i, _) |
+                            CustomError::Nom(i, _) => {
+                                Err(nom::Err::Error(CustomError::XQ(i, code)))
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -1,15 +1,8 @@
 use core::fmt;
-use crate::eval::Environment;
-use crate::namespaces::SCHEMA;
+use crate::eval::{Environment, DynamicContext, EvalResult, Object, Type};
+use crate::namespaces::{Namespace, SCHEMA};
 use std::cmp::Ordering;
-
-lazy_static! {
-    pub static ref XS_STRING: QName = QName::full("xs", "string", SCHEMA.url);
-    pub static ref XS_INTEGER: QName = QName::full("xs", "integer", SCHEMA.url);
-    pub static ref XS_DECIMAL: QName = QName::full("xs", "decimal", SCHEMA.url);
-    pub static ref XS_FLOAT: QName = QName::full("xs", "float", SCHEMA.url);
-    pub static ref XS_DOUBLE: QName = QName::full("xs", "double", SCHEMA.url);
-}
+use crate::eval::expression::Expression;
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub struct QNameResolved {
@@ -17,22 +10,52 @@ pub struct QNameResolved {
     pub local_part: String,
 }
 
+impl QNameResolved {
+    pub(crate) fn is_same(&self, qname: &QName) -> bool {
+        if self.local_part == qname.local_part {
+            if let Some(url) = &qname.url {
+                &self.url == url
+            } else {
+                self.url == ""
+            }
+        } else {
+            false
+        }
+    }
+
+    pub(crate) fn is_same_qn(&self, qname: &QN) -> bool {
+        self.local_part == qname.local_part && self.url == qname.url
+    }
+}
+
+impl PartialEq<QName> for QNameResolved {
+    fn eq(&self, other: &QName) -> bool {
+        self.is_same(other)
+    }
+}
+
+impl<'a> PartialEq<QN<'a>> for QNameResolved {
+    fn eq(&self, other: &QN) -> bool {
+        self.is_same_qn(other)
+    }
+}
+
 pub fn resolve_element_qname(qname: &QName, env: &Box<Environment>) -> QNameResolved {
-    resolve_qname(qname, env, env.namespaces.default_for_element)
+    resolve_qname(qname, env, |env| env.default_namespace_for_element())
 }
 
 pub fn resolve_function_qname(qname: &QName, env: &Box<Environment>) -> QNameResolved {
-    resolve_qname(qname, env, env.namespaces.default_for_function)
+    resolve_qname(qname, env, |env| env.default_namespace_for_function())
 }
 
-fn resolve_qname(qname: &QName, env: &Box<Environment>, default: &str) -> QNameResolved {
+fn resolve_qname(qname: &QName, env: &Box<Environment>, default: fn(&Box<Environment>) -> String) -> QNameResolved {
     if let Some(url) = &qname.url {
         QNameResolved { url: url.clone(), local_part: qname.local_part.clone() }
     } else {
         if let Some(prefix) = &qname.prefix {
             if let Some(ns) = env.namespaces.by_prefix(prefix) {
                 QNameResolved {
-                    url: String::from(ns.url),
+                    url: ns.uri.clone(),
                     local_part: qname.local_part.clone(),
                 }
             } else {
@@ -40,10 +63,40 @@ fn resolve_qname(qname: &QName, env: &Box<Environment>, default: &str) -> QNameR
             }
         } else {
             QNameResolved {
-                url: String::from(default),
+                url: default(env),
                 local_part: qname.local_part.clone(),
             }
         }
+    }
+}
+
+pub struct QN<'a> {
+    pub prefix: &'a str,
+    pub url: &'a str,
+    pub local_part: &'a str,
+}
+
+impl<'a> QN<'a> {
+    pub const fn full(prefix: &'a str, local_part: &'a str, url: &'a str) -> Self {
+        QN { prefix, url, local_part }
+    }
+}
+
+impl<'a> Into<QName> for QN<'a> {
+    fn into(self) -> QName {
+        QName::full(self.prefix.to_string(), self.local_part.to_string(), self.url.to_string())
+    }
+}
+
+impl<'a> Into<QNameResolved> for QN<'a> {
+    fn into(self) -> QNameResolved {
+        QNameResolved { url: self.url.to_string(), local_part: self.local_part.to_string() }
+    }
+}
+
+impl<'a> PartialEq<QNameResolved> for QN<'a> {
+    fn eq(&self, other: &QNameResolved) -> bool {
+        other.is_same_qn(self)
     }
 }
 
@@ -55,27 +108,51 @@ pub struct QName {
 }
 
 impl QName {
-    pub fn full(prefix: &str, local_part: &str, url: &str) -> Self {
+    pub fn wildcard() -> Self {
         QName {
-            prefix: Some(String::from(prefix)),
-            url: Some(String::from(url)),
-            local_part: String::from(local_part),
+            prefix: Some(String::from("*")),
+            url: Some(String::from("*")),
+            local_part: String::from("*"),
+        }
+    }
+
+    pub fn full<S: Into<String>>(prefix: S, local_part: S, url: S) -> Self {
+        QName {
+            prefix: Some(prefix.into()),
+            url: Some(url.into()),
+            local_part: local_part.into(),
+        }
+    }
+
+    pub fn ns<N>(ns: &N, local_part: String) -> Self where N: Namespace {
+        QName {
+            prefix: Some(ns.prefix()),
+            url: Some(ns.uri()),
+            local_part: local_part.into(),
         }
     }
 
     pub fn new(prefix: String, local_part: String) -> Self {
-        QName {
-            prefix: Some(prefix),
-            url: None,
-            local_part,
+        if prefix.len() == 0 {
+            QName {
+                prefix: None,
+                url: None,
+                local_part,
+            }
+        } else {
+            QName {
+                prefix: Some(prefix),
+                url: None,
+                local_part,
+            }
         }
     }
 
-    pub fn local_part(local_part: &str) -> Self {
+    pub fn local_part<S: Into<String>>(local_part: S) -> Self {
         QName {
             prefix: None,
             url: None,
-            local_part: String::from( local_part ),
+            local_part: local_part.into(),
         }
     }
 
@@ -92,7 +169,15 @@ impl QName {
         }
     }
 
-    pub fn len(&self) -> usize {
+    pub(crate) fn cmp(&self, other: &QName) -> Ordering {
+        if self.local_part == other.local_part && self.url == other.url {
+            Ordering::Equal
+        } else {
+            self.local_part.cmp(&other.local_part)
+        }
+    }
+
+    fn len(&self) -> usize {
         if let Some(prefix) = &self.prefix {
             prefix.len() + 1 + self.local_part.len()
         } else {
@@ -101,22 +186,68 @@ impl QName {
     }
 
     pub fn string(&self) -> String {
-        let mut str = String::with_capacity(self.len());
-        if let Some(prefix) = &self.prefix {
+        let mut str = if let Some(prefix) = &self.prefix {
+            let mut str = String::with_capacity(self.local_part.len() + 1 + prefix.len());
             str.push_str(prefix.as_str());
             str.push_str(":");
-        }
+            str
+        } else {
+            String::with_capacity(self.local_part.len())
+        };
         str.push_str(self.local_part.as_str());
         str
+    }
+}
+
+impl PartialEq<QNameResolved> for QName {
+    fn eq(&self, other: &QNameResolved) -> bool {
+        other.is_same(self)
+    }
+}
+
+impl Expression for QName {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
+        Ok((env, Object::Atomic( Type::QName { local_part: self.local_part.clone(), url: self.url.clone(), prefix: self.prefix.clone() } ) ))
+    }
+
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
+        todo!()
     }
 }
 
 impl fmt::Debug for QName {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if let Some(prefix) = &self.prefix {
-            write!(f, "QName {{ {}:{} }}", prefix, self.local_part)
+            if let Some(url) = &self.url {
+                write!(f, "QN{{{}:{} {}}}", prefix, self.local_part, url)
+            } else {
+                write!(f, "QN{{{}:{}}}", prefix, self.local_part)
+            }
+        } else if let Some(url) = &self.url {
+            write!(f, "QN{{{} {}}}", self.local_part, url)
         } else {
-            write!(f, "QName {{ {} }}", self.local_part)
+            write!(f, "QN{{{}}}", self.local_part)
         }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct Name {
+    pub name: String,
+}
+
+impl Name {
+    pub(crate) fn boxed(name: String) -> Box<dyn Expression> {
+        Box::new(Name { name })
+    }
+}
+
+impl Expression for Name {
+    fn eval<'a>(&self, env: Box<Environment>, context: &DynamicContext) -> EvalResult {
+        Ok((env, Object::Atomic( Type::String(self.name.clone()) ) ))
+    }
+
+    fn predicate<'a>(&self, env: Box<Environment>, context: &DynamicContext, value: Object) -> EvalResult {
+        todo!()
     }
 }

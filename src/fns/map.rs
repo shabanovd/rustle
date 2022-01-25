@@ -2,8 +2,103 @@ use crate::eval::{Object, EvalResult, DynamicContext};
 use crate::eval::Environment;
 
 use std::collections::HashMap;
+use crate::eval::sequence_type::*;
+use crate::fns::FUNCTION;
 
-pub(crate) fn map_get<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+// op:same-key($k1 as xs:anyAtomicType, $k2 as xs:anyAtomicType) as xs:boolean
+
+// map:merge($maps as map(*)*) as map(*)
+pub(crate) fn FN_MAP_MERGE_1() -> FUNCTION {
+    (
+        (
+            [SequenceType::zero_or_more(ItemType::Map(None))].to_vec(),
+            SequenceType::exactly_one(ItemType::Map(None))
+        ),
+        fn_map_merge
+    )
+}
+
+// map:merge($maps as map(*)*, $options as map(*)) as map(*)
+pub(crate) fn FN_MAP_MERGE_2() -> FUNCTION {
+    (
+        (
+            [
+                SequenceType::zero_or_more(ItemType::Map(None)),
+                SequenceType::exactly_one(ItemType::Map(None)),
+            ].to_vec(),
+            SequenceType::exactly_one(ItemType::Map(None))
+        ),
+        fn_map_merge
+    )
+}
+
+pub(crate) fn fn_map_merge(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    todo!()
+}
+
+// map:size($map as map(*)) as xs:integer
+pub(crate) fn FN_MAP_SIZE() -> FUNCTION {
+    (
+        (
+            [SequenceType::exactly_one(ItemType::Map(None))].to_vec(),
+            SequenceType::exactly_one(ItemType::AtomicOrUnionType(XS_INTEGER.into()))
+        ),
+        map_size
+    )
+}
+
+pub(crate) fn map_size(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    todo!()
+}
+
+// map:keys($map as map(*)) as xs:anyAtomicType*
+pub(crate) fn FN_MAP_KEYS() -> FUNCTION {
+    (
+        (
+            [SequenceType::exactly_one(ItemType::Map(None))].to_vec(),
+            SequenceType::zero_or_more(ItemType::AnyAtomicType)
+        ),
+        map_keys
+    )
+}
+
+pub(crate) fn map_keys(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    todo!()
+}
+
+// map:contains($map as map(*), $key as xs:anyAtomicType) as xs:boolean
+pub(crate) fn FN_MAP_CONTAINS() -> FUNCTION {
+    (
+        (
+            [
+                SequenceType::exactly_one(ItemType::Map(None)),
+                SequenceType::exactly_one(ItemType::AnyAtomicType),
+            ].to_vec(),
+            SequenceType::zero_or_more(ItemType::AtomicOrUnionType(XS_BOOLEAN.into()))
+        ),
+        map_contains
+    )
+}
+
+pub(crate) fn map_contains(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
+    todo!()
+}
+
+// map:get($map as map(*), $key as xs:anyAtomicType) as item()*
+pub(crate) fn FN_MAP_GET() -> FUNCTION {
+    (
+        (
+            [
+                SequenceType::exactly_one(ItemType::Map(None)),
+                SequenceType::exactly_one(ItemType::AnyAtomicType),
+            ].to_vec(),
+            SequenceType::zero_or_more(ItemType::Item)
+        ),
+        map_get
+    )
+}
+
+pub(crate) fn map_get(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Map(map), Object::Atomic(k)] => {
 
@@ -20,31 +115,58 @@ pub(crate) fn map_get<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _co
     }
 }
 
-pub(crate) fn map_merge<'a>(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+// map:find($input as item()*, $key as xs:anyAtomicType) as array(*)
+pub(crate) fn FN_MAP_FIND() -> FUNCTION {
+    (
+        (
+            [
+                SequenceType::zero_or_more(ItemType::Item),
+                SequenceType::exactly_one(ItemType::AnyAtomicType),
+            ].to_vec(),
+            SequenceType::exactly_one(ItemType::Array(None))
+        ),
+        map_find
+    )
+}
+
+pub(crate) fn map_find(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     todo!()
 }
 
-pub(crate) fn map_size<'a>(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+// map:put($map as map(*), $key as xs:anyAtomicType, $value as item()*) as map(*)
+pub(crate) fn FN_MAP_PUT() -> FUNCTION {
+    (
+        (
+            [
+                SequenceType::exactly_one(ItemType::Map(None)),
+                SequenceType::exactly_one(ItemType::AnyAtomicType),
+                SequenceType::zero_or_more(ItemType::Item),
+            ].to_vec(),
+            SequenceType::exactly_one(ItemType::Map(None))
+        ),
+        map_put
+    )
+}
+
+pub(crate) fn map_put(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     todo!()
 }
 
-pub(crate) fn map_keys<'a>(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
-    todo!()
+// map:entry($key as xs:anyAtomicType, $value as item()*) as map(*)
+pub(crate) fn FN_MAP_ENTRY() -> FUNCTION {
+    (
+        (
+            [
+                SequenceType::exactly_one(ItemType::AnyAtomicType),
+                SequenceType::zero_or_more(ItemType::Item),
+            ].to_vec(),
+            SequenceType::exactly_one(ItemType::Map(None))
+        ),
+        map_entry
+    )
 }
 
-pub(crate) fn map_contains<'a>(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
-    todo!()
-}
-
-pub(crate) fn map_find<'a>(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
-    todo!()
-}
-
-pub(crate) fn map_put<'a>(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
-    todo!()
-}
-
-pub(crate) fn map_entry<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+pub(crate) fn map_entry(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     match arguments.as_slice() {
         [Object::Atomic(k), Object::Atomic(v)] => {
 
@@ -59,10 +181,45 @@ pub(crate) fn map_entry<'a>(env: Box<Environment<'a>>, arguments: Vec<Object>, _
     }
 }
 
-pub(crate) fn map_remove<'a>(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+// map:remove($map as map(*), $keys as xs:anyAtomicType*) as map(*)
+pub(crate) fn FN_MAP_REMOVE() -> FUNCTION {
+    (
+        (
+            [
+                SequenceType::exactly_one(ItemType::Map(None)),
+                SequenceType::zero_or_more(ItemType::AnyAtomicType),
+            ].to_vec(),
+            SequenceType::exactly_one(ItemType::Map(None))
+        ),
+        map_remove
+    )
+}
+
+pub(crate) fn map_remove(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     todo!()
 }
 
-pub(crate) fn map_for_each<'a>(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult<'a> {
+// map:for-each($map as map(*), $action as function(xs:anyAtomicType, item()*) as item()*) as item()*
+pub(crate) fn FN_MAP_FOR_EACH() -> FUNCTION {
+    (
+        (
+            [
+                SequenceType::exactly_one(ItemType::Map(None)),
+                SequenceType::exactly_one(ItemType::Function {
+                    args: Some([
+                        SequenceType::exactly_one(ItemType::AnyAtomicType),
+                        SequenceType::zero_or_more(ItemType::Item)
+                    ].to_vec()),
+                    st: Some(Box::new(SequenceType::zero_or_more(ItemType::Item)))
+                }),
+                SequenceType::zero_or_more(ItemType::AnyAtomicType),
+            ].to_vec(),
+            SequenceType::exactly_one(ItemType::Map(None))
+        ),
+        map_for_each
+    )
+}
+
+pub(crate) fn map_for_each(env: Box<Environment>, arguments: Vec<Object>, _context: &DynamicContext) -> EvalResult {
     todo!()
 }

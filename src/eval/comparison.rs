@@ -1,68 +1,216 @@
-use crate::eval::{Object, Type, Environment, EvalResult, atomization, relax};
+use crate::eval::{Object, Type, Environment, EvalResult, atomization, relax, sequence_atomization, ErrorInfo};
 use crate::serialization::object_to_string;
-use crate::parser::parse_duration::string_to_dt_duration;
 use std::cmp::Ordering;
-use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
-use crate::parser::op::OperatorComparison;
+use crate::parser::op::{Comparison, OperatorComparison};
 use crate::eval::arithmetic::object_to_items;
-use ordered_float::OrderedFloat;
 use crate::parser::errors::ErrorCode;
-use crate::values::QName;
+use crate::values::{QName, Types};
+use crate::tree::Reference;
 
-// TODO: join with eval_arithmetic
+type ObjectInEnv<'a> = (&'a Box<Environment>, Object);
+type ObjectRefInEnv<'a> = (&'a Box<Environment>, &'a Object);
+type NodeRefInEnv<'a> = (&'a Box<Environment>, &'a Reference);
+
+// TODO: join with eval_arithmetic ?
 pub fn eval_comparison(env: Box<Environment>, operator: OperatorComparison, left: Object, right: Object) -> EvalResult {
 
     let mut current_env = env;
     let mut result = vec![];
 
+    let check_type = to_type(&operator);
+
     let it_left = object_to_items(&left);
     for l in it_left {
 
-        let it_right = object_to_items(&right);
-        for r in it_right {
+        match object_atomization(&current_env, &check_type, l) {
+            Err(e) => return Err(e),
+            Ok((None, None, Some(result))) => return Ok((current_env, result)),
+            Ok((Some(l_obj), None, None)) => {
 
-            let (new_env, value) = eval_comparison_item(current_env, operator.clone(), l.clone(), r.clone())?;
-            current_env = new_env;
+                let it_right = object_to_items(&right);
+                for r in it_right {
 
-            result.push(value);
-        }
+                    match object_atomization(&current_env, &check_type, r) {
+                        Err(e) => return Err(e),
+                        Ok((None, None, Some(result))) => return Ok((current_env, result)),
+                        Ok((Some(r_obj), None, None)) => {
+                            let obj = comparison_of_items(
+                                &operator,
+                                (&current_env, &l_obj), (&current_env, &r_obj)
+                            )?;
+                            result.push(obj);
+                        },
+                        _ => panic!("internal error")
+                    }
+                }
+
+            },
+            Ok((None, Some(l_node), None)) => {
+
+                let it_right = object_to_items(&right);
+                for r in it_right {
+
+                    match object_atomization(&current_env, &check_type, r) {
+                        Err(e) => return Err(e),
+                        Ok((None, None, Some(result))) => return Ok((current_env, result)),
+                        Ok((None, Some(r_node), None)) => {
+                            let v = comparison_of_nodes(
+                                &operator,
+                                (&current_env, &l_node), (&current_env, &r_node)
+                            )?;
+
+                            let obj = Object::Atomic(Type::Boolean(v));
+                            result.push(obj);
+                        }
+                        _ => panic!("internal error")
+                    }
+                }
+
+            },
+            _ => panic!("internal error")
+        };
     }
 
     relax(current_env, result)
 }
 
-pub fn eval_comparison_item(env: Box<Environment>, operator: OperatorComparison, left: Object, right: Object) -> EvalResult {
-    let left = match atomization(left) {
-        Ok(v) => v,
-        Err(e) => return Err((e, String::from("TODO")))
-    };
-    let right = match atomization(right) {
-        Ok(v) => v,
-        Err(e) => return Err((e, String::from("TODO")))
-    };
+pub fn eval_comparison_item(
+    env: Box<Environment>,
+    operator: OperatorComparison,
+    left: Object,
+    right: Object,
+) -> Result<(Box<Environment>, bool), ErrorInfo> {
+    let check_type = to_type(&operator);
 
-    println!("after eval_comparison_item");
-    println!("left_result {:?}", left);
-    println!("right_result {:?}", right);
+    match object_atomization(&env, &check_type, left) {
+        Err(e) => Err(e),
+        Ok((None, None, Some(result))) => {
+            let v = result.effective_boolean_value()?;
+            Ok((env, v))
+        },
+        Ok((Some(l_obj), None, None)) => {
+            match object_atomization(&env, &check_type, right) {
+                Err(e) => Err(e),
+                Ok((None, None, Some(result))) => {
+                    let v = result.effective_boolean_value()?;
+                    Ok((env, v))
+                }
+                Ok((Some(r_obj), None, None)) => {
+                    match comparison_of_items(&operator, (&env, &l_obj), (&env, &r_obj)) {
+                        Ok(v) => Ok((env, v.effective_boolean_value()?)),
+                        Err(e) => Err(e)
+                    }
+                },
+                _ => panic!("internal error")
+            }
+        },
+        Ok((None, Some(l_node), None)) => {
+            match object_atomization(&env, &check_type, right) {
+                Err(e) => Err(e),
+                Ok((None, None, Some(result))) => {
+                    let v = result.effective_boolean_value()?;
+                    Ok((env, v))
+                }
+                Ok((None, Some(r_node), None)) => {
+                    match comparison_of_nodes(&operator, (&env, &l_node), (&env, &r_node)) {
+                        Ok(v) => Ok((env, v)),
+                        Err(e) => Err(e)
+                    }
+                },
+                _ => panic!("internal error")
+            }
+        }
+        _ => panic!("internal error")
+    }
+}
 
-    let result = match operator {
-        OperatorComparison::GeneralEquals => general_eq(&left, &right),
-        OperatorComparison::GeneralNotEquals => todo!(),
-        OperatorComparison::GeneralLessThan => todo!(),
-        OperatorComparison::GeneralLessOrEquals => todo!(),
-        OperatorComparison::GeneralGreaterThan => todo!(),
-        OperatorComparison::GeneralGreaterOrEquals => todo!(),
-        OperatorComparison::ValueEquals => eq(&left, &right),
-        OperatorComparison::ValueNotEquals => ne(&left, &right),
-        OperatorComparison::ValueLessThan => ls(&left, &right),
-        OperatorComparison::ValueLessOrEquals => ls_or_eq(&left, &right),
-        OperatorComparison::ValueGreaterThan => gr(&left, &right),
-        OperatorComparison::ValueGreaterOrEquals => gr_or_eq(&left, &right),
-    };
+fn object_atomization<'a>(
+    env: &'a Box<Environment>, checks_type: &'a ComparisonType, obj: Object
+) -> Result<(Option<Object>, Option<Reference>, Option<Object>), ErrorInfo> {
+    match checks_type {
+        ComparisonType::Value => {
+            match atomization(env, obj) {
+                Ok(v) => Ok((Some(v), None, None)),
+                Err(e) => Err(e)
+            }
+        },
+        ComparisonType::General => {
+            match sequence_atomization(env, obj) {
+                Ok(v) => Ok((Some(v), None, None)),
+                Err(e) => Err(e)
+            }
+        },
+        ComparisonType::Node => {
+            match obj {
+                Object::Empty => Ok((None, None, Some(Object::Empty))),
+                Object::Node(rf) => Ok((None, Some(rf), None)),
+                _ => Err((ErrorCode::TODO, String::from("TODO")))
+            }
+        }
+    }
+}
 
-    match result {
-        Ok(v) => Ok((env, Object::Atomic(Type::Boolean(v)))),
-        Err(code) => Err((code, String::from("TODO")))
+enum ComparisonType {
+    General,
+    Value,
+    Node,
+}
+
+fn to_type(operator: &OperatorComparison) -> ComparisonType {
+    match operator {
+        OperatorComparison::GeneralEquals |
+        OperatorComparison::GeneralNotEquals |
+        OperatorComparison::GeneralLessThan |
+        OperatorComparison::GeneralLessOrEquals |
+        OperatorComparison::GeneralGreaterThan |
+        OperatorComparison::GeneralGreaterOrEquals => ComparisonType::General,
+        OperatorComparison::ValueEquals |
+        OperatorComparison::ValueNotEquals |
+        OperatorComparison::ValueLessThan |
+        OperatorComparison::ValueLessOrEquals |
+        OperatorComparison::ValueGreaterThan |
+        OperatorComparison::ValueGreaterOrEquals => ComparisonType::Value,
+        OperatorComparison::NodeIs |
+        OperatorComparison::NodePrecedes |
+        OperatorComparison::NodeFollows => ComparisonType::Node,
+    }
+}
+
+fn comparison_of_nodes(
+    operator: &OperatorComparison,
+    left: NodeRefInEnv,
+    right: NodeRefInEnv,
+) -> Result<bool, ErrorInfo> {
+    match operator {
+        OperatorComparison::NodeIs => node_is(left, right),
+        OperatorComparison::NodePrecedes => node_precedes(left, right),
+        OperatorComparison::NodeFollows => node_follows(left, right),
+        _ => panic!("internal error")
+    }
+}
+
+pub fn comparison_of_items(
+    operator: &OperatorComparison,
+    left: ObjectRefInEnv,
+    right: ObjectRefInEnv,
+) -> Result<Object, ErrorInfo> {
+    match operator {
+        OperatorComparison::GeneralEquals |
+        OperatorComparison::GeneralNotEquals |
+        OperatorComparison::GeneralLessThan |
+        OperatorComparison::GeneralLessOrEquals |
+        OperatorComparison::GeneralGreaterThan |
+        OperatorComparison::GeneralGreaterOrEquals => {
+            let value = general_comparison(operator, left, right)?;
+            Ok(Object::Atomic(Type::Boolean(value)))
+        },
+        OperatorComparison::ValueEquals |
+        OperatorComparison::ValueNotEquals |
+        OperatorComparison::ValueLessThan |
+        OperatorComparison::ValueLessOrEquals |
+        OperatorComparison::ValueGreaterThan |
+        OperatorComparison::ValueGreaterOrEquals => value_comparison(operator, left, right),
+        _ => panic!("internal error")
     }
 }
 
@@ -76,277 +224,301 @@ pub(crate) enum ValueOrdering {
     Greater,
 }
 
-impl ValueOrdering {
-    fn from(v: Ordering) -> Option<Self> {
+impl From<Ordering> for ValueOrdering {
+    fn from(v: Ordering) -> Self {
         match v {
-            Ordering::Less => Some(ValueOrdering::Less),
-            Ordering::Equal => Some(ValueOrdering::Equal),
-            Ordering::Greater => Some(ValueOrdering::Greater),
+            Ordering::Less => ValueOrdering::Less,
+            Ordering::Equal => ValueOrdering::Equal,
+            Ordering::Greater => ValueOrdering::Greater,
         }
     }
 }
 
-fn cmp(left: &Object, right: &Object) -> Option<ValueOrdering> {
-    match left {
-        Object::Atomic(Type::Untyped(..)) |
-        Object::Atomic(Type::AnyURI(..)) |
-        Object::Atomic(Type::String(..)) |
-        Object::Atomic(Type::NormalizedString(..)) |
-        Object::CharRef {..} |
-        Object::EntityRef(..) => {
-            if left == right {
-                return Some(ValueOrdering::Equal);
-            }
-            // xs:string or xs:anyURI => xs:string
-            if let Some(l_str) = object_to_string_if_string(left) {
-                if let Some(r_str) = object_to_string_if_string(right) {
-                    return ValueOrdering::from(l_str.cmp(&r_str));
-                }
-            }
-            None
+pub(crate) fn eq(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<bool, ErrorInfo> {
+    let result = value_comparison(&OperatorComparison::ValueEquals, left, right)?;
+    result.to_bool()
+}
+
+pub(crate) fn ne(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<bool, ErrorInfo> {
+    let result = value_comparison(&OperatorComparison::ValueNotEquals, left, right)?;
+    result.to_bool()
+}
+
+pub(crate) fn ls_or_eq(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<bool, ErrorInfo> {
+    let result = value_comparison(&OperatorComparison::ValueLessOrEquals, left, right)?;
+    result.to_bool()
+}
+
+pub(crate) fn ls(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<bool, ErrorInfo> {
+    let result = value_comparison(&OperatorComparison::ValueLessThan, left, right)?;
+    result.to_bool()
+}
+
+pub(crate) fn gr_or_eq(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<bool, ErrorInfo> {
+    let result = value_comparison(&OperatorComparison::ValueGreaterOrEquals, left, right)?;
+    result.to_bool()
+}
+
+pub(crate) fn gr(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<bool, ErrorInfo> {
+    let result = value_comparison(&OperatorComparison::ValueGreaterThan, left, right)?;
+    result.to_bool()
+}
+
+fn is_untyped(value: &Type) -> bool {
+    match value {
+        Type::Untyped(..) => true,
+        _ => false
+    }
+}
+
+fn is_numeric(value: &Type) -> bool {
+    match value {
+        Type::Integer(..) |
+        Type::Decimal(..) |
+        Type::Float(..) |
+        Type::Double(..) => true,
+        _ => false
+    }
+}
+
+pub(crate) fn value_comparison_for_types(op: Comparison, left: &Type, right: &Type) -> Result<bool, ErrorInfo> {
+    let cmp_result = left.value_comparison(right)?;
+    op.is_it(cmp_result)
+}
+
+fn general_comparison_for_types(op: &OperatorComparison, left: &Type, right: &Type) -> Result<bool, ErrorInfo> {
+    let is_untyped_left = is_untyped(left);
+    let is_untyped_right = is_untyped(right);
+    if is_untyped_left != is_untyped_right {
+        return if is_untyped_left {
+            let l = if is_numeric(right) {
+                left.convert(Types::Double)?
+            } else {
+                left.convert(right.to_type())?
+            };
+            value_comparison_for_types(op.to_comparison(), &l, right)
+        } else {
+            let r = if is_numeric(left) {
+                right.convert(Types::Double)?
+            } else {
+                right.convert(left.to_type())?
+            };
+            value_comparison_for_types(op.to_comparison(), left, &r)
         }
-        Object::Atomic(Type::QName {..}) => {
-            if left == right {
-                return Some(ValueOrdering::QNameEqual);
+    } else {
+        value_comparison_for_types(op.to_comparison(), left, right)
+    }
+}
+
+fn type_in_range(t: &Type, min: &i128, max: &i128) -> Result<bool, ErrorInfo> {
+    if let Some(num) = t.to_i128(false).as_ref() {
+        if min <= max {
+            Ok(num >= min && num <= max)
+        } else {
+            Ok(num >= max && num <= min)
+        }
+    } else {
+        Ok(false)
+    }
+}
+
+fn value_comparison(op: &OperatorComparison, left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<Object, ErrorInfo> {
+    // println!("value_comparison: {:?} vs {:?}", left.1, right.1);
+
+    if left.1 == &Object::Empty {
+        return Ok(Object::Empty);
+    } else if left.1 == right.1 {
+        match op.to_comparison() {
+            Comparison::GreaterOrEquals |
+            Comparison::LessOrEquals |
+            Comparison::Equals => return Ok(Object::Atomic(Type::Boolean(true))),
+            Comparison::NotEquals |
+            Comparison::LessThan |
+            Comparison::GreaterThan => {},
+        }
+    }
+    match left.1 {
+        Object::Empty => Ok(Object::Empty),
+        Object::Atomic(lt) => {
+            match right.1 {
+                Object::Empty => Ok(Object::Empty),
+                Object::Atomic(rt) => {
+                    let cmp_result = lt.value_comparison(rt)?;
+                    let value = op.to_comparison().is_it(cmp_result)?;
+                    Ok(Object::Atomic(Type::Boolean(value)))
+                },
+                _ => todo!("{:?} vs {:?}", left.1, right.1)
             }
-            if let Some(l_qname) = object_to_qname_if_qname(left) {
-                if let Some(r_qname) = object_to_qname_if_qname(right) {
-                    return match l_qname.partial_cmp(&r_qname) {
-                        Some(Ordering::Equal) => Some(ValueOrdering::QNameEqual),
-                        _ => Some(ValueOrdering::QNameNotEqual),
-                    }
-                }
-            }
-            None
-        },
-        Object::Atomic(Type::Integer(..)) |
-        Object::Atomic(Type::Decimal(..)) |
-        Object::Atomic(Type::Float(..)) |
-        Object::Atomic(Type::Double(..)) => {
-            let lnt = object_to_number_type(left);
-            let rnt = object_to_number_type(right);
-
-            // xs:integer, xs:decimal or xs:float => xs:float
-            // xs:integer, xs:decimal, xs:float, or xs:double => xs:double
-            if let Some(lnt) = lnt {
-                if let Some(rnt) = rnt {
-                    let nt = if lnt > rnt { lnt } else { rnt };
-                    match nt {
-                        NT::Integer => {
-                            if let Some(left_num) = object_to_i128(left) {
-                                if let Some(right_num) = object_to_i128(right) {
-                                    println!("Integer cmp: {:?} {:?}", left_num, right_num);
-                                    return ValueOrdering::from(left_num.cmp(&right_num));
-                                }
-                            }
-                            return None;
-                        },
-                        NT::Decimal => {
-                            if let Some(left_num) = object_to_decimal(left) {
-                                if let Some(right_num) = object_to_decimal(right) {
-                                    println!("Decimal cmp: {:?} {:?}", left_num, right_num);
-                                    return ValueOrdering::from(left_num.cmp(&right_num));
-                                }
-                            }
-                            return None;
-                        },
-                        NT::Float => {
-                            if let Some(left_num) = object_to_float(left) {
-                                if let Some(right_num) = object_to_float(right) {
-                                    println!("Float cmp: {:?} {:?}", left_num, right_num);
-                                    return if left_num.is_nan() || right_num.is_nan() {
-                                        Some(ValueOrdering::AlwaysNotEqual)
-                                    } else {
-                                        ValueOrdering::from(left_num.cmp(&right_num))
-                                    };
-                                }
-                            }
-                            return None;
-                        },
-                        NT::Double => {
-                            if let Some(left_num) = object_to_double(left) {
-                                if let Some(right_num) = object_to_double(right) {
-                                    println!("Double cmp: {:?} {:?}", left_num, right_num);
-                                    return if left_num.is_nan() || right_num.is_nan() {
-                                        Some(ValueOrdering::AlwaysNotEqual)
-                                    } else {
-                                        ValueOrdering::from(left_num.cmp(&right_num))
-                                    };
-                                }
-                            }
-                            return None;
-                        },
-                    }
-                }
-            }
-            None
-        },
-        _ => None
+        }
+        _ => todo!("{:?} vs {:?}", left.1, right.1)
     }
 }
 
-pub(crate) fn eq(left: &Object, right: &Object) -> Result<bool, ErrorCode> {
-    match cmp(left, right) {
-        Some(ValueOrdering::Equal) |
-        Some(ValueOrdering::QNameEqual) => Ok(true),
-        Some(..) => Ok(false),
-        None => Err(ErrorCode::XPTY0004)
-    }
-}
+pub(crate) fn general_comparison(op: &OperatorComparison, left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<bool, ErrorInfo> {
+    // println!("general_comparison: {:?} vs {:?}", left.1, right.1);
 
-pub(crate) fn ne(left: &Object, right: &Object) -> Result<bool, ErrorCode> {
-    match cmp(left, right) {
-        Some(ValueOrdering::Less) |
-        Some(ValueOrdering::Greater) |
-        Some(ValueOrdering::AlwaysNotEqual) |
-        Some(ValueOrdering::QNameNotEqual) => Ok(true),
-        Some(..) => Ok(false),
-        None => Err(ErrorCode::XPTY0004)
-    }
-}
-
-pub(crate) fn ls_or_eq(left: &Object, right: &Object) -> Result<bool, ErrorCode> {
-    match cmp(left, right) {
-        Some(ValueOrdering::QNameEqual) |
-        Some(ValueOrdering::QNameNotEqual) |
-        None => Err(ErrorCode::XPTY0004),
-        Some(ValueOrdering::Equal) |
-        Some(ValueOrdering::Less) => Ok(true),
-        Some(..) => Ok(false),
-    }
-}
-
-pub(crate) fn ls(left: &Object, right: &Object) -> Result<bool, ErrorCode> {
-    match cmp(left, right) {
-        Some(ValueOrdering::QNameEqual) |
-        Some(ValueOrdering::QNameNotEqual) |
-        None => Err(ErrorCode::XPTY0004),
-        Some(ValueOrdering::Less) => Ok(true),
-        Some(..) => Ok(false),
-    }
-}
-
-pub(crate) fn gr_or_eq(left: &Object, right: &Object) -> Result<bool, ErrorCode> {
-    match cmp(left, right) {
-        Some(ValueOrdering::QNameEqual) |
-        Some(ValueOrdering::QNameNotEqual) |
-        None => Err(ErrorCode::XPTY0004),
-        Some(ValueOrdering::Equal) |
-        Some(ValueOrdering::Greater) => Ok(true),
-        Some(..) => Ok(false),
-    }
-}
-
-pub(crate) fn gr(left: &Object, right: &Object) -> Result<bool, ErrorCode> {
-    match cmp(left, right) {
-        Some(ValueOrdering::QNameEqual) |
-        Some(ValueOrdering::QNameNotEqual) |
-        None => Err(ErrorCode::XPTY0004),
-        Some(v) => Ok(v == ValueOrdering::Greater),
-    }
-}
-
-pub(crate) fn general_eq(left: &Object, right: &Object) -> Result<bool, ErrorCode> {
-    match left {
+    match left.1 {
         Object::Empty => Ok(false),
         Object::Atomic(lt) => {
-            match right {
+            match right.1 {
                 Object::Empty => Ok(false),
-                Object::Atomic(Type::Untyped(rs)) => {
-                    match lt {
-                        Type::Untyped(ls) => {
-                            Ok(ls == rs)
-                        }
-                        Type::DayTimeDuration { .. } => {
-                            match string_to_dt_duration(rs) {
-                                Ok(rd) => Ok(lt == &rd),
-                                Err(..) => Err(ErrorCode::XPTY0004)
-                            }
-                        }
-                        Type::Integer(..) |
-                        Type::Decimal {..} |
-                        Type::Float {..} |
-                        Type::Double {..} => {
-                            if let Ok(number) = rs.parse() {
-                                let rv = Object::Atomic(Type::Double(number));
-                                eq(left, &rv)
-                            } else {
-                                Err(ErrorCode::XPTY0004)
-                            }
-                        }
-                        _ => Err(ErrorCode::XPTY0004)
-                    }
+                Object::Atomic(rt) => {
+                    general_comparison_for_types(op, lt, rt)
                 }
-                Object::Atomic(..) => {
-                    eq(left, right)
-                },
+                Object::Range { min, max } => {
+                    type_in_range(lt, min, max)
+                }
+                Object::Node(r_rf) => {
+                    let rv = match r_rf.to_typed_value() {
+                        Ok(data) => Type::Untyped(data),
+                        Err(msg) => return Err((ErrorCode::TODO, msg))
+                    };
+                    general_comparison_for_types(op, lt, &rv)
+                }
                 Object::Sequence(items) => {
                     for item in items {
-                        if eq(left, item)? {
-                            return Ok(true);
+                        match item {
+                            Object::Atomic(rt) => {
+                                if general_comparison_for_types(op, lt, rt)? {
+                                    return Ok(true);
+                                }
+                            },
+                            Object::Node(rf) => {
+                                let rv = match rf.to_typed_value() {
+                                    Ok(data) => Type::Untyped(data),
+                                    Err(msg) => return Err((ErrorCode::TODO, msg))
+                                };
+                                if general_comparison_for_types(op, lt, &rv)? {
+                                    return Ok(true);
+                                }
+                            },
+                            _ => {} // ignore
                         }
                     }
                     Ok(false)
                 }
-                _ => Err(ErrorCode::XPTY0004)
+                _ => panic!("{:?} vs {:?}", left.1, right.1) // Err((ErrorCode::XPTY0004, String::from("TODO")))
             }
         }
+        Object::Range { min: l_min, max: l_max} => {
+            match right.1 {
+                Object::Empty => Ok(false),
+                Object::Range { min: r_min, max: r_max} => {
+                    let (l_min, l_max) = if l_min <= l_max {
+                        (l_min, l_max)
+                    } else {
+                        (l_max, l_min)
+                    };
+
+                    let (r_min, r_max) = if r_min <= r_max {
+                        (r_min, r_max)
+                    } else {
+                        (r_max, r_min)
+                    };
+
+                    Ok((l_min <= r_max) && (l_max >= r_min))
+                },
+                Object::Atomic(rt) => {
+                    type_in_range(rt, l_min, l_max)
+                }
+                _ => panic!("{:?} vs {:?}", left.1, right.1) // Err((ErrorCode::XPTY0004, String::from("TODO")))
+            }
+        }
+        Object::Array(left_items) |
         Object::Sequence(left_items) => {
-            match right {
+            match right.1 {
                 Object::Empty => Ok(false),
                 Object::Atomic(..) => {
-                    for item in left_items {
-                        if eq(left, item)? {
+                    for lo in left_items {
+                        if general_comparison(op, (left.0, lo), right)? {
                             return Ok(true);
                         }
                     }
                     Ok(false)
                 },
+                Object::Array(right_items) |
                 Object::Sequence(right_items) => {
                     for left_item in left_items {
                         for right_item in right_items {
-                            if eq(left_item, right_item)? {
+                            if general_comparison(op, (left.0, left_item), (right.0, &right_item))? {
                                 return Ok(true);
                             }
                         }
                     }
                     Ok(false)
                 }
-                _ => Err(ErrorCode::XPTY0004)
+                _ => panic!("{:?} vs {:?}", left.1, right.1) // Err((ErrorCode::XPTY0004, String::from("TODO")))
             }
         },
-        _ => Err(ErrorCode::XPTY0004)
+        Object::Node(l_rf) => {
+            match right.1 {
+                Object::Empty => Ok(false),
+                Object::Atomic(rt) => {
+                    match l_rf.to_typed_value() {
+                        Ok(l_str) => general_comparison_for_types(op, &Type::Untyped(l_str), rt),
+                        Err(msg) => Err((ErrorCode::XPTY0004, msg))
+                    }
+                }
+                Object::Node(r_rf) => {
+                    match l_rf.cmp(r_rf) {
+                        Ordering::Equal => {
+                            let cmp_result = ValueOrdering::from(Ordering::Equal);
+                            op.to_comparison().is_it(cmp_result)
+                        },
+                        _ => {
+                            let lv = match l_rf.to_typed_value() {
+                                Ok(data) => Type::Untyped(data),
+                                Err(msg) => return Err((ErrorCode::TODO, msg))
+                            };
+                            let rv = match r_rf.to_typed_value() {
+                                Ok(data) => Type::Untyped(data),
+                                Err(msg) => return Err((ErrorCode::TODO, msg))
+                            };
+                            general_comparison_for_types(op, &lv, &rv)
+                        }
+                    }
+                }
+                _ => panic!("{:?} vs {:?}", left.1, right.1) // Err((ErrorCode::XPTY0004, String::from("TODO")))
+            }
+        }
+        _ => panic!("{:?} vs {:?}", left.1, right.1) // Err((ErrorCode::XPTY0004, String::from("TODO")))
     }
 }
 
-pub(crate) fn deep_eq(left: &Object, right: &Object) -> Result<bool, ErrorCode> {
-    if left == right {
+pub(crate) fn deep_eq(left: ObjectRefInEnv, right: ObjectRefInEnv) -> Result<bool, ErrorInfo> {
+    if left.1 == right.1 {
         Ok(true)
     } else {
-        match left {
+        match left.1 {
+            Object::Empty => {
+                match right.1 {
+                    Object::Empty => Ok(true),
+                    _ => Ok(false)
+                }
+            }
             Object::Atomic(..) => {
-                match right {
+                match right.1 {
                     Object::Atomic(..) => {
-                        eq(left, right)
+                        Ok(eq(left, right)? || (left.1.is_nan() && right.1.is_nan()))
                     }
                     _ => Ok(false)
                 }
             }
             Object::Range { min: left_min, max: left_max } => {
-                match right {
+                match right.1 {
                     Object::Range { min: right_min, max: right_max } => {
                         Ok(left_min == right_min && left_max == right_max)
                     },
                     Object::Sequence(right_items) => {
-                        deep_eq_sequence_and_range(right_items, *left_min, *left_max)
+                        deep_eq_sequence_and_range(right.0, right_items, *left_min, *left_max)
                     }
-                    _ => panic!("TODO {:?}", right)
+                    _ => panic!("TODO {:?}", right.1)
                 }
             },
             Object::Sequence(left_items) => {
-                match right {
+                match right.1 {
                     Object::Range { min, max } => {
-                        deep_eq_sequence_and_range(left_items, *min, *max)
+                        deep_eq_sequence_and_range(left.0, left_items, *min, *max)
                     },
                     Object::Sequence(right_items) => {
                         if left_items.len() != right_items.len() {
@@ -358,7 +530,7 @@ pub(crate) fn deep_eq(left: &Object, right: &Object) -> Result<bool, ErrorCode> 
                             loop {
                                 if let Some(left_item) = left_it.next() {
                                     if let Some(right_item) = right_it.next() {
-                                        if deep_eq(left_item, right_item)? {
+                                        if deep_eq((&left.0, left_item), (&right.0, right_item))? {
                                             return Ok(false);
                                         }
                                     } else {
@@ -376,13 +548,32 @@ pub(crate) fn deep_eq(left: &Object, right: &Object) -> Result<bool, ErrorCode> 
                     _ => Ok(false)
                 }
             },
-            _ => panic!("TODO {:?}", left)
+            Object::Node(l_rf) => {
+                match right.1 {
+                    Object::Node(r_rf) => {
+                        match l_rf.cmp(r_rf) {
+                            Ordering::Equal => {
+                                Ok(true)
+                            }
+                            _ => Ok(false)
+                        }
+                    }
+                    _ => Ok(false)
+                }
+            }
+            _ => panic!("TODO {:?}", left.1)
         }
     }
 }
 
-pub(crate) fn deep_eq_sequence_and_range(left_items: &Vec<Object>, min: i128, max: i128) -> Result<bool, ErrorCode> {
-    if left_items.len() != (max - min).max(0) as usize {
+pub(crate) fn deep_eq_sequence_and_range<'a>(env: &'a Box<Environment>, left_items: &'a Vec<Object>, min: i128, max: i128) -> Result<bool, ErrorInfo> {
+    let (min, max) = if min <= max {
+        (min, max)
+    } else {
+        (max, min)
+    };
+
+    if left_items.len() != ((max - min).abs() + 1).max(0) as usize {
         Ok(false)
     } else {
         let mut left_it = left_items.iter();
@@ -392,104 +583,31 @@ pub(crate) fn deep_eq_sequence_and_range(left_items: &Vec<Object>, min: i128, ma
 
         loop {
             if let Some(left_item) = left_it.next() {
-                if deep_eq(left_item, &Object::Atomic(Type::Integer(right_item)))? {
+                if !deep_eq((env, left_item), (env, &Object::Atomic(Type::Integer(right_item))))? {
                     return Ok(false);
                 }
 
                 right_item += step;
             } else {
-                return Ok(false);
+                return Ok((right_item - step) == max);
             }
         }
     }
 }
 
-#[derive(Eq, PartialEq, PartialOrd)]
-pub enum NT {
-    Integer = 1,
-    Decimal = 2,
-    Float   = 3,
-    Double  = 4,
+pub(crate) fn node_is(left: NodeRefInEnv, right: NodeRefInEnv) -> Result<bool, ErrorInfo> {
+    todo!()
 }
 
-fn object_to_number_type(obj: &Object) -> Option<NT> {
-    match obj {
-        Object::Atomic(Type::Integer(..)) => Some(NT::Integer),
-        Object::Atomic(Type::Decimal(..)) => Some(NT::Decimal),
-        Object::Atomic(Type::Float(..)) => Some(NT::Float),
-        Object::Atomic(Type::Double(..)) => Some(NT::Double),
-        _ => None
-    }
+pub(crate) fn node_precedes(left: NodeRefInEnv, right: NodeRefInEnv) -> Result<bool, ErrorInfo> {
+    todo!()
 }
 
-fn object_to_i128(obj: &Object) -> Option<i128> {
-    match obj {
-        Object::Atomic(Type::Integer(num)) => Some(*num),
-        // Object::Atomic(Type::Decimal(num)) => Some(num),
-        // Object::Atomic(Type::Double(num)) => Some(num),
-        _ => None
-    }
+pub(crate) fn node_follows(left: NodeRefInEnv, right: NodeRefInEnv) -> Result<bool, ErrorInfo> {
+    todo!()
 }
 
-fn object_to_decimal(obj: &Object) -> Option<BigDecimal> {
-    match obj {
-        Object::Atomic(Type::Integer(number)) => BigDecimal::from_i128(*number),
-        Object::Atomic(Type::Decimal(number)) => Some(number.clone()),
-        Object::Atomic(Type::Float(number)) => {
-            BigDecimal::from_f32(number.into_inner())
-        }
-        Object::Atomic(Type::Double(number)) => {
-            BigDecimal::from_f64(number.into_inner())
-        },
-        _ => None
-    }
-}
-
-fn object_to_float(obj: &Object) -> Option<OrderedFloat<f32>> {
-    match obj {
-        Object::Atomic(Type::Integer(number)) => OrderedFloat::from_i128(*number),
-        Object::Atomic(Type::Decimal(number)) => {
-            if let Some(number) = number.to_f32() {
-                OrderedFloat::from_f32(number)
-            } else {
-                None
-            }
-        },
-        Object::Atomic(Type::Float(number)) => Some(*number),
-        Object::Atomic(Type::Double(number)) => {
-            if let Some(number) = number.to_f32() {
-                OrderedFloat::from_f32(number)
-            } else {
-                None
-            }
-        },
-        _ => None
-    }
-}
-
-fn object_to_double(obj: &Object) -> Option<OrderedFloat<f64>> {
-    match obj {
-        Object::Atomic(Type::Integer(number)) => OrderedFloat::from_i128(*number),
-        Object::Atomic(Type::Decimal(number)) => {
-            if let Some(number) = number.to_f64() {
-                OrderedFloat::from_f64(number)
-            } else {
-                None
-            }
-        },
-        Object::Atomic(Type::Float(number)) => {
-            if let Some(number) = number.to_f64() {
-                OrderedFloat::from_f64(number)
-            } else {
-                None
-            }
-        },
-        Object::Atomic(Type::Double(number)) => Some(number.clone()),
-        _ => None
-    }
-}
-
-fn object_to_string_if_string(obj: &Object) -> Option<String> {
+fn object_to_string_if_string(env: &Box<Environment>, obj: &Object) -> Option<String> {
     match obj {
         Object::Atomic(Type::Untyped(..)) |
         Object::Atomic(Type::AnyURI(..)) |
@@ -497,7 +615,7 @@ fn object_to_string_if_string(obj: &Object) -> Option<String> {
         Object::Atomic(Type::NormalizedString(..)) |
         Object::CharRef {..} |
         Object::EntityRef(..) => {
-            Some(object_to_string(obj))
+            Some(object_to_string(env, obj))
         }
         _ => None
     }
