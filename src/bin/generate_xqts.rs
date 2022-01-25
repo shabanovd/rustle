@@ -436,8 +436,19 @@ impl TestState {
     }
 
     fn generate_head(&self, generated: &mut String) {
+        let name = fn_name(self.test_name.clone());
+
+        // workarounds
+        if name == "numberformat121" {
+            generated.push_str("    #[test]\n");
+        } else if name == "numberformat122" {
+            generated.push_str("    #[test]\n");
+        } else if name == "re00253" {
+            generated.push_str("    #[allow(text_direction_codepoint_in_literal)]\n");
+        }
+
         generated.push_str("    #[test]\n    fn ");
-        generated.push_str(fn_name(self.test_name.clone()).as_str());
+        generated.push_str(name.as_str());
 
         generated.push_str("() {\n");
         if let Some(env) = &self.env {
