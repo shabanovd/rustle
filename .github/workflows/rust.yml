@@ -11,11 +11,20 @@ env:
 
 jobs:
   build:
-
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: ["ubuntu-latest"]
+        rust_channel: ["nightly"]
+    runs-on: ${{matrix.os}}
 
     steps:
     - uses: actions/checkout@v2
+    - name: Install rustup
+      run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile=minimal
+    - name: Install rust channel
+      run: |
+        rustup install ${{matrix.rust_channel}}
+        rustup default ${{matrix.rust_channel}}
     - name: Generate
       run: cargo run --package rustle --bin generate_xqts
     - name: Build
