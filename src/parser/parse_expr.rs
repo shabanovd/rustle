@@ -98,7 +98,7 @@ pub(crate) fn parse_prolog(input: &str) -> IResult<&str, Vec<Box<dyn Expression>
     loop {
         let check = terminated(
             alt((parse_annotated_decl, parse_option_decl)),
-            tag(";")
+            tuple((ws, tag(";")))
         )(current_input);
         if check.is_ok() {
             let (input, expr) = check?;
