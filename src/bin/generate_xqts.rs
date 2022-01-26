@@ -439,38 +439,35 @@ impl TestState {
         let name = fn_name(self.test_name.clone());
 
         // workarounds
-        if name == "numberformat121" {
-            // stackoverflow
-            generated.push_str("    #[ignore]\n");
-        } else if name == "numberformat122" {
-            // stackoverflow
-            generated.push_str("    #[ignore]\n");
-        } else if name == "default_namespace_dash_007" {
-            // stackoverflow
-            generated.push_str("    #[ignore]\n");
-        } else if name == "function_dash_declaration_dash_007" {
-            // stackoverflow
-            generated.push_str("    #[ignore]\n");
-        } else if name == "map_dash_for_dash_each_dash_014" {
+        match name.as_str() {
+            // stackoverflows
+            "function_dash_declaration_dash_007" |
+            "default_namespace_dash_007" |
+            "numberformat121" |
+            "numberformat122" => {
+                generated.push_str("    #[ignore]\n");
+            }
             // running > 60 seconds
-            generated.push_str("    #[ignore]\n");
-        } else if name == "map_dash_keys_dash_014" {
-            // running > 60 seconds
-            generated.push_str("    #[ignore]\n");
-        } else if name == "same_dash_key_dash_023" {
-            // running > 60 seconds
-            generated.push_str("    #[ignore]\n");
-        } else if name == "xmark_dash_q10" {
-            // running > 60 seconds
-            generated.push_str("    #[ignore]\n");
-        } else if name == "xmark_dash_q11" {
-            // running > 60 seconds
-            generated.push_str("    #[ignore]\n");
-        } else if name == "xmark_dash_q12" {
-            // running > 60 seconds
-            generated.push_str("    #[ignore]\n");
-        } else if name == "re00253" {
-            generated.push_str("    #[allow(text_direction_codepoint_in_literal)]\n");
+            "xmark_dash_q10" |
+            "xmark_dash_q11" |
+            "xmark_dash_q12" |
+            "same_dash_key_dash_023" |
+            "map_dash_keys_dash_014" |
+            "map_dash_for_dash_each_dash_014" => {
+                generated.push_str("    #[ignore]\n");
+            }
+            // generate invalid xml
+            "k2_dash_condocnode_dash_17" |
+            "xml10_dash_3ed_dash_mixed_dash_content" |
+            "k2_dash_computeconattr_dash_35" |
+            "k2_dash_computeconattr_dash_36" |
+            "k2_dash_computeconattr_dash_5" => {
+                generated.push_str("    #[ignore]\n")
+            }
+            "re00253" => {
+                generated.push_str("    #[allow(text_direction_codepoint_in_literal)]\n");
+            }
+            _ => {}
         }
 
         generated.push_str("    #[test]\n    fn ");
