@@ -3818,7 +3818,7 @@ impl Type {
     }
 
     fn is_comparable(&self, other: &Type) -> bool {
-        println!("is_comparable {:?} vs {:?}", self.to_comparison_type(), other.to_comparison_type());
+        // println!("is_comparable {:?} vs {:?}", self.to_comparison_type(), other.to_comparison_type());
         self.to_comparison_type() == other.to_comparison_type()
     }
 
@@ -3989,7 +3989,7 @@ impl Type {
                     Types::Decimal => {
                         if let Some(left_num) = self.to_decimal() {
                             if let Some(right_num) = other.to_decimal() {
-                                println!("{:?} vs {:?} = {:?}", left_num, right_num, ValueOrdering::from(left_num.cmp(&right_num)));
+                                // println!("{:?} vs {:?} = {:?}", left_num, right_num, ValueOrdering::from(left_num.cmp(&right_num)));
                                 return Ok(ValueOrdering::from(left_num.cmp(&right_num)));
                             }
                         }
@@ -4127,7 +4127,7 @@ impl Type {
                     Type::Base64Binary(r_bits) => {
                         Ok(ValueOrdering::from(l_bits.cmp(r_bits)))
                     },
-                    _ => panic!("{:?} vs {:?}", self, other) // Err((ErrorCode::XPTY0004, String::from("TODO")))
+                    _ => todo!() // panic!("{:?} vs {:?}", self, other) // Err((ErrorCode::XPTY0004, String::from("TODO")))
                 }
             }
             Type::Base64Binary(l_bits) => {
@@ -4136,10 +4136,10 @@ impl Type {
                     Type::Base64Binary(r_bits) => {
                         Ok(ValueOrdering::from(l_bits.cmp(r_bits)))
                     },
-                    _ => panic!("{:?} vs {:?}", self, other) // Err((ErrorCode::XPTY0004, String::from("TODO")))
+                    _ => todo!() // panic!("{:?} vs {:?}", self, other) // Err((ErrorCode::XPTY0004, String::from("TODO")))
                 }
             }
-            _ => panic!("{:?} vs {:?}", self, other) // Err((ErrorCode::XPTY0004, String::from("TODO")))
+            _ => todo!() // panic!("{:?} vs {:?}", self, other) // Err((ErrorCode::XPTY0004, String::from("TODO")))
         }
     }
 }

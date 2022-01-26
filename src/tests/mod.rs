@@ -31,7 +31,7 @@ pub(crate) fn eval(
     sources_namespaces: Option<(Vec<(&str, &str)>, Vec<(&str, &str)>)>,
     input: &str
 ) -> EvalResult {
-    println!("script: {:?}", input);
+    // println!("script: {:?}", input);
 
     let parsed = parse(input);
     if parsed.is_ok() {
@@ -265,17 +265,17 @@ pub(crate) fn bool_check_assert_xml(result: &EvalResult, check: &str) -> bool {
                                     Err(e) => panic!("result is error: {:?}", e)
                                 }
                             }
-                            _ => panic!("{:?} vs {:?}", expected, result)
+                            _ => panic!() // panic!("{:?} vs {:?}", expected, result)
                         }
                     }
-                    _ => panic!("{:?} vs {:?}", expected, result)
+                    _ => panic!() // panic!("{:?} vs {:?}", expected, result)
                 }
             } else {
-                panic!("{:?} vs NONE", expected)
+                panic!() // panic!("{:?} vs NONE", expected)
             }
         } else {
             if let Some(result) = result_it.next() {
-                panic!("NONE vs {:?}", result)
+                panic!() // panic!("NONE vs {:?}", result)
             } else {
                 break true;
             }

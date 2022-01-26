@@ -445,6 +445,21 @@ impl TestState {
         } else if name == "numberformat122" {
             // stackoverflow
             generated.push_str("    #[ignore]\n");
+        } else if name == "default_namespace_dash_007" {
+            // stackoverflow
+            generated.push_str("    #[ignore]\n");
+        } else if name == "function_dash_declaration_dash_007" {
+            // stackoverflow
+            generated.push_str("    #[ignore]\n");
+        } else if name == "map_dash_for_dash_each_dash_014" {
+            // running > 60 seconds
+            generated.push_str("    #[ignore]\n");
+        } else if name == "map_dash_keys_dash_014" {
+            // running > 60 seconds
+            generated.push_str("    #[ignore]\n");
+        } else if name == "same_dash_key_dash_023" {
+            // running > 60 seconds
+            generated.push_str("    #[ignore]\n");
         } else if name == "xmark_dash_q10" {
             // running > 60 seconds
             generated.push_str("    #[ignore]\n");

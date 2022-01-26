@@ -30,8 +30,16 @@ jobs:
         rustup install ${{matrix.rust_channel}}
         rustup default ${{matrix.rust_channel}}
     - name: Generate
-      run: cargo run --package rustle --bin generate_xqts
+      run: RUSTFLAGS=-Awarnings cargo run --package rustle --bin generate_xqts
     - name: Build
       run: cargo build
     - name: Run tests
-      run: cargo test --verbose
+      run: |
+        cargo install cargo2junit;
+        RUSTFLAGS=-Awarnings cargo test --release -- -Z unstable-options --format json --report-time | cargo2junit > results.xml;
+    - name: Upload test results
+      uses: EnricoMi/publish-unit-test-result-action@v1
+      with:
+        check_name: Test Results
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        files: results.xml

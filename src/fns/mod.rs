@@ -382,7 +382,7 @@ fn function_conversion_rules(env: &Box<Environment>, sequence_type: Option<Seque
 }
 
 pub(crate) fn call(env: Box<Environment>, name: QNameResolved, arguments: Vec<Object>, context: &DynamicContext) -> EvalResult {
-    println!("call: {:?} {:?}", name, arguments);
+    // println!("call: {:?} {:?}", name, arguments);
 
     let mut fn_env = env.next();
 

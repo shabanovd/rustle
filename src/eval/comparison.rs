@@ -347,10 +347,10 @@ fn value_comparison(op: &OperatorComparison, left: ObjectRefInEnv, right: Object
                     let value = op.to_comparison().is_it(cmp_result)?;
                     Ok(Object::Atomic(Type::Boolean(value)))
                 },
-                _ => todo!("{:?} vs {:?}", left.1, right.1)
+                _ => todo!() // todo!("{:?} vs {:?}", left.1, right.1)
             }
         }
-        _ => todo!("{:?} vs {:?}", left.1, right.1)
+        _ => todo!() // todo!("{:?} vs {:?}", left.1, right.1)
     }
 }
 
@@ -397,7 +397,7 @@ pub(crate) fn general_comparison(op: &OperatorComparison, left: ObjectRefInEnv, 
                     }
                     Ok(false)
                 }
-                _ => panic!("{:?} vs {:?}", left.1, right.1) // Err((ErrorCode::XPTY0004, String::from("TODO")))
+                _ => todo!() // panic!("{:?} vs {:?}", left.1, right.1) // Err((ErrorCode::XPTY0004, String::from("TODO")))
             }
         }
         Object::Range { min: l_min, max: l_max} => {
@@ -421,7 +421,7 @@ pub(crate) fn general_comparison(op: &OperatorComparison, left: ObjectRefInEnv, 
                 Object::Atomic(rt) => {
                     type_in_range(rt, l_min, l_max)
                 }
-                _ => panic!("{:?} vs {:?}", left.1, right.1) // Err((ErrorCode::XPTY0004, String::from("TODO")))
+                _ => todo!() // panic!("{:?} vs {:?}", left.1, right.1) // Err((ErrorCode::XPTY0004, String::from("TODO")))
             }
         }
         Object::Array(left_items) |
@@ -447,7 +447,7 @@ pub(crate) fn general_comparison(op: &OperatorComparison, left: ObjectRefInEnv, 
                     }
                     Ok(false)
                 }
-                _ => panic!("{:?} vs {:?}", left.1, right.1) // Err((ErrorCode::XPTY0004, String::from("TODO")))
+                _ => todo!() // panic!("{:?} vs {:?}", left.1, right.1) // Err((ErrorCode::XPTY0004, String::from("TODO")))
             }
         },
         Object::Node(l_rf) => {
@@ -478,10 +478,10 @@ pub(crate) fn general_comparison(op: &OperatorComparison, left: ObjectRefInEnv, 
                         }
                     }
                 }
-                _ => panic!("{:?} vs {:?}", left.1, right.1) // Err((ErrorCode::XPTY0004, String::from("TODO")))
+                _ => todo!() // panic!("{:?} vs {:?}", left.1, right.1) // Err((ErrorCode::XPTY0004, String::from("TODO")))
             }
         }
-        _ => panic!("{:?} vs {:?}", left.1, right.1) // Err((ErrorCode::XPTY0004, String::from("TODO")))
+        _ => todo!() // panic!("{:?} vs {:?}", left.1, right.1) // Err((ErrorCode::XPTY0004, String::from("TODO")))
     }
 }
 
