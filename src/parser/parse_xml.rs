@@ -358,7 +358,7 @@ pub(crate) fn parse_computed_constructor(input: &str) -> IResult<&str, Box<dyn E
 
                 (input, StringExpr::new(name))
             } else {
-                let (input, _) = tag("{")(input).or_failure(ErrorCode::XPST0003)?;
+                let (input, _) = tag("{")(input).or_error(ErrorCode::XPST0003)?;
 
                 let (input, expr) = parse_expr(input)?;
 

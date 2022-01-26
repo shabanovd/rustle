@@ -31,7 +31,7 @@ pub(crate) fn eval(
     sources_namespaces: Option<(Vec<(&str, &str)>, Vec<(&str, &str)>)>,
     input: &str
 ) -> EvalResult {
-    println!("script: {:?}", input);
+    // println!("script: {:?}", input);
 
     let parsed = parse(input);
     if parsed.is_ok() {
@@ -231,8 +231,8 @@ pub(crate) fn bool_check_assert_xml(result: &EvalResult, check: &str) -> bool {
         relax(tmp_env, items).unwrap()
     };
 
-    println!("expected: {:?}", expected);
-    println!("obj: {:?}", obj);
+    // println!("expected: {:?}", expected);
+    // println!("obj: {:?}", obj);
 
     let mut expected_it = expected.into_iter();
     let mut result_it = obj.clone().into_iter();
@@ -259,23 +259,23 @@ pub(crate) fn bool_check_assert_xml(result: &EvalResult, check: &str) -> bool {
                                                     break false;
                                                 }
                                             },
-                                            _ => panic!("result is wrong: {:?}", str)
+                                            _ => todo!() // panic!("result is wrong: {:?}", str)
                                         }
                                     }
-                                    Err(e) => panic!("result is error: {:?}", e)
+                                    Err(e) => todo!() // panic!("result is error: {:?}", e)
                                 }
                             }
-                            _ => panic!("{:?} vs {:?}", expected, result)
+                            _ => todo!() // panic!("{:?} vs {:?}", expected, result)
                         }
                     }
-                    _ => panic!("{:?} vs {:?}", expected, result)
+                    _ => todo!() // panic!("{:?} vs {:?}", expected, result)
                 }
             } else {
-                panic!("{:?} vs NONE", expected)
+                todo!() // panic!("{:?} vs NONE", expected)
             }
         } else {
             if let Some(result) = result_it.next() {
-                panic!("NONE vs {:?}", result)
+                todo!() // panic!("NONE vs {:?}", result)
             } else {
                 break true;
             }
@@ -489,7 +489,7 @@ pub(crate) fn check_error(result: &EvalResult, expected_code: &str) {
                 assert_eq!(code, expected_code)
             }
         },
-        _ => assert_eq!("not error", format!("{:?}", result.as_ref().unwrap().1))
+        _ => assert_eq!("not error", "object") // format!("{:?}", result.as_ref().unwrap().1))
     }
 }
 

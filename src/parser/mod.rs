@@ -23,7 +23,7 @@ pub fn parse(input: &str) -> Result<Vec<Statement>, ErrorCode> {
         Err(code) => {
             let code = match code {
                 CustomError::XQ(place, code) => {
-                    println!("error at {:?}", place);
+                    // println!("error at {:?}", place);
                     code
                 },
                 CustomError::Nom(_, _) => ErrorCode::XPST0003,
@@ -43,7 +43,7 @@ pub fn parse_script(input: &str) -> Result<Vec<Statement>, CustomError<&str>> {
         let (input, program) = parse_main_module(input)?;
         let (input, _) = ws(input)?;
         if input.len() > 0 {
-            println!("unparsed {:?}", input);
+            // println!("unparsed {:?}", input);
             // something left un-parsed
             Err(CustomError::new(input, XPST0003))
         } else {
